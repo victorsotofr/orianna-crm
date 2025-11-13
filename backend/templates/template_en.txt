@@ -1,0 +1,27 @@
+THIS IS AN EXAMPLE
+
+<p>Hi [FIRST_NAME],</p>
+
+<p>
+My company is so great, you have to work with me.
+</p>
+
+<p>
+Given your role at [COMPANY], your the perfect person to reach out to and we will work well together.
+</p>
+
+<p>
+Here is the website of our solution: <a href="https://www.saint-tropez.fr/">saint-tropez</a>
+</p>
+
+<p>
+Thanks a lot, and looking forward to talking if you’re up for it!
+</p>
+
+<p>Best regards,</p>
+
+<p>
+VS<br>
++33 6 ...<br>
+<a href="https://www.linkedin.com/in/">LinkedIn</a>
+</p>

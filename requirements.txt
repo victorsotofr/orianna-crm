@@ -1,0 +1,24 @@
+# Core packages
+pandas
+python-dotenv
+requests
+
+# Email
+smtplib  # Built-in; included here for clarity
+email    # Built-in; included here for clarity
+
+# Google Sheets access
+gspread
+oauth2client
+
+# OpenAI API
+openai>=1.0.0
+
+# Streamlit UI
+streamlit
+
+# Optional (used in watch script for desktop notifications on macOS)
+osascript
+
+# File watching (optional)
+watchdog

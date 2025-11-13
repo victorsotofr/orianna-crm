@@ -1,0 +1,41 @@
+# Next.js
+node_modules/
+.next/
+out/
+.env.local
+.env*.local
+.vercelignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sensitive files
+keys.rtf
+*.pem
+*.key

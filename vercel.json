@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd email-automation && npm run build",
+  "devCommand": "cd email-automation && npm run dev",
+  "installCommand": "cd email-automation && npm install",
+  "framework": "nextjs",
+  "outputDirectory": "email-automation/.next"
+}
+

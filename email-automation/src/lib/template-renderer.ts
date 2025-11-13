@@ -1,17 +1,22 @@
-import Handlebars from 'handlebars';
-
 export interface TemplateVariables {
   [key: string]: string;
 }
 
 /**
- * Renders a template with variables using Handlebars syntax
+ * Renders a template with variables using simple string replacement
  * Variables are in the format {{ variable_name }}
  */
 export function renderTemplate(templateContent: string, variables: TemplateVariables): string {
   try {
-    const template = Handlebars.compile(templateContent);
-    return template(variables);
+    let result = templateContent;
+    
+    // Replace all {{variable}} with the actual values
+    for (const [key, value] of Object.entries(variables)) {
+      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+      result = result.replace(regex, value || '');
+    }
+    
+    return result;
   } catch (error) {
     console.error('Template rendering error:', error);
     throw new Error('Failed to render template');

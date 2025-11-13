@@ -1,3 +1,5 @@
+// This file should only be used on the server
+import 'server-only';
 import nodemailer from 'nodemailer';
 import { decrypt } from './encryption';
 

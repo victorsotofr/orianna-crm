@@ -7,7 +7,21 @@ const nextConfig: NextConfig = {
       { module: /node_modules\/handlebars\/lib\/index\.js/ },
     ];
     
+    // Fix for __dirname not defined in serverless environment
+    if (isServer) {
+      config.resolve = config.resolve || {};
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+      };
+    }
+    
     return config;
+  },
+  // Optimize for serverless
+  experimental: {
+    serverComponentsExternalPackages: ['handlebars'],
   },
 };
 

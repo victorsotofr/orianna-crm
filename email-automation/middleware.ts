@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
+// Force Node.js runtime instead of Edge runtime to support all Node.js APIs
+export const runtime = 'nodejs';
+
 export async function middleware(request: NextRequest) {
   // Check if environment variables are set
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {

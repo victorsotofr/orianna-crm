@@ -27,6 +27,8 @@ export async function POST(request: Request) {
       smtpPassword,
       imapHost,
       imapPort,
+      imapUser,
+      imapPassword,
       signatureHtml,
       dailySendLimit,
     } = body;
@@ -56,17 +58,21 @@ export async function POST(request: Request) {
       smtp_user: smtpUser,
       imap_host: imapHost,
       imap_port: parseInt(imapPort) || 993,
+      imap_user: imapUser || null,
       signature_html: signatureHtml,
       daily_send_limit: parseInt(dailySendLimit) || 50,
     };
 
-    // Only update password if a new one is provided
+    // Only update SMTP password if a new one is provided
     if (smtpPassword) {
       const encryptedPassword = encrypt(smtpPassword);
       upsertData.smtp_password_encrypted = encryptedPassword;
-      console.log('🔑 Password encrypted and will be updated');
-    } else {
-      console.log('ℹ️ Password not provided, keeping existing password');
+    }
+
+    // Only update IMAP password if a new one is provided
+    if (imapPassword) {
+      const encryptedImapPassword = encrypt(imapPassword);
+      upsertData.imap_password_encrypted = encryptedImapPassword;
     }
 
     // Upsert user settings
@@ -117,13 +123,14 @@ export async function GET(request: Request) {
       throw error;
     }
 
-    // Don't return the encrypted password, but indicate if it exists
+    // Don't return encrypted passwords, but indicate if they exist
     if (settings) {
-      const { smtp_password_encrypted, ...safeSettings } = settings;
-      return NextResponse.json({ 
+      const { smtp_password_encrypted, imap_password_encrypted, ...safeSettings } = settings;
+      return NextResponse.json({
         settings: {
           ...safeSettings,
-          has_password: !!smtp_password_encrypted, // Indicate if password is saved
+          has_password: !!smtp_password_encrypted,
+          has_imap_password: !!imap_password_encrypted,
         }
       });
     }

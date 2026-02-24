@@ -21,8 +21,10 @@ export default function SettingsPage() {
   const [smtpPort, setSmtpPort] = useState('587');
   const [smtpUser, setSmtpUser] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
-  const [imapHost, setImapHost] = useState('imap.polytechnique.edu');
+  const [imapHost, setImapHost] = useState('webmail.polytechnique.fr');
   const [imapPort, setImapPort] = useState('993');
+  const [imapUser, setImapUser] = useState('');
+  const [imapPassword, setImapPassword] = useState('');
   const [signatureHtml, setSignatureHtml] = useState('');
   const [dailySendLimit, setDailySendLimit] = useState('50');
 
@@ -32,8 +34,10 @@ export default function SettingsPage() {
     smtpPort: '587',
     smtpUser: '',
     smtpPassword: '',
-    imapHost: 'imap.polytechnique.edu',
+    imapHost: 'webmail.polytechnique.fr',
     imapPort: '993',
+    imapUser: '',
+    imapPassword: '',
     signatureHtml: '',
     dailySendLimit: '50',
   });
@@ -44,18 +48,20 @@ export default function SettingsPage() {
 
   // Detect unsaved changes
   useEffect(() => {
-    const hasChanges = 
+    const hasChanges =
       smtpHost !== originalValues.smtpHost ||
       smtpPort !== originalValues.smtpPort ||
       smtpUser !== originalValues.smtpUser ||
       smtpPassword !== originalValues.smtpPassword ||
       imapHost !== originalValues.imapHost ||
       imapPort !== originalValues.imapPort ||
+      imapUser !== originalValues.imapUser ||
+      imapPassword !== originalValues.imapPassword ||
       signatureHtml !== originalValues.signatureHtml ||
       dailySendLimit !== originalValues.dailySendLimit;
-    
+
     setHasUnsavedChanges(hasChanges);
-  }, [smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, signatureHtml, dailySendLimit, originalValues]);
+  }, [smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, imapPassword, signatureHtml, dailySendLimit, originalValues]);
 
   // Warn before leaving page with unsaved changes
   useEffect(() => {
@@ -80,8 +86,10 @@ export default function SettingsPage() {
           const port = String(settings.smtp_port || '587');
           const user = settings.smtp_user || '';
           const password = settings.has_password ? '••••••••' : '';
-          const imapH = settings.imap_host || 'imap.polytechnique.edu';
+          const imapH = settings.imap_host || 'webmail.polytechnique.fr';
           const imapP = String(settings.imap_port || '993');
+          const imapU = settings.imap_user || '';
+          const imapPwd = settings.has_imap_password ? '••••••••' : '';
           const signature = settings.signature_html || '';
           const limit = String(settings.daily_send_limit || '50');
 
@@ -91,6 +99,8 @@ export default function SettingsPage() {
           setSmtpPassword(password);
           setImapHost(imapH);
           setImapPort(imapP);
+          setImapUser(imapU);
+          setImapPassword(imapPwd);
           setSignatureHtml(signature);
           setDailySendLimit(limit);
 
@@ -102,6 +112,8 @@ export default function SettingsPage() {
             smtpPassword: password,
             imapHost: imapH,
             imapPort: imapP,
+            imapUser: imapU,
+            imapPassword: imapPwd,
             signatureHtml: signature,
             dailySendLimit: limit,
           });
@@ -150,13 +162,17 @@ export default function SettingsPage() {
         smtpUser,
         imapHost,
         imapPort,
+        imapUser,
         signatureHtml,
         dailySendLimit,
       };
 
-      // Only include password if it's not the placeholder
+      // Only include passwords if not the placeholder
       if (!isPlaceholderPassword) {
         requestBody.smtpPassword = smtpPassword;
+      }
+      if (imapPassword && imapPassword !== '••••••••') {
+        requestBody.imapPassword = imapPassword;
       }
 
       const response = await fetch('/api/settings/save', {
@@ -183,6 +199,8 @@ export default function SettingsPage() {
           smtpPassword: smtpPassword || originalValues.smtpPassword,
           imapHost,
           imapPort,
+          imapUser,
+          imapPassword: imapPassword || originalValues.imapPassword,
           signatureHtml,
           dailySendLimit,
         });
@@ -398,7 +416,7 @@ export default function SettingsPage() {
                 id="imapHost"
                 value={imapHost}
                 onChange={(e) => setImapHost(e.target.value)}
-                placeholder="imap.polytechnique.edu"
+                placeholder="webmail.polytechnique.fr"
               />
             </div>
             <div className="space-y-2">
@@ -411,6 +429,34 @@ export default function SettingsPage() {
                 placeholder="993"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="imapUser">Utilisateur IMAP</Label>
+            <Input
+              id="imapUser"
+              value={imapUser}
+              onChange={(e) => setImapUser(e.target.value)}
+              placeholder="vous@polytechnique.edu"
+            />
+            <p className="text-xs text-muted-foreground">
+              Souvent identique à votre utilisateur SMTP
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="imapPassword">Mot de passe IMAP</Label>
+            <Input
+              id="imapPassword"
+              type="password"
+              value={imapPassword}
+              onChange={(e) => setImapPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            <p className="text-xs text-muted-foreground">
+              {imapPassword === '••••••••'
+                ? 'Un mot de passe est déjà sauvegardé.'
+                : 'Votre mot de passe sera chiffré avant stockage'
+              }
+            </p>
           </div>
         </CardContent>
       </Card>

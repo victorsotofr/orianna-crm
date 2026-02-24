@@ -3,9 +3,9 @@
 import * as React from "react"
 import {
   Home,
-  Upload,
+  Users,
   FileText,
-  Send,
+  Zap,
   Settings,
   GalleryVerticalEnd,
 } from "lucide-react"
@@ -28,19 +28,19 @@ const data = {
       icon: Home,
     },
     {
-      title: "1. Import CSV",
-      url: "/upload",
-      icon: Upload,
+      title: "Contacts",
+      url: "/contacts",
+      icon: Users,
     },
     {
-      title: "2. Templates",
+      title: "Séquences",
+      url: "/sequences",
+      icon: Zap,
+    },
+    {
+      title: "Templates",
       url: "/templates",
       icon: FileText,
-    },
-    {
-      title: "3. Campagnes",
-      url: "/campaigns/new",
-      icon: Send,
     },
     {
       title: "Paramètres",
@@ -85,4 +85,3 @@ export function AppSidebar({
     </Sidebar>
   )
 }
-

@@ -2,14 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -57,11 +55,6 @@ export function LoginForm() {
         <CardDescription>
           Entrez votre email ci-dessous pour vous connecter à votre compte
         </CardDescription>
-        <CardAction>
-          <Button variant="link" asChild>
-            <Link href="/signup">S&apos;inscrire</Link>
-          </Button>
-        </CardAction>
       </CardHeader>
       <form onSubmit={handleLogin}>
         <CardContent className="pt-0 pb-0">

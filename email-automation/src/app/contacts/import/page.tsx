@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { IndustrySelector } from '@/components/industry-selector';
 
@@ -26,6 +27,14 @@ interface ParsedContact {
   entreprise?: string;
   société?: string;
   [key: string]: any;
+}
+
+interface DuplicateInfo {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  owner_name: string | null;
+  created_by: string | null;
 }
 
 // Auto-detect headers in EN/FR
@@ -46,10 +55,15 @@ export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [validContacts, setValidContacts] = useState<ParsedContact[]>([]);
   const [invalidEmails, setInvalidEmails] = useState<string[]>([]);
-  const [duplicates, setDuplicates] = useState<number>(0);
+  const [csvDuplicates, setCsvDuplicates] = useState<number>(0);
   const [selectedIndustry, setSelectedIndustry] = useState<string>('');
   const [uploading, setUploading] = useState(false);
-  const [step, setStep] = useState<'upload' | 'preview'>('upload');
+  const [checking, setChecking] = useState(false);
+  const [step, setStep] = useState<'upload' | 'preview' | 'duplicates'>('upload');
+
+  // Database duplicate state
+  const [dbDuplicates, setDbDuplicates] = useState<DuplicateInfo[]>([]);
+  const [newCount, setNewCount] = useState(0);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -91,7 +105,7 @@ export default function ImportPage() {
 
         setValidContacts(valid);
         setInvalidEmails(invalid);
-        setDuplicates(dupeCount);
+        setCsvDuplicates(dupeCount);
         setStep('preview');
         toast.success(`${valid.length} contacts valides trouvés`);
       },
@@ -101,14 +115,49 @@ export default function ImportPage() {
     });
   };
 
-  const handleImport = async () => {
-    if (validContacts.length === 0) {
-      toast.error('Aucun contact valide à importer');
+  const handleCheckDuplicates = async () => {
+    if (validContacts.length === 0) return;
+    if (!selectedIndustry) {
+      toast.error('Veuillez sélectionner une industrie');
       return;
     }
 
-    if (!selectedIndustry) {
-      toast.error('Veuillez sélectionner une industrie');
+    setChecking(true);
+    try {
+      const response = await fetch('/api/contacts/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contacts: validContacts,
+          industry: selectedIndustry,
+          check_duplicates: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.duplicates && data.duplicates.length > 0) {
+          setDbDuplicates(data.duplicates);
+          setNewCount(data.new_count);
+          setStep('duplicates');
+        } else {
+          // No duplicates, proceed directly
+          await handleImport(false);
+        }
+      } else {
+        toast.error(data.error || 'Erreur lors de la vérification');
+      }
+    } catch {
+      toast.error('Erreur lors de la vérification des doublons');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleImport = async (skipDuplicates: boolean) => {
+    if (validContacts.length === 0) {
+      toast.error('Aucun contact valide à importer');
       return;
     }
 
@@ -120,18 +169,19 @@ export default function ImportPage() {
         body: JSON.stringify({
           contacts: validContacts,
           industry: selectedIndustry,
+          skip_duplicates: skipDuplicates,
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        toast.success(`${data.imported} contacts importés avec succès!`);
+        toast.success(`${data.imported} contacts importés${data.skipped > 0 ? `, ${data.skipped} ignoré(s)` : ''}`);
         router.push('/contacts');
       } else {
         toast.error(data.error || "Erreur lors de l'importation");
       }
-    } catch (error) {
+    } catch {
       toast.error("Erreur lors de l'importation des contacts");
     } finally {
       setUploading(false);
@@ -155,11 +205,21 @@ export default function ImportPage() {
     }
   };
 
+  const resetAll = () => {
+    setStep('upload');
+    setFile(null);
+    setValidContacts([]);
+    setInvalidEmails([]);
+    setCsvDuplicates(0);
+    setDbDuplicates([]);
+    setNewCount(0);
+  };
+
   return (
     <>
       <SiteHeader title="Importer des contacts" />
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+      <div className="page-container">
+        <div className="page-content">
 
           {step === 'upload' && (
             <Card>
@@ -171,16 +231,16 @@ export default function ImportPage() {
               </CardHeader>
               <CardContent>
                 <div
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer"
+                  className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-12 text-center hover:border-primary/50 transition-colors cursor-pointer"
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-lg font-medium text-gray-700 mb-2">
+                  <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
+                  <p className="text-sm font-medium mb-1">
                     Glissez-déposez votre fichier CSV ici
                   </p>
-                  <p className="text-sm text-gray-500 mb-4">ou cliquez pour sélectionner</p>
+                  <p className="text-xs text-muted-foreground mb-3">ou cliquez pour sélectionner</p>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -188,8 +248,8 @@ export default function ImportPage() {
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <Button type="button" variant="outline">
-                    <FileText className="mr-2 h-4 w-4" />
+                  <Button type="button" variant="outline" size="sm">
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
                     Sélectionner un fichier
                   </Button>
                 </div>
@@ -199,114 +259,98 @@ export default function ImportPage() {
 
           {step === 'preview' && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">Contacts valides</CardTitle>
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                  <CardContent className="pt-4 pb-3 px-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">Contacts valides</span>
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{validContacts.length}</div>
+                    <div className="text-xl font-bold text-green-600">{validContacts.length}</div>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">Emails invalides</CardTitle>
-                      <AlertCircle className="h-4 w-4 text-red-500" />
+                  <CardContent className="pt-4 pb-3 px-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">Emails invalides</span>
+                      <AlertCircle className="h-3.5 w-3.5 text-red-500" />
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-red-600">{invalidEmails.length}</div>
+                    <div className="text-xl font-bold text-red-600">{invalidEmails.length}</div>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">Doublons</CardTitle>
-                      <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <CardContent className="pt-4 pb-3 px-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">Doublons CSV</span>
+                      <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-yellow-600">{duplicates}</div>
+                    <div className="text-xl font-bold text-yellow-600">{csvDuplicates}</div>
                   </CardContent>
                 </Card>
               </div>
 
               {invalidEmails.length > 0 && (
                 <Alert variant="destructive">
-                  <AlertDescription>
-                    {invalidEmails.length} email(s) invalide(s) ont été ignorés
+                  <AlertDescription className="text-xs">
+                    {invalidEmails.length} email(s) invalide(s) ignorés
                   </AlertDescription>
                 </Alert>
               )}
 
               <Card>
-                <CardHeader>
-                  <CardTitle>Sélectionner l&apos;industrie</CardTitle>
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">Industrie</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Label htmlFor="industry-select">Industrie des contacts</Label>
-                    <IndustrySelector
-                      value={selectedIndustry}
-                      onValueChange={setSelectedIndustry}
-                      placeholder="Choisissez une industrie..."
-                      className="w-full md:w-[400px]"
-                    />
-                  </div>
+                <CardContent className="px-4 pb-3">
+                  <IndustrySelector
+                    value={selectedIndustry}
+                    onValueChange={setSelectedIndustry}
+                    placeholder="Choisissez une industrie..."
+                    className="w-full md:w-[400px]"
+                  />
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Aperçu des contacts</CardTitle>
-                  <CardDescription>
+              <Card className="flex-1 min-h-0 flex flex-col">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">Aperçu</CardTitle>
+                  <CardDescription className="text-xs">
                     {validContacts.length > 10
-                      ? `Affichage des 10 premiers contacts sur ${validContacts.length}`
-                      : `${validContacts.length} contact(s) à importer`}
+                      ? `10 premiers sur ${validContacts.length}`
+                      : `${validContacts.length} contact(s)`}
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-4 pb-3 flex-1 min-h-0 overflow-auto">
                   <div className="overflow-hidden rounded-lg border">
                     <Table>
-                      <TableHeader className="bg-muted">
+                      <TableHeader className="bg-muted/50">
                         <TableRow>
-                          <TableHead className="w-8">#</TableHead>
-                          <TableHead>Contact</TableHead>
-                          <TableHead>Entreprise</TableHead>
+                          <TableHead className="text-xs w-8">#</TableHead>
+                          <TableHead className="text-xs">Contact</TableHead>
+                          <TableHead className="text-xs">Entreprise</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {validContacts.slice(0, 10).map((contact, index) => (
                           <TableRow key={index}>
-                            <TableCell className="text-muted-foreground">{index + 1}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                                  <User className="h-4 w-4 text-primary" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">
-                                    {contact.first_name || '(Prénom manquant)'} {contact.last_name || ''}
-                                  </div>
-                                  <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                    <Mail className="h-3 w-3" />
-                                    {contact.email}
-                                  </div>
-                                </div>
+                            <TableCell className="text-xs text-muted-foreground py-1.5">{index + 1}</TableCell>
+                            <TableCell className="py-1.5">
+                              <div className="text-sm font-medium">
+                                {contact.first_name || '—'} {contact.last_name || ''}
+                              </div>
+                              <div className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {contact.email}
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="py-1.5">
                               {contact.company_name ? (
-                                <div className="flex items-center gap-2">
-                                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                                  <span>{contact.company_name}</span>
+                                <div className="flex items-center gap-1.5 text-sm">
+                                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                  {contact.company_name}
                                 </div>
                               ) : (
-                                <span className="text-muted-foreground text-sm">&mdash;</span>
+                                <span className="text-muted-foreground text-xs">&mdash;</span>
                               )}
                             </TableCell>
                           </TableRow>
@@ -315,7 +359,7 @@ export default function ImportPage() {
                     </Table>
                   </div>
                   {validContacts.length > 10 && (
-                    <p className="text-xs text-muted-foreground mt-2 text-center">
+                    <p className="text-xs text-muted-foreground mt-1.5 text-center">
                       ... et {validContacts.length - 10} contact(s) supplémentaire(s)
                     </p>
                   )}
@@ -323,28 +367,101 @@ export default function ImportPage() {
               </Card>
 
               <div className="flex justify-between">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setStep('upload');
-                    setFile(null);
-                    setValidContacts([]);
-                    setInvalidEmails([]);
-                    setDuplicates(0);
-                  }}
-                >
+                <Button variant="outline" size="sm" onClick={resetAll}>
                   Annuler
                 </Button>
-                <Button onClick={handleImport} disabled={uploading} size="lg">
-                  {uploading ? (
+                <Button size="sm" onClick={handleCheckDuplicates} disabled={checking || !selectedIndustry}>
+                  {checking ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Importation...
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Vérification...
                     </>
                   ) : (
                     `Importer ${validContacts.length} contact${validContacts.length > 1 ? 's' : ''}`
                   )}
                 </Button>
+              </div>
+            </>
+          )}
+
+          {step === 'duplicates' && (
+            <>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>{dbDuplicates.length} contact(s)</strong> existent déjà dans la base de données.{' '}
+                  <strong>{newCount}</strong> nouveau(x) contact(s) seront importé(s).
+                </AlertDescription>
+              </Alert>
+
+              <Card className="flex-1 min-h-0 flex flex-col">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm">Contacts existants ({dbDuplicates.length})</CardTitle>
+                  <CardDescription className="text-xs">
+                    Ces contacts ne seront pas ré-importés
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="px-4 pb-3 flex-1 min-h-0 overflow-auto">
+                  <div className="overflow-hidden rounded-lg border">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead className="text-xs">Email</TableHead>
+                          <TableHead className="text-xs">Nom</TableHead>
+                          <TableHead className="text-xs">Propriétaire</TableHead>
+                          <TableHead className="text-xs">Ajouté par</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {dbDuplicates.map((dup, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="py-1.5">
+                              <span className="text-xs font-mono">{dup.email}</span>
+                            </TableCell>
+                            <TableCell className="py-1.5 text-sm">
+                              {dup.first_name || ''} {dup.last_name || ''}
+                            </TableCell>
+                            <TableCell className="py-1.5">
+                              {dup.owner_name ? (
+                                <Badge variant="secondary" className="text-xs">
+                                  <UserCheck className="h-3 w-3 mr-1" />
+                                  {dup.owner_name}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Non assigné</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-1.5 text-xs text-muted-foreground">
+                              {dup.created_by || '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex justify-between">
+                <Button variant="outline" size="sm" onClick={resetAll}>
+                  Annuler
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleImport(true)}
+                    disabled={uploading || newCount === 0}
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        Importation...
+                      </>
+                    ) : (
+                      `Ignorer les doublons (importer ${newCount} nouveaux)`
+                    )}
+                  </Button>
+                </div>
               </div>
             </>
           )}

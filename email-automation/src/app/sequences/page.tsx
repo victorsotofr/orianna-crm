@@ -9,7 +9,8 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SequenceBuilderSheet } from '@/components/sequence-builder-sheet';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { Plus, Loader2, Zap, Layers, Users } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Plus, Loader2, Zap, Layers, Users, MoreHorizontal, Play, Pause, Trash2, Pencil } from 'lucide-react';
 
 interface SequenceItem {
   id: string;
@@ -83,6 +84,38 @@ export default function SequencesPage() {
     setSheetOpen(true);
   };
 
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
+    try {
+      if (currentStatus === 'active') {
+        await fetch(`/api/sequences/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'paused' }),
+        });
+        toast.success('Séquence mise en pause');
+      } else if (currentStatus === 'draft' || currentStatus === 'paused') {
+        const res = await fetch(`/api/sequences/${id}/activate`, { method: 'POST' });
+        const result = await res.json();
+        if (!res.ok) { toast.error(result.error || 'Erreur'); return; }
+        toast.success('Séquence activée');
+      }
+      fetchSequences();
+    } catch {
+      toast.error('Erreur');
+    }
+  };
+
+  const handleArchive = async (id: string) => {
+    if (!confirm('Archiver cette séquence ?')) return;
+    try {
+      await fetch(`/api/sequences/${id}`, { method: 'DELETE' });
+      toast.success('Séquence archivée');
+      fetchSequences();
+    } catch {
+      toast.error('Erreur');
+    }
+  };
+
   const activeCount = sequences.filter(s => s.status === 'active').length;
   const totalEnrollments = sequences.reduce((sum, s) => sum + s.enrollment_count, 0);
 
@@ -132,6 +165,7 @@ export default function SequencesPage() {
                     <TableHead className="text-xs">Inscrits</TableHead>
                     <TableHead className="text-xs">Créé par</TableHead>
                     <TableHead className="text-xs">Date</TableHead>
+                    <TableHead className="text-xs w-[60px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -171,6 +205,38 @@ export default function SequencesPage() {
                         </TableCell>
                         <TableCell className="py-2 text-xs text-muted-foreground font-mono">
                           {new Date(seq.created_at).toLocaleDateString('fr-FR')}
+                        </TableCell>
+                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openSequence(seq.id)}>
+                                <Pencil className="mr-2 h-3.5 w-3.5" />
+                                Modifier
+                              </DropdownMenuItem>
+                              {(seq.status === 'draft' || seq.status === 'paused') && (
+                                <DropdownMenuItem onClick={() => handleToggleStatus(seq.id, seq.status)}>
+                                  <Play className="mr-2 h-3.5 w-3.5" />
+                                  Activer
+                                </DropdownMenuItem>
+                              )}
+                              {seq.status === 'active' && (
+                                <DropdownMenuItem onClick={() => handleToggleStatus(seq.id, seq.status)}>
+                                  <Pause className="mr-2 h-3.5 w-3.5" />
+                                  Pause
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleArchive(seq.id)} className="text-destructive">
+                                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                Archiver
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     );

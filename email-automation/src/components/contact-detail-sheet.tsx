@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContactStatusBadge } from "@/components/contact-status-badge"
 import {
@@ -16,8 +15,8 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { toast } from "sonner"
-import { Save, Loader2, Trash2, Mail, Building2, Phone, MessageSquare } from "lucide-react"
-import type { Contact, ContactTimeline, Comment } from "@/types/database"
+import { Save, Loader2, Trash2, Mail, Building2, Phone, MessageSquare, UserCheck } from "lucide-react"
+import type { Contact, Comment, TeamMember } from "@/types/database"
 
 interface ContactDetailSheetProps {
   contactId: string | null
@@ -36,6 +35,7 @@ export function ContactDetailSheet({
 }: ContactDetailSheetProps) {
   const [contact, setContact] = useState<Contact | null>(null)
   const [comments, setComments] = useState<(Comment & { team_members?: { display_name: string } })[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [newComment, setNewComment] = useState("")
@@ -50,6 +50,7 @@ export function ContactDetailSheet({
   const [phone, setPhone] = useState("")
   const [notes, setNotes] = useState("")
   const [status, setStatus] = useState("new")
+  const [assignedTo, setAssignedTo] = useState<string>("unassigned")
 
   useEffect(() => {
     if (contactId && open) {
@@ -61,9 +62,10 @@ export function ContactDetailSheet({
   const fetchContact = async () => {
     if (!contactId) return
     try {
-      const [contactRes, commentsRes] = await Promise.all([
+      const [contactRes, commentsRes, teamRes] = await Promise.all([
         fetch(`/api/contacts/${contactId}`),
         fetch(`/api/comments?contact_id=${contactId}`),
+        fetch('/api/contacts?limit=1&include_team=true'),
       ])
 
       if (contactRes.ok) {
@@ -77,11 +79,17 @@ export function ContactDetailSheet({
         setPhone(c.phone || "")
         setNotes(c.notes || "")
         setStatus(c.status || "new")
+        setAssignedTo(c.assigned_to || "unassigned")
       }
 
       if (commentsRes.ok) {
         const { comments: cmts } = await commentsRes.json()
         setComments(cmts)
+      }
+
+      if (teamRes.ok) {
+        const data = await teamRes.json()
+        if (data.teamMembers) setTeamMembers(data.teamMembers)
       }
     } catch (error) {
       console.error("Error fetching contact:", error)
@@ -107,6 +115,7 @@ export function ContactDetailSheet({
           phone,
           notes,
           status,
+          assigned_to: assignedTo === "unassigned" ? null : assignedTo,
         }),
       })
 
@@ -251,6 +260,26 @@ export function ContactDetailSheet({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Owner assignment */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                <UserCheck className="h-3 w-3" /> Propriétaire
+              </Label>
+              <Select value={assignedTo} onValueChange={setAssignedTo}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Non assigné" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Non assigné</SelectItem>
+                  {teamMembers.map(member => (
+                    <SelectItem key={member.user_id} value={member.user_id}>
+                      {member.display_name || member.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">

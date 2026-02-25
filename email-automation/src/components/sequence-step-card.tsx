@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Mail, ClipboardCheck, Clock, Trash2, GripVertical } from "lucide-react"
+import { Mail, ClipboardCheck, Clock, Trash2, ChevronUp, ChevronDown } from "lucide-react"
 import type { SequenceStep } from "@/types/database"
 
 const stepTypeConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -15,43 +15,66 @@ const stepTypeConfig: Record<string, { label: string; icon: React.ElementType; c
 interface SequenceStepCardProps {
   step: SequenceStep & { templates?: { id: string; name: string; subject: string } | null }
   onDelete: (stepId: string) => void
+  onMoveUp?: (stepId: string) => void
+  onMoveDown?: (stepId: string) => void
+  isFirst?: boolean
+  isLast?: boolean
 }
 
-export function SequenceStepCard({ step, onDelete }: SequenceStepCardProps) {
+export function SequenceStepCard({ step, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: SequenceStepCardProps) {
   const config = stepTypeConfig[step.step_type] || stepTypeConfig.email
   const Icon = config.icon
 
   return (
     <Card className="relative">
-      <CardContent className="flex items-center gap-4 py-3 px-4">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <GripVertical className="h-4 w-4" />
-          <span className="text-sm font-mono font-bold w-6 text-center">{step.step_order}</span>
+      <CardContent className="flex items-center gap-3 py-2.5 px-3">
+        {/* Reorder buttons */}
+        <div className="flex flex-col gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={() => onMoveUp?.(step.id)}
+            disabled={isFirst}
+          >
+            <ChevronUp className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={() => onMoveDown?.(step.id)}
+            disabled={isLast}
+          >
+            <ChevronDown className="h-3 w-3" />
+          </Button>
         </div>
 
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${config.color}`}>
-          <Icon className="h-4 w-4" />
+        <span className="text-xs font-mono font-bold w-5 text-center text-muted-foreground">{step.step_order}</span>
+
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${config.color}`}>
+          <Icon className="h-3.5 w-3.5" />
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">{config.label}</Badge>
+            <Badge variant="outline" className="text-[10px]">{config.label}</Badge>
             {step.delay_days > 0 && (
-              <Badge variant="secondary" className="text-xs">
-                <Clock className="h-3 w-3 mr-1" />
+              <Badge variant="secondary" className="text-[10px]">
+                <Clock className="h-2.5 w-2.5 mr-0.5" />
                 +{step.delay_days}j
               </Badge>
             )}
           </div>
-          <p className="text-sm mt-1 truncate">
+          <p className="text-sm mt-0.5 truncate">
             {step.step_type === 'email' && step.templates
               ? step.templates.name
               : step.instructions || 'Pas de description'}
           </p>
         </div>
 
-        <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => onDelete(step.id)}>
-          <Trash2 className="h-4 w-4" />
+        <Button variant="ghost" size="icon" className="shrink-0 h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onDelete(step.id)}>
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </CardContent>
     </Card>

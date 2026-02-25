@@ -52,6 +52,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       .select('*', { count: 'exact', head: true })
       .eq('sequence_id', id);
 
+    // Get enrolled contact IDs (for duplicate prevention in UI)
+    const { data: enrollments } = await supabase
+      .from('sequence_enrollments')
+      .select('contact_id')
+      .eq('sequence_id', id)
+      .in('status', ['active', 'paused']);
+
     return NextResponse.json({
       sequence,
       steps: steps || [],
@@ -60,6 +67,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         completed: completedCount || 0,
         total: totalEnrolled || 0,
       },
+      enrolledContactIds: (enrollments || []).map(e => e.contact_id),
     });
   } catch (error: any) {
     console.error('Sequence detail error:', error);

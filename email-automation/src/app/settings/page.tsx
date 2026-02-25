@@ -289,15 +289,15 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Save button - fixed at bottom */}
-          <div className="flex justify-end pt-2 border-t">
+          {/* Save button - fixed at bottom-right */}
+          <div className="flex justify-end pt-2 border-t shrink-0">
             <Button onClick={handleSave} disabled={saving || !hasUnsavedChanges} size="sm">
               {saving ? (
-                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Enregistrement...</>
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Sauvegarde...</>
               ) : hasUnsavedChanges ? (
-                'Enregistrer'
+                'Sauvegarder'
               ) : (
-                'Paramètres sauvegardés'
+                'Sauvegardé'
               )}
             </Button>
           </div>

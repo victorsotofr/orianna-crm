@@ -21,6 +21,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if ('template_id' in body) updates.template_id = body.template_id;
     if ('delay_days' in body) updates.delay_days = body.delay_days;
     if ('instructions' in body) updates.instructions = body.instructions;
+    if ('step_order' in body) updates.step_order = body.step_order;
 
     const { data: step, error } = await supabase
       .from('sequence_steps')

@@ -217,7 +217,7 @@ export default function TemplatesPage() {
 
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nouveau Template</DialogTitle>
             <DialogDescription>Créez un nouveau template d&apos;email</DialogDescription>
@@ -228,7 +228,7 @@ export default function TemplatesPage() {
 
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Modifier le Template</DialogTitle>
             <DialogDescription>Modifiez les informations du template</DialogDescription>

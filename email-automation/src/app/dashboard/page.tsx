@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SectionCards } from '@/components/section-cards';
+import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
 import { EmailsSentDataTable } from '@/components/emails-sent-data-table';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 
 interface TeamStats {
   totalContacts: number;
@@ -35,32 +35,30 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const [teamRes, myRes] = await Promise.all([
+          fetch('/api/dashboard/team-stats'),
+          fetch('/api/dashboard/my-stats'),
+        ]);
+        if (teamRes.ok) setTeamStats(await teamRes.json());
+        if (myRes.ok) setMyStats(await myRes.json());
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchStats();
   }, []);
-
-  const fetchStats = async () => {
-    try {
-      const [teamRes, myRes] = await Promise.all([
-        fetch('/api/dashboard/team-stats'),
-        fetch('/api/dashboard/my-stats'),
-      ]);
-
-      if (teamRes.ok) setTeamStats(await teamRes.json());
-      if (myRes.ok) setMyStats(await myRes.json());
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (
       <>
         <SiteHeader title="Dashboard" />
-        <div className="flex flex-1 flex-col">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <p className="text-muted-foreground">Chargement...</p>
+        <div className="page-container">
+          <div className="flex items-center justify-center flex-1">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         </div>
       </>
@@ -70,109 +68,82 @@ export default function DashboardPage() {
   return (
     <>
       <SiteHeader title="Dashboard" />
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6">
-          <Tabs defaultValue="team">
-            <div className="px-4 lg:px-6">
-              <TabsList>
-                <TabsTrigger value="team">Équipe</TabsTrigger>
-                <TabsTrigger value="personal">Mon activité</TabsTrigger>
-              </TabsList>
-            </div>
+      <div className="page-container">
+        <Tabs defaultValue="team" className="flex flex-col flex-1 min-h-0">
+          <div className="flex items-center justify-between px-4 lg:px-6 pt-3">
+            <TabsList className="h-8">
+              <TabsTrigger value="team" className="text-xs">Équipe</TabsTrigger>
+              <TabsTrigger value="personal" className="text-xs">Mon activité</TabsTrigger>
+            </TabsList>
+          </div>
 
-            <TabsContent value="team" className="space-y-4 mt-4">
-              <SectionCards
-                stats={teamStats ? {
-                  totalContacts: teamStats.totalContacts,
-                  activeSequences: teamStats.activeSequences,
-                  emailsToday: teamStats.emailsToday,
-                  replyRate: teamStats.replyRate,
-                } : undefined}
-                variant="team"
-              />
+          <TabsContent value="team" className="flex flex-col flex-1 min-h-0 mt-0">
+            <div className="page-content">
+              {/* Stats bar */}
+              <CompactStatsBar stats={[
+                { label: 'Contacts', value: teamStats?.totalContacts || 0 },
+                { label: 'Séquences actives', value: teamStats?.activeSequences || 0 },
+                { label: "Emails aujourd'hui", value: teamStats?.emailsToday || 0 },
+                { label: 'Taux réponse', value: `${teamStats?.replyRate || 0}%` },
+              ]} />
 
-              {/* Per-user breakdown */}
+              {/* Team members - compact */}
               {teamStats?.perUser && teamStats.perUser.length > 0 && (
-                <div className="px-4 lg:px-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Activité par membre</CardTitle>
-                      <CardDescription>Performance de chaque membre aujourd&apos;hui</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Membre</TableHead>
-                            <TableHead>Contacts assignés</TableHead>
-                            <TableHead>Emails aujourd&apos;hui</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {teamStats.perUser.map((member, i) => (
-                            <TableRow key={i}>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{member.name}</div>
-                                  <div className="text-sm text-muted-foreground">{member.email}</div>
-                                </div>
-                              </TableCell>
-                              <TableCell>{member.contacts}</TableCell>
-                              <TableCell>
-                                <Badge variant={member.emailsToday > 0 ? "default" : "secondary"}>
-                                  {member.emailsToday}
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
+                <div className="rounded-lg border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Membre</TableHead>
+                        <TableHead className="text-xs">Contacts</TableHead>
+                        <TableHead className="text-xs">Emails aujourd&apos;hui</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {teamStats.perUser.map((member, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="py-2">
+                            <div>
+                              <span className="text-sm font-medium">{member.name}</span>
+                              <span className="text-xs text-muted-foreground ml-2">{member.email}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 font-mono text-sm">{member.contacts}</TableCell>
+                          <TableCell className="py-2">
+                            <Badge variant={member.emailsToday > 0 ? "default" : "secondary"} className="font-mono text-xs">
+                              {member.emailsToday}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
 
               {/* Recent sends */}
-              <div className="px-4 lg:px-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Envois récents</CardTitle>
-                    <CardDescription>Historique de tous les emails envoyés</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <EmailsSentDataTable data={teamStats?.recentSends || []} />
-                  </CardContent>
-                </Card>
+              <div className="flex-1 min-h-0">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Envois récents</p>
+                <EmailsSentDataTable data={teamStats?.recentSends || []} />
               </div>
-            </TabsContent>
+            </div>
+          </TabsContent>
 
-            <TabsContent value="personal" className="space-y-4 mt-4">
-              <SectionCards
-                stats={myStats ? {
-                  totalContacts: 0,
-                  myContacts: myStats.myContacts,
-                  myEmailsToday: myStats.myEmailsToday,
-                  myActiveEnrollments: myStats.myActiveEnrollments,
-                  myReplyRate: myStats.myReplyRate,
-                } : undefined}
-                variant="personal"
-              />
+          <TabsContent value="personal" className="flex flex-col flex-1 min-h-0 mt-0">
+            <div className="page-content">
+              <CompactStatsBar stats={[
+                { label: 'Mes contacts', value: myStats?.myContacts || 0 },
+                { label: "Emails aujourd'hui", value: myStats?.myEmailsToday || 0 },
+                { label: 'Inscriptions actives', value: myStats?.myActiveEnrollments || 0 },
+                { label: 'Taux réponse', value: `${myStats?.myReplyRate || 0}%` },
+              ]} />
 
-              {/* My recent sends */}
-              <div className="px-4 lg:px-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Mes envois récents</CardTitle>
-                    <CardDescription>Mes derniers emails envoyés</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <EmailsSentDataTable data={myStats?.myRecentSends || []} />
-                  </CardContent>
-                </Card>
+              <div className="flex-1 min-h-0">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Mes envois récents</p>
+                <EmailsSentDataTable data={myStats?.myRecentSends || []} />
               </div>
-            </TabsContent>
-          </Tabs>
-        </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   );

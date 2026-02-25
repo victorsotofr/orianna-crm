@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+
+function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
+  useKeyboardShortcuts();
+  return <>{children}</>;
+}
 
 export default function AuthLayout({
   children,
@@ -17,10 +23,8 @@ export default function AuthLayout({
   const supabase = createClient();
 
   useEffect(() => {
-    // Check current session
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      
       if (!session?.user) {
         router.push('/login');
       } else {
@@ -31,8 +35,7 @@ export default function AuthLayout({
 
     checkUser();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
       if (!session?.user) {
         router.push('/login');
       } else {
@@ -46,22 +49,16 @@ export default function AuthLayout({
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">Chargement...</p>
+        <div className="h-5 w-5 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   return (
     <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "15rem", // 240px - reduced for better space usage
-        } as React.CSSProperties
-      }
+      style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
     >
       <AppSidebar
         variant="inset"
@@ -72,9 +69,10 @@ export default function AuthLayout({
         }}
       />
       <SidebarInset>
-        {children}
+        <KeyboardShortcutsProvider>
+          {children}
+        </KeyboardShortcutsProvider>
       </SidebarInset>
     </SidebarProvider>
   );
 }
-

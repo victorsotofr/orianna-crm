@@ -41,14 +41,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate signature (REQUIRED)
-    if (!signatureHtml || signatureHtml.trim() === '') {
-      return NextResponse.json(
-        { error: 'La signature email est obligatoire pour personnaliser vos emails' },
-        { status: 400 }
-      );
-    }
-
     // Prepare upsert data
     const upsertData: any = {
       user_id: user.id,
@@ -59,9 +51,13 @@ export async function POST(request: Request) {
       imap_host: imapHost,
       imap_port: parseInt(imapPort) || 993,
       imap_user: imapUser || null,
-      signature_html: signatureHtml,
       daily_send_limit: parseInt(dailySendLimit) || 50,
     };
+
+    // Only update signature if provided
+    if (signatureHtml !== undefined) {
+      upsertData.signature_html = signatureHtml || null;
+    }
 
     // Only update SMTP password if a new one is provided
     if (smtpPassword) {

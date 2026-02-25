@@ -24,6 +24,7 @@ import {
 import { Loader2 } from "lucide-react"
 import { Template } from "@/types/database"
 import { IndustrySelector } from "@/components/industry-selector"
+import { VariablePicker } from "@/components/variable-picker"
 
 const formSchema = z.object({
   name: z
@@ -50,6 +51,7 @@ interface TemplateFormProps {
 
 export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
   const [submitting, setSubmitting] = React.useState(false)
+  const contentRef = React.useRef<HTMLTextAreaElement>(null)
   const isEditing = !!template
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -62,14 +64,36 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
     },
   })
 
+  const insertVariable = (variable: string) => {
+    const textarea = contentRef.current
+    if (!textarea) {
+      // Fallback: append to end
+      const current = form.getValues("html_content")
+      form.setValue("html_content", current + variable, { shouldDirty: true })
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const current = form.getValues("html_content")
+    const newValue = current.substring(0, start) + variable + current.substring(end)
+    form.setValue("html_content", newValue, { shouldDirty: true })
+
+    // Restore cursor position after the inserted variable
+    requestAnimationFrame(() => {
+      textarea.focus()
+      const pos = start + variable.length
+      textarea.setSelectionRange(pos, pos)
+    })
+  }
+
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setSubmitting(true)
     const loadingToast = toast.loading(
       isEditing ? "Mise à jour du template..." : "Création du template..."
     )
-    
+
     try {
-      // Validate industry
       if (!data.industry) {
         toast.dismiss(loadingToast)
         toast.error("Veuillez sélectionner une industrie")
@@ -77,10 +101,7 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
         return
       }
 
-      const url = isEditing
-        ? `/api/templates/${template.id}`
-        : "/api/templates"
-      
+      const url = isEditing ? `/api/templates/${template.id}` : "/api/templates"
       const method = isEditing ? "PUT" : "POST"
 
       const response = await fetch(url, {
@@ -94,42 +115,19 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
 
       if (response.ok) {
         toast.success(
-          isEditing
-            ? "Template mis à jour avec succès"
-            : "Template créé avec succès",
-          {
-            description: `Le template "${data.name}" a été ${isEditing ? "mis à jour" : "créé"}`,
-            duration: 4000,
-          }
+          isEditing ? "Template mis à jour" : "Template créé",
+          { description: `"${data.name}" ${isEditing ? "mis à jour" : "créé"}`, duration: 3000 }
         )
         onSuccess?.()
-      } else if (response.status === 404) {
-        toast.error("Template non trouvé", {
-          description: "Ce template n'existe plus. La page va être rechargée.",
-          duration: 5000,
-        })
-        // Refresh the page after 2 seconds
-        setTimeout(() => window.location.reload(), 2000)
-      } else if (response.status === 410) {
-        toast.error("Template supprimé", {
-          description: result.error || "Ce template a été supprimé et ne peut pas être modifié",
-          duration: 5000,
-        })
-        // Refresh the page after 2 seconds
+      } else if (response.status === 404 || response.status === 410) {
+        toast.error("Template introuvable ou supprimé")
         setTimeout(() => window.location.reload(), 2000)
       } else {
-        toast.error(result.error || "Une erreur est survenue", {
-          description: "Veuillez réessayer ou contacter le support",
-          duration: 5000,
-        })
+        toast.error(result.error || "Une erreur est survenue")
       }
     } catch (error: any) {
       toast.dismiss(loadingToast)
-      console.error("Error submitting template:", error)
-      toast.error("Erreur réseau", {
-        description: error.message || "Vérifiez votre connexion internet",
-        duration: 5000,
-      })
+      toast.error("Erreur réseau", { description: error.message })
     } finally {
       setSubmitting(false)
     }
@@ -138,26 +136,23 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
   const htmlContentLength = form.watch("html_content")?.length || 0
 
   return (
-    <form id="template-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <form id="template-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
         <Controller
           name="name"
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="template-name">
-                Nom du Template
-              </FieldLabel>
+              <FieldLabel htmlFor="template-name" className="text-xs">Nom du Template</FieldLabel>
               <Input
                 {...field}
                 id="template-name"
                 aria-invalid={fieldState.invalid}
                 placeholder="Template Immobilier - Prospection"
                 autoComplete="off"
+                className="h-8 text-sm"
               />
-              {fieldState.invalid && (
-                <FieldError errors={[fieldState.error]} />
-              )}
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
         />
@@ -167,22 +162,19 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="template-subject">
-                Sujet de l'Email
-              </FieldLabel>
+              <FieldLabel htmlFor="template-subject" className="text-xs">Sujet de l&apos;Email</FieldLabel>
               <Input
                 {...field}
                 id="template-subject"
                 aria-invalid={fieldState.invalid}
                 placeholder="Proposition de collaboration - {{company_name}}"
                 autoComplete="off"
+                className="h-8 text-sm"
               />
-              <FieldDescription>
-                Utilisez des variables comme {`{{first_name}}`}, {`{{last_name}}`}, {`{{company_name}}`}
+              <FieldDescription className="text-xs">
+                Variables: {`{{first_name}}`}, {`{{last_name}}`}, {`{{company_name}}`}
               </FieldDescription>
-              {fieldState.invalid && (
-                <FieldError errors={[fieldState.error]} />
-              )}
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
         />
@@ -192,20 +184,13 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="template-industry">
-                Industrie
-              </FieldLabel>
+              <FieldLabel htmlFor="template-industry" className="text-xs">Industrie</FieldLabel>
               <IndustrySelector
                 value={field.value}
                 onValueChange={field.onChange}
                 placeholder="Sélectionnez une industrie"
               />
-              <FieldDescription>
-                Choisissez l&apos;industrie ciblée par ce template. Vous pouvez créer une nouvelle industrie si elle n&apos;existe pas.
-              </FieldDescription>
-              {fieldState.invalid && (
-                <FieldError errors={[fieldState.error]} />
-              )}
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
         />
@@ -215,53 +200,43 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="template-content">
-                Contenu HTML
-              </FieldLabel>
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="template-content" className="text-xs">Contenu HTML</FieldLabel>
+                <VariablePicker onInsert={insertVariable} />
+              </div>
               <InputGroup>
                 <InputGroupTextarea
                   {...field}
+                  ref={(el) => {
+                    // Merge refs: react-hook-form ref + our local ref
+                    field.ref(el)
+                    ;(contentRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el
+                  }}
                   id="template-content"
                   placeholder="<p>Bonjour {{first_name}},</p>..."
-                  rows={12}
-                  className="min-h-[300px] resize-y font-mono text-sm"
+                  rows={10}
+                  className="min-h-[200px] resize-y font-mono text-xs"
                   aria-invalid={fieldState.invalid}
                 />
                 <InputGroupAddon align="block-end">
-                  <InputGroupText className="tabular-nums">
-                    {htmlContentLength}/10000 caractères
+                  <InputGroupText className="tabular-nums text-xs">
+                    {htmlContentLength}/10000
                   </InputGroupText>
                 </InputGroupAddon>
               </InputGroup>
-              <FieldDescription>
-                Écrivez votre contenu HTML. Variables disponibles: {`{{first_name}}`}, {`{{last_name}}`}, {`{{company_name}}`}, {`{{video_url}}`}
-              </FieldDescription>
-              <FieldDescription className="text-orange-600 dark:text-orange-400 font-medium">
-                ⚠️ Important : N&apos;incluez PAS de signature à la fin (ex: &quot;Cordialement, Votre nom&quot;). La signature configurée dans Paramètres sera automatiquement ajoutée.
-              </FieldDescription>
-              {fieldState.invalid && (
-                <FieldError errors={[fieldState.error]} />
-              )}
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
         />
       </FieldGroup>
 
       <Field orientation="horizontal" className="justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => form.reset()}
-          disabled={submitting}
-        >
+        <Button type="button" variant="outline" size="sm" onClick={() => form.reset()} disabled={submitting}>
           Réinitialiser
         </Button>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" size="sm" disabled={submitting}>
           {submitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {isEditing ? "Mise à jour..." : "Création..."}
-            </>
+            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> {isEditing ? "Mise à jour..." : "Création..."}</>
           ) : (
             <>{isEditing ? "Mettre à jour" : "Créer le template"}</>
           )}
@@ -270,4 +245,3 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
     </form>
   )
 }
-

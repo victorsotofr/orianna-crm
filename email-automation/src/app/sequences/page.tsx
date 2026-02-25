@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { CompactStatsBar } from '@/components/compact-stats-bar';
+import { SequenceBuilderSheet } from '@/components/sequence-builder-sheet';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { Plus, Zap, Users, Layers } from 'lucide-react';
+import { Plus, Loader2, Zap, Layers, Users } from 'lucide-react';
 
 interface SequenceItem {
   id: string;
@@ -32,9 +34,9 @@ export default function SequencesPage() {
   const [sequences, setSequences] = useState<SequenceItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchSequences();
-  }, []);
+  // Sheet state
+  const [selectedSequenceId, setSelectedSequenceId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const fetchSequences = async () => {
     try {
@@ -50,6 +52,10 @@ export default function SequencesPage() {
     }
   };
 
+  useEffect(() => {
+    fetchSequences();
+  }, []);
+
   const handleCreate = async () => {
     try {
       const response = await fetch('/api/sequences', {
@@ -60,94 +66,129 @@ export default function SequencesPage() {
 
       if (response.ok) {
         const { sequence } = await response.json();
-        router.push(`/sequences/${sequence.id}`);
+        // Open in sheet instead of navigating
+        setSelectedSequenceId(sequence.id);
+        setSheetOpen(true);
+        fetchSequences();
       } else {
         toast.error('Erreur lors de la création');
       }
-    } catch (error) {
+    } catch {
       toast.error('Erreur lors de la création');
     }
   };
 
+  const openSequence = (id: string) => {
+    setSelectedSequenceId(id);
+    setSheetOpen(true);
+  };
+
+  const activeCount = sequences.filter(s => s.status === 'active').length;
+  const totalEnrollments = sequences.reduce((sum, s) => sum + s.enrollment_count, 0);
+
   return (
     <>
       <SiteHeader title="Séquences" />
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Séquences automatisées</h2>
-              <p className="text-sm text-muted-foreground">
-                Créez des séquences multi-étapes pour automatiser vos campagnes
-              </p>
-            </div>
-            <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
+      <div className="page-container">
+        <div className="page-content">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between gap-3">
+            <CompactStatsBar stats={[
+              { label: 'Total', value: sequences.length },
+              { label: 'Actives', value: activeCount },
+              { label: 'Inscrits', value: totalEnrollments },
+            ]} />
+            <Button size="sm" onClick={handleCreate}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
               Nouvelle séquence
             </Button>
           </div>
 
+          {/* Table */}
           {loading ? (
-            <div className="flex items-center justify-center min-h-[400px]">
-              <p className="text-muted-foreground">Chargement...</p>
+            <div className="flex items-center justify-center flex-1">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : sequences.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Zap className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Aucune séquence</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Créez votre première séquence pour automatiser vos emails
-                </p>
-                <Button onClick={handleCreate}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Créer une séquence
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center flex-1 text-center">
+              <Zap className="h-10 w-10 text-muted-foreground mb-3" />
+              <h3 className="text-sm font-medium mb-1">Aucune séquence</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Créez votre première séquence pour automatiser vos emails
+              </p>
+              <Button size="sm" onClick={handleCreate}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Créer une séquence
+              </Button>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sequences.map((seq) => {
-                const badge = statusBadge[seq.status] || statusBadge.draft;
-                return (
-                  <Card
-                    key={seq.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => router.push(`/sequences/${seq.id}`)}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base truncate">{seq.name}</CardTitle>
-                        <Badge variant={badge.variant}>{badge.label}</Badge>
-                      </div>
-                      {seq.description && (
-                        <CardDescription className="line-clamp-2">{seq.description}</CardDescription>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Layers className="h-4 w-4" />
-                          {seq.step_count} étape(s)
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-4 w-4" />
-                          {seq.enrollment_count} inscrit(s)
-                        </div>
-                      </div>
-                      {seq.created_by_name && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Par {seq.created_by_name}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+            <div className="table-container">
+              <Table>
+                <TableHeader className="bg-muted/50 sticky top-0 z-10">
+                  <TableRow>
+                    <TableHead className="text-xs">Nom</TableHead>
+                    <TableHead className="text-xs">Statut</TableHead>
+                    <TableHead className="text-xs">Étapes</TableHead>
+                    <TableHead className="text-xs">Inscrits</TableHead>
+                    <TableHead className="text-xs">Créé par</TableHead>
+                    <TableHead className="text-xs">Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sequences.map((seq) => {
+                    const badge = statusBadge[seq.status] || statusBadge.draft;
+                    return (
+                      <TableRow
+                        key={seq.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => openSequence(seq.id)}
+                      >
+                        <TableCell className="py-2">
+                          <div>
+                            <div className="text-sm font-medium">{seq.name}</div>
+                            {seq.description && (
+                              <div className="text-xs text-muted-foreground truncate max-w-xs">{seq.description}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <span className="flex items-center gap-1 text-sm font-mono">
+                            <Layers className="h-3 w-3 text-muted-foreground" />
+                            {seq.step_count}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <span className="flex items-center gap-1 text-sm font-mono">
+                            <Users className="h-3 w-3 text-muted-foreground" />
+                            {seq.enrollment_count}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-muted-foreground">
+                          {seq.created_by_name || '—'}
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-muted-foreground font-mono">
+                          {new Date(seq.created_at).toLocaleDateString('fr-FR')}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
       </div>
+
+      {/* Builder sheet */}
+      <SequenceBuilderSheet
+        sequenceId={selectedSequenceId}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        onSequenceUpdated={fetchSequences}
+      />
     </>
   );
 }

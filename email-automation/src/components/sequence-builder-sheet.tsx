@@ -17,13 +17,14 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { toast } from "sonner"
-import { Plus, Loader2, Save, Play, Pause, Users, Layers, CheckCircle } from "lucide-react"
+import { Plus, Loader2, Save, Play, Pause, Users, Layers, CheckCircle, Trash2 } from "lucide-react"
 import type { Sequence, SequenceStep, Template, Contact } from "@/types/database"
 
 interface SequenceDetail {
   sequence: Sequence
   steps: (SequenceStep & { templates?: { id: string; name: string; subject: string } | null })[]
   stats: { active: number; completed: number; total: number }
+  enrolledContactIds: string[]
 }
 
 interface SequenceBuilderSheetProps {
@@ -206,6 +207,50 @@ export function SequenceBuilderSheet({
     }
   }
 
+  const handleMoveStep = async (stepId: string, direction: "up" | "down") => {
+    if (!sequenceId || !data) return
+    const currentSteps = data.steps
+    const idx = currentSteps.findIndex(s => s.id === stepId)
+    if (idx === -1) return
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= currentSteps.length) return
+
+    const stepA = currentSteps[idx]
+    const stepB = currentSteps[swapIdx]
+
+    try {
+      await Promise.all([
+        fetch(`/api/sequences/${sequenceId}/steps/${stepA.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step_order: stepB.step_order }),
+        }),
+        fetch(`/api/sequences/${sequenceId}/steps/${stepB.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step_order: stepA.step_order }),
+        }),
+      ])
+      fetchAll()
+    } catch {
+      toast.error("Erreur lors du déplacement")
+    }
+  }
+
+  const handleDeleteSequence = async () => {
+    if (!sequenceId || !confirm("Archiver cette séquence ?")) return
+    try {
+      const response = await fetch(`/api/sequences/${sequenceId}`, { method: "DELETE" })
+      if (response.ok) {
+        toast.success("Séquence archivée")
+        onOpenChange(false)
+        onSequenceUpdated?.()
+      }
+    } catch {
+      toast.error("Erreur lors de la suppression")
+    }
+  }
+
   const handleEnroll = async () => {
     if (!sequenceId || selectedContacts.length === 0) {
       toast.error("Sélectionnez au moins un contact")
@@ -239,6 +284,7 @@ export function SequenceBuilderSheet({
   const sequence = data?.sequence
   const steps = data?.steps || []
   const stats = data?.stats || { active: 0, completed: 0, total: 0 }
+  const enrolledSet = new Set(data?.enrolledContactIds || [])
   const badge = statusLabels[sequence?.status || "draft"] || statusLabels.draft
   const isDraft = sequence?.status === "draft"
   const isActive = sequence?.status === "active"
@@ -284,6 +330,11 @@ export function SequenceBuilderSheet({
                 {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
                 Enregistrer
               </Button>
+              <div className="flex-1" />
+              <Button variant="ghost" size="sm" onClick={handleDeleteSequence} className="text-destructive hover:text-destructive">
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Archiver
+              </Button>
             </div>
 
             {/* Stats bar */}
@@ -307,8 +358,16 @@ export function SequenceBuilderSheet({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {steps.map((step) => (
-                      <SequenceStepCard key={step.id} step={step} onDelete={handleDeleteStep} />
+                    {steps.map((step, idx) => (
+                      <SequenceStepCard
+                        key={step.id}
+                        step={step}
+                        onDelete={handleDeleteStep}
+                        onMoveUp={(id) => handleMoveStep(id, "up")}
+                        onMoveDown={(id) => handleMoveStep(id, "down")}
+                        isFirst={idx === 0}
+                        isLast={idx === steps.length - 1}
+                      />
                     ))}
                   </div>
                 )}
@@ -379,25 +438,38 @@ export function SequenceBuilderSheet({
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    {enrolledSet.size > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {enrolledSet.size} contact(s) déjà inscrit(s) dans cette séquence
+                      </p>
+                    )}
                     <div className="max-h-[250px] overflow-y-auto border rounded-lg p-2 space-y-0.5">
-                      {contacts.map((contact) => (
-                        <label key={contact.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer text-sm">
-                          <input
-                            type="checkbox"
-                            checked={selectedContacts.includes(contact.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedContacts([...selectedContacts, contact.id])
-                              } else {
-                                setSelectedContacts(selectedContacts.filter((id) => id !== contact.id))
-                              }
-                            }}
-                            className="rounded"
-                          />
-                          <span>{contact.first_name} {contact.last_name}</span>
-                          <span className="text-xs text-muted-foreground font-mono">{contact.email}</span>
-                        </label>
-                      ))}
+                      {contacts.map((contact) => {
+                        const alreadyEnrolled = enrolledSet.has(contact.id)
+                        return (
+                          <label
+                            key={contact.id}
+                            className={`flex items-center gap-2 p-1.5 rounded text-sm ${alreadyEnrolled ? "opacity-50 cursor-not-allowed" : "hover:bg-muted cursor-pointer"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedContacts.includes(contact.id)}
+                              disabled={alreadyEnrolled}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedContacts([...selectedContacts, contact.id])
+                                } else {
+                                  setSelectedContacts(selectedContacts.filter((id) => id !== contact.id))
+                                }
+                              }}
+                              className="rounded"
+                            />
+                            <span>{contact.first_name} {contact.last_name}</span>
+                            <span className="text-xs text-muted-foreground font-mono">{contact.email}</span>
+                            {alreadyEnrolled && <Badge variant="outline" className="text-[10px] ml-auto">Inscrit</Badge>}
+                          </label>
+                        )
+                      })}
                       {contacts.length === 0 && (
                         <p className="text-xs text-muted-foreground text-center py-4">Aucun contact</p>
                       )}

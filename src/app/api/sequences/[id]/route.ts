@@ -126,10 +126,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Archive instead of hard delete
+    // Hard delete - cascade will remove sequence_steps and sequence_enrollments
     const { error } = await supabase
       .from('sequences')
-      .update({ status: 'archived', updated_at: new Date().toISOString() })
+      .delete()
       .eq('id', id);
 
     if (error) throw error;

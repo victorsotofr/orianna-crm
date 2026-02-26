@@ -101,7 +101,6 @@ export default function TemplatesPage() {
           <div className="flex items-center justify-between gap-3">
             <CompactStatsBar stats={[
               { label: 'Templates', value: templates.length },
-              { label: 'Actifs', value: templates.filter(t => t.is_active !== false).length },
             ]} />
             <Button size="sm" onClick={() => router.push('/templates/new')}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />

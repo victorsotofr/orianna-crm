@@ -6,12 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SiteHeader } from '@/components/site-header';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Save, Play, Pause, Users, Mail, Clock, Archive, Plus, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Play, Pause, Users, Mail, Clock, Trash2, Plus } from 'lucide-react';
 import type { Sequence, SequenceStep, Template, Contact } from '@/types/database';
 
 interface StepWithTemplate extends SequenceStep {
@@ -35,17 +35,17 @@ interface SequenceDetail {
 }
 
 const STEP_LABELS = ['Premier Contact', 'Première Relance', 'Dernier Contact'];
+const STEP_DESCRIPTIONS = ['Email initial envoyé immédiatement', 'Relance si pas de réponse', 'Dernière tentative de contact'];
 const STEP_COLORS = [
-  { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', numBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400', arrow: 'text-blue-300 dark:text-blue-700' },
-  { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', numBg: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400', arrow: 'text-orange-300 dark:text-orange-700' },
-  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300', numBg: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400', arrow: 'text-red-300 dark:text-red-700' },
+  { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', numBg: 'bg-blue-600 text-white', footer: 'bg-blue-50/50 dark:bg-blue-950/20' },
+  { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', numBg: 'bg-orange-500 text-white', footer: 'bg-orange-50/50 dark:bg-orange-950/20' },
+  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300', numBg: 'bg-red-500 text-white', footer: 'bg-red-50/50 dark:bg-red-950/20' },
 ];
 
 const statusBadge: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   draft: { label: 'Brouillon', variant: 'secondary' },
   active: { label: 'Active', variant: 'default' },
   paused: { label: 'Pausée', variant: 'outline' },
-  archived: { label: 'Archivée', variant: 'destructive' },
 };
 
 export default function SequenceDetailPage() {
@@ -59,6 +59,11 @@ export default function SequenceDetailPage() {
   const [stepStats, setStepStats] = useState<StepStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Active tab — controlled so we can use forceMount without re-fetching
+  const [activeTab, setActiveTab] = useState('steps');
 
   // Editable fields
   const [name, setName] = useState('');
@@ -97,7 +102,6 @@ export default function SequenceDetailPage() {
           template_id: s.template_id || '',
           delay_days: s.delay_days,
         }));
-        // Ensure we always have 3 entries
         while (edits.length < 3) {
           edits.push({ template_id: '', delay_days: edits.length === 1 ? 3 : edits.length === 2 ? 5 : 0 });
         }
@@ -142,59 +146,39 @@ export default function SequenceDetailPage() {
 
     setSaving(true);
     try {
-      // Update sequence name
+      // 1. Update sequence name
       const nameRes = await fetch(`/api/sequences/${sequenceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      if (!nameRes.ok) throw new Error('Failed to update name');
-
-      const sortedSteps = [...data.steps].sort((a, b) => a.step_order - b.step_order);
-
-      if (sortedSteps.length >= 3) {
-        // Update existing steps
-        for (let i = 0; i < 3; i++) {
-          const res = await fetch(`/api/sequences/${sequenceId}/steps/${sortedSteps[i].id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              template_id: stepEdits[i].template_id,
-              delay_days: i === 0 ? 0 : stepEdits[i].delay_days,
-            }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || `Failed to update step ${i + 1}`);
-          }
-        }
-      } else {
-        // Delete existing steps and create fresh 3 steps
-        for (const step of sortedSteps) {
-          await fetch(`/api/sequences/${sequenceId}/steps/${step.id}`, { method: 'DELETE' });
-        }
-        // Create 3 new steps
-        for (let i = 0; i < 3; i++) {
-          const res = await fetch(`/api/sequences/${sequenceId}/steps`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              step_type: 'email',
-              template_id: stepEdits[i].template_id,
-              delay_days: i === 0 ? 0 : stepEdits[i].delay_days,
-            }),
-          });
-          if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error || `Failed to create step ${i + 1}`);
-          }
-        }
+      if (!nameRes.ok) {
+        const err = await nameRes.json();
+        throw new Error(err.error || 'Failed to update name');
       }
 
-      toast.success('Séquence mise à jour');
+      // 2. Sync all steps atomically (delete + re-insert)
+      const steps = stepEdits.slice(0, 3).map((edit, i) => ({
+        step_order: i + 1,
+        step_type: 'email',
+        template_id: edit.template_id,
+        delay_days: i === 0 ? 0 : edit.delay_days,
+      }));
+
+      const syncRes = await fetch(`/api/sequences/${sequenceId}/steps/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps }),
+      });
+      if (!syncRes.ok) {
+        const err = await syncRes.json();
+        throw new Error(err.error || 'Erreur lors de la sauvegarde des étapes');
+      }
+
+      toast.success('Séquence enregistrée');
       await fetchAll();
     } catch (e: any) {
-      toast.error(e.message || 'Erreur lors de la mise à jour');
+      toast.error(e.message || 'Erreur lors de la sauvegarde');
     } finally {
       setSaving(false);
     }
@@ -231,14 +215,16 @@ export default function SequenceDetailPage() {
     }
   };
 
-  const handleArchive = async () => {
-    if (!confirm('Archiver cette séquence ?')) return;
+  const handleDelete = async () => {
+    setDeleting(true);
     try {
       await fetch(`/api/sequences/${sequenceId}`, { method: 'DELETE' });
-      toast.success('Séquence archivée');
+      toast.success('Séquence supprimée');
       router.push('/sequences');
     } catch {
       toast.error('Erreur');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -273,7 +259,11 @@ export default function SequenceDetailPage() {
   };
 
   const updateStepEdit = (index: number, field: 'template_id' | 'delay_days', value: string | number) => {
-    setStepEdits(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
+    setStepEdits(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
   };
 
   if (loading || !data) {
@@ -297,8 +287,8 @@ export default function SequenceDetailPage() {
   return (
     <>
       <SiteHeader title={sequence.name} />
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-3 px-4 lg:px-6">
+      <div className="page-container">
+        <div className="page-content">
           {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/sequences')}>
@@ -319,55 +309,77 @@ export default function SequenceDetailPage() {
                   Pause
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={handleArchive} className="text-destructive hover:text-destructive">
-                <Archive className="mr-1.5 h-3.5 w-3.5" />
-                Archiver
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteOpen(true)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Supprimer
               </Button>
             </div>
           </div>
 
-          <Tabs defaultValue="steps" className="space-y-3">
-            <TabsList>
-              <TabsTrigger value="steps">Étapes</TabsTrigger>
-              <TabsTrigger value="enroll">Inscrits ({stats.total})</TabsTrigger>
-              <TabsTrigger value="stats">Statistiques</TabsTrigger>
-            </TabsList>
+          {/* Tab buttons + name */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 border rounded-lg p-0.5">
+              {[
+                { id: 'steps', label: 'Étapes' },
+                { id: 'enroll', label: `Inscrits (${stats.total})` },
+                { id: 'stats', label: 'Statistiques' },
+              ].map((tab) => (
+                <Button
+                  key={tab.id}
+                  variant={activeTab === tab.id ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                </Button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <Label className="text-xs text-muted-foreground shrink-0">Nom</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-64" />
+            </div>
+          </div>
 
-            {/* Steps tab - HORIZONTAL layout */}
-            <TabsContent value="steps" className="space-y-3">
-              {/* Sequence name - compact */}
-              <div className="flex items-center gap-3">
-                <Label className="text-xs text-muted-foreground shrink-0">Nom</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 max-w-md" />
-              </div>
-
-              {/* 3 step cards - HORIZONTAL */}
-              <div className="grid grid-cols-3 gap-3 items-start">
+          {/* Steps tab */}
+          {activeTab === 'steps' && (
+            <div className="flex flex-col flex-1 min-h-0 gap-3">
+              {/* 3 step cards */}
+              <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
                 {[0, 1, 2].map((idx) => {
                   const color = STEP_COLORS[idx];
                   const stat = stepStats.find(s => s.step_order === idx + 1);
+                  const selectedTpl = templates.find(t => t.id === stepEdits[idx]?.template_id);
 
                   return (
-                    <div key={idx} className={`border rounded-lg overflow-hidden ${color.border} flex flex-col`}>
+                    <div key={idx} className={`border-2 rounded-xl overflow-hidden ${color.border} flex flex-col`}>
                       {/* Header */}
-                      <div className={`${color.bg} border-b px-3 py-2 flex items-center gap-2`}>
-                        <div className={`flex h-6 w-6 items-center justify-center rounded-md ${color.numBg} text-xs font-bold`}>
+                      <div className={`${color.bg} border-b px-4 py-3 flex items-center gap-3`}>
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color.numBg} text-sm font-bold shrink-0`}>
                           {idx + 1}
                         </div>
-                        <p className={`text-xs font-semibold ${color.text}`}>{STEP_LABELS[idx]}</p>
+                        <div>
+                          <p className={`text-sm font-semibold ${color.text}`}>{STEP_LABELS[idx]}</p>
+                          <p className="text-[11px] text-muted-foreground">{STEP_DESCRIPTIONS[idx]}</p>
+                        </div>
                       </div>
 
                       {/* Body */}
-                      <div className="p-3 space-y-2.5 flex-1">
+                      <div className="p-4 space-y-4 flex-1">
                         {/* Template select */}
-                        <div className="space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Template</Label>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Template d&apos;email</Label>
                           <Select
-                            value={stepEdits[idx]?.template_id || ''}
+                            value={stepEdits[idx]?.template_id || undefined}
                             onValueChange={(v) => updateStepEdit(idx, 'template_id', v)}
                           >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Sélectionner..." />
+                            <SelectTrigger className="h-9 text-sm">
+                              <SelectValue placeholder="Sélectionner un template..." />
                             </SelectTrigger>
                             <SelectContent>
                               {templates.map((tpl) => (
@@ -377,77 +389,77 @@ export default function SequenceDetailPage() {
                               ))}
                             </SelectContent>
                           </Select>
+                          {selectedTpl && (
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              Sujet: {selectedTpl.subject}
+                            </p>
+                          )}
                           <Button
                             variant="link"
                             size="sm"
-                            className="h-auto p-0 text-[11px]"
-                            onClick={() => router.push('/templates')}
+                            className="h-auto p-0 text-xs"
+                            onClick={() => router.push('/templates/new')}
                           >
                             <Plus className="mr-0.5 h-3 w-3" />
-                            Nouveau template
+                            Créer un template
                           </Button>
                         </div>
 
                         {/* Delay */}
                         {idx === 0 ? (
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            Envoi immédiat
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                            <Clock className="h-3.5 w-3.5" />
+                            Envoi immédiat après inscription
                           </div>
                         ) : (
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">
-                              Délai après Étape {idx}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">
+                              Délai après l&apos;étape {idx}
                             </Label>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                               <Input
                                 type="number"
                                 min={1}
                                 value={stepEdits[idx]?.delay_days || ''}
                                 onChange={(e) => updateStepEdit(idx, 'delay_days', parseInt(e.target.value) || 1)}
-                                className="w-16 h-8 text-xs"
+                                className="w-20 h-9 text-sm"
                               />
-                              <span className="text-xs text-muted-foreground">jours</span>
+                              <span className="text-sm text-muted-foreground">jours</span>
                             </div>
                           </div>
                         )}
 
                         {/* Stats */}
                         {stat && stat.total_sent > 0 && (
-                          <div className="text-[11px] text-muted-foreground pt-1.5 border-t space-y-0.5">
-                            <div>{stat.total_sent} envoyés</div>
-                            <div>{stat.total_opened} ouverts ({Math.round(stat.total_opened / stat.total_sent * 100)}%)</div>
-                            <div>{stat.total_replied} réponses ({Math.round(stat.total_replied / stat.total_sent * 100)}%)</div>
+                          <div className="text-xs text-muted-foreground pt-3 border-t space-y-1">
+                            <div className="flex justify-between"><span>Envoyés</span><strong>{stat.total_sent}</strong></div>
+                            <div className="flex justify-between"><span>Ouverts</span><strong>{stat.total_opened} ({Math.round(stat.total_opened / stat.total_sent * 100)}%)</strong></div>
+                            <div className="flex justify-between"><span>Réponses</span><strong>{stat.total_replied} ({Math.round(stat.total_replied / stat.total_sent * 100)}%)</strong></div>
                           </div>
                         )}
                       </div>
 
-                      {/* Arrow connector between cards (visually) */}
-                      {idx < 2 && (
-                        <div className={`text-center text-[10px] text-muted-foreground bg-muted/50 py-1 border-t`}>
-                          Si pas de réponse &rarr;
-                        </div>
-                      )}
-                      {idx === 2 && (
-                        <div className="text-center text-[10px] text-muted-foreground bg-muted/50 py-1 border-t">
-                          Fin de la séquence
-                        </div>
-                      )}
+                      {/* Footer */}
+                      <div className={`text-center text-xs text-muted-foreground ${color.footer} py-2 border-t`}>
+                        {idx < 2 ? 'Si pas de réponse →' : 'Fin de la séquence'}
+                      </div>
                     </div>
                   );
                 })}
               </div>
 
               <div className="flex justify-end">
-                <Button size="sm" onClick={handleSave} disabled={saving}>
-                  {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
                   Enregistrer
                 </Button>
               </div>
-            </TabsContent>
+            </div>
+          )}
 
-            {/* Enroll tab - always available */}
-            <TabsContent value="enroll" className="space-y-4">
+          {/* Enroll tab */}
+          {activeTab === 'enroll' && (
+            <div className="space-y-4">
               {!isActive && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400">
                   La séquence est en mode &quot;{badge.label}&quot;. Les emails ne seront envoyés qu&apos;une fois la séquence activée.
@@ -515,10 +527,12 @@ export default function SequenceDetailPage() {
                   <span>Total: <strong>{stats.total}</strong></span>
                 </div>
               )}
-            </TabsContent>
+            </div>
+          )}
 
-            {/* Stats tab */}
-            <TabsContent value="stats" className="space-y-4">
+          {/* Stats tab */}
+          {activeTab === 'stats' && (
+            <div className="space-y-4">
               {stepStats.length === 0 || stepStats.every(s => s.total_sent === 0) ? (
                 <Card>
                   <CardContent className="py-8 text-center text-muted-foreground">
@@ -528,7 +542,7 @@ export default function SequenceDetailPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-4">
                   {stepStats.map((stat, idx) => {
                     const color = STEP_COLORS[idx] || STEP_COLORS[0];
                     const openRate = stat.total_sent > 0 ? Math.round(stat.total_opened / stat.total_sent * 100) : 0;
@@ -562,10 +576,29 @@ export default function SequenceDetailPage() {
                   })}
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer la séquence</DialogTitle>
+            <DialogDescription>
+              Supprimer &quot;{sequence.name}&quot; ? La séquence sera archivée et ne sera plus visible dans la liste.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>Annuler</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              Supprimer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

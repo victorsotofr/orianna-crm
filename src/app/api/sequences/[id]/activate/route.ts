@@ -36,6 +36,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (error) throw error;
 
+    // Activate paused enrollments so they get picked up by process-sequences
+    const { data: firstStep } = await supabase
+      .from('sequence_steps')
+      .select('delay_days')
+      .eq('sequence_id', id)
+      .order('step_order', { ascending: true })
+      .limit(1)
+      .single();
+
+    const delayMs = (firstStep?.delay_days || 0) * 24 * 60 * 60 * 1000;
+    const nextActionAt = new Date(Date.now() + delayMs).toISOString();
+
+    await supabase
+      .from('sequence_enrollments')
+      .update({ status: 'active', next_action_at: nextActionAt })
+      .eq('sequence_id', id)
+      .eq('status', 'paused');
+
     return NextResponse.json({ sequence });
   } catch (error: any) {
     console.error('Sequence activate error:', error);

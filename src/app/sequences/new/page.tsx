@@ -12,10 +12,11 @@ import { ArrowLeft, Loader2, Mail, Clock, Plus } from 'lucide-react';
 import type { Template } from '@/types/database';
 
 const STEP_LABELS = ['Premier Contact', 'Première Relance', 'Dernier Contact'];
+const STEP_DESCRIPTIONS = ['Email initial envoyé immédiatement', 'Relance si pas de réponse', 'Dernière tentative de contact'];
 const STEP_COLORS = [
-  { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', numBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400' },
-  { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', numBg: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400' },
-  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300', numBg: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400' },
+  { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', numBg: 'bg-blue-600 text-white', footer: 'bg-blue-50/50 dark:bg-blue-950/20' },
+  { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', numBg: 'bg-orange-500 text-white', footer: 'bg-orange-50/50 dark:bg-orange-950/20' },
+  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300', numBg: 'bg-red-500 text-white', footer: 'bg-red-50/50 dark:bg-red-950/20' },
 ];
 
 export default function NewSequencePage() {
@@ -41,7 +42,11 @@ export default function NewSequencePage() {
   }, []);
 
   const updateStep = (idx: number, field: 'template_id' | 'delay_days', value: string | number) => {
-    setStepEdits(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+    setStepEdits(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
   };
 
   const handleCreate = async () => {
@@ -92,8 +97,8 @@ export default function NewSequencePage() {
   return (
     <>
       <SiteHeader title="Nouvelle séquence" />
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-3 px-4 lg:px-6">
+      <div className="page-container">
+        <div className="page-content">
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/sequences')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -107,41 +112,46 @@ export default function NewSequencePage() {
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Spanish Property Investors"
+              placeholder="Ex: Prospection Février 2026"
               className="h-9"
             />
           </div>
 
           {loadingTemplates ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center flex-1">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <>
-              {/* 3 step cards - HORIZONTAL */}
-              <div className="grid grid-cols-3 gap-3 items-start">
+              {/* 3 step cards - FILL THE SCREEN */}
+              <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
                 {[0, 1, 2].map((idx) => {
                   const color = STEP_COLORS[idx];
+                  const selectedTpl = templates.find(t => t.id === stepEdits[idx].template_id);
+
                   return (
-                    <div key={idx} className={`border rounded-lg overflow-hidden ${color.border} flex flex-col`}>
+                    <div key={idx} className={`border-2 rounded-xl overflow-hidden ${color.border} flex flex-col`}>
                       {/* Header */}
-                      <div className={`${color.bg} border-b px-3 py-2 flex items-center gap-2`}>
-                        <div className={`flex h-6 w-6 items-center justify-center rounded-md ${color.numBg} text-xs font-bold`}>
+                      <div className={`${color.bg} border-b px-4 py-3 flex items-center gap-3`}>
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color.numBg} text-sm font-bold shrink-0`}>
                           {idx + 1}
                         </div>
-                        <p className={`text-xs font-semibold ${color.text}`}>{STEP_LABELS[idx]}</p>
+                        <div>
+                          <p className={`text-sm font-semibold ${color.text}`}>{STEP_LABELS[idx]}</p>
+                          <p className="text-[11px] text-muted-foreground">{STEP_DESCRIPTIONS[idx]}</p>
+                        </div>
                       </div>
 
                       {/* Body */}
-                      <div className="p-3 space-y-2.5 flex-1">
-                        <div className="space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Template d&apos;email</Label>
+                      <div className="p-4 space-y-4 flex-1">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Template d&apos;email</Label>
                           <Select
-                            value={stepEdits[idx].template_id}
+                            value={stepEdits[idx].template_id || undefined}
                             onValueChange={(v) => updateStep(idx, 'template_id', v)}
                           >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Sélectionner..." />
+                            <SelectTrigger className="h-9 text-sm">
+                              <SelectValue placeholder="Sélectionner un template..." />
                             </SelectTrigger>
                             <SelectContent>
                               {templates.map((tpl) => (
@@ -151,64 +161,62 @@ export default function NewSequencePage() {
                               ))}
                             </SelectContent>
                           </Select>
+                          {selectedTpl && (
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              Sujet: {selectedTpl.subject}
+                            </p>
+                          )}
                           <Button
                             variant="link"
                             size="sm"
-                            className="h-auto p-0 text-[11px]"
-                            onClick={() => router.push('/templates')}
+                            className="h-auto p-0 text-xs"
+                            onClick={() => router.push('/templates/new')}
                           >
                             <Plus className="mr-0.5 h-3 w-3" />
-                            Nouveau template
+                            Créer un template
                           </Button>
                         </div>
 
                         {idx === 0 ? (
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            Envoi immédiat
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                            <Clock className="h-3.5 w-3.5" />
+                            Envoi immédiat après inscription
                           </div>
                         ) : (
-                          <div className="space-y-1">
-                            <Label className="text-[11px] text-muted-foreground">
-                              Délai après Étape {idx}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">
+                              Délai après l&apos;étape {idx}
                             </Label>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                               <Input
                                 type="number"
                                 min={1}
                                 value={stepEdits[idx].delay_days}
                                 onChange={(e) => updateStep(idx, 'delay_days', parseInt(e.target.value) || 1)}
-                                className="w-16 h-8 text-xs"
+                                className="w-20 h-9 text-sm"
                               />
-                              <span className="text-xs text-muted-foreground">jours</span>
+                              <span className="text-sm text-muted-foreground">jours</span>
                             </div>
                           </div>
                         )}
                       </div>
 
                       {/* Footer */}
-                      {idx < 2 && (
-                        <div className="text-center text-[10px] text-muted-foreground bg-muted/50 py-1 border-t">
-                          Si pas de réponse &rarr;
-                        </div>
-                      )}
-                      {idx === 2 && (
-                        <div className="text-center text-[10px] text-muted-foreground bg-muted/50 py-1 border-t">
-                          Fin de la séquence
-                        </div>
-                      )}
+                      <div className={`text-center text-xs text-muted-foreground ${color.footer} py-2 border-t`}>
+                        {idx < 2 ? 'Si pas de réponse →' : 'Fin de la séquence'}
+                      </div>
                     </div>
                   );
                 })}
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-3">
                 <Button variant="outline" size="sm" onClick={() => router.push('/sequences')}>
                   Annuler
                 </Button>
-                <Button size="sm" onClick={handleCreate} disabled={saving || loadingTemplates}>
-                  {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Mail className="mr-1.5 h-3.5 w-3.5" />}
+                <Button onClick={handleCreate} disabled={saving || loadingTemplates}>
+                  {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Mail className="mr-1.5 h-4 w-4" />}
                   Créer la séquence
                 </Button>
               </div>

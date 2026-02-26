@@ -21,7 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'contact_ids array is required' }, { status: 400 });
     }
 
-    // Verify sequence exists and is not archived
+    // Verify sequence exists
     const { data: sequence } = await supabase
       .from('sequences')
       .select('status')
@@ -30,10 +30,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (!sequence) {
       return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
-    }
-
-    if (sequence.status === 'archived') {
-      return NextResponse.json({ error: 'Cannot enroll contacts in an archived sequence' }, { status: 400 });
     }
 
     // Enrollment status depends on sequence status:

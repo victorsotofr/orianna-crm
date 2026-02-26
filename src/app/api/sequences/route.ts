@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const { supabase, error: clientError } = await createServerClient();
     if (clientError || !supabase) {
@@ -13,9 +13,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const includeArchived = searchParams.get('include_archived') === 'true';
-
     let query = supabase
       .from('sequences')
       .select(`
@@ -25,10 +22,6 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false });
 
-    if (!includeArchived) {
-      query = query.neq('status', 'archived');
-    }
-
     const { data: sequences, error } = await query;
 
     if (error) {
@@ -37,9 +30,6 @@ export async function GET(request: NextRequest) {
         .from('sequences')
         .select('*')
         .order('created_at', { ascending: false });
-      if (!includeArchived) {
-        fallbackQuery = fallbackQuery.neq('status', 'archived');
-      }
       const { data: basicSeqs, error: basicError } = await fallbackQuery;
       if (basicError) throw basicError;
       return NextResponse.json({

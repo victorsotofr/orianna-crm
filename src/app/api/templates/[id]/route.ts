@@ -68,15 +68,7 @@ export async function PUT(
       );
     }
 
-    if (!existingTemplate.is_active) {
-      console.error('❌ Template is inactive:', id);
-      return NextResponse.json(
-        { error: 'Ce template a été supprimé et ne peut pas être modifié' },
-        { status: 410 } // 410 Gone
-      );
-    }
-
-    // Update the template - simplified (only check id since we verified is_active above)
+    // Update the template
     console.log('📝 Attempting update with data:', { name, subject, industry });
     
     const { data: template, error } = await supabase
@@ -139,47 +131,45 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('🗑️ Soft deleting template:', id);
+    console.log('Deleting template:', id);
 
     // Check if template exists
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
-      .select('id, is_active')
+      .select('id')
       .eq('id', id)
       .single();
 
     if (checkError || !existingTemplate) {
-      console.error('❌ Template not found:', id);
+      console.error('Template not found:', id);
       return NextResponse.json(
         { error: 'Template non trouvé' },
         { status: 404 }
       );
     }
 
-    if (!existingTemplate.is_active) {
-      console.warn('⚠️ Template already deleted:', id);
-      return NextResponse.json({ 
-        success: true,
-        message: 'Template déjà supprimé' 
-      });
-    }
+    // Nullify template_id references in sequence_steps before deleting
+    await supabase
+      .from('sequence_steps')
+      .update({ template_id: null })
+      .eq('template_id', id);
 
-    // Soft delete - mark as inactive instead of deleting
+    // Hard delete the template
     const { error } = await supabase
       .from('templates')
-      .update({ is_active: false })
+      .delete()
       .eq('id', id);
 
     if (error) {
-      console.error('❌ Deletion error:', error);
+      console.error('Deletion error:', error);
       throw error;
     }
 
-    console.log('✅ Template soft deleted:', id);
+    console.log('Template deleted:', id);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Template supprimé avec succès' 
+      message: 'Template supprimé avec succès'
     });
   } catch (error: any) {
     console.error('❌ Template deletion error:', error);

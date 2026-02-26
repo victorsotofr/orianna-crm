@@ -21,16 +21,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'contact_ids array is required' }, { status: 400 });
     }
 
-    // Verify sequence is active
+    // Verify sequence exists and is not archived
     const { data: sequence } = await supabase
       .from('sequences')
       .select('status')
       .eq('id', sequenceId)
       .single();
 
-    if (!sequence || sequence.status !== 'active') {
-      return NextResponse.json({ error: 'Sequence must be active to enroll contacts' }, { status: 400 });
+    if (!sequence) {
+      return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
     }
+
+    if (sequence.status === 'archived') {
+      return NextResponse.json({ error: 'Cannot enroll contacts in an archived sequence' }, { status: 400 });
+    }
+
+    // Enrollment status depends on sequence status:
+    // active → enrollment is 'active' (emails will be sent)
+    // draft/paused → enrollment is 'paused' (queued, will start when sequence is activated)
+    const enrollmentStatus = sequence.status === 'active' ? 'active' : 'paused';
 
     // Get first step to calculate next_action_at
     const { data: firstStep } = await supabase
@@ -53,7 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .insert({
           sequence_id: sequenceId,
           contact_id: contactId,
-          status: 'active',
+          status: enrollmentStatus,
           current_step_order: 0,
           next_action_at: nextActionAt.toISOString(),
           enrolled_by: user.id,

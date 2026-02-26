@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
         sequence_steps (id),
         team_members!sequences_created_by_fkey (display_name)
       `)
+      .neq('status', 'archived')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       const { data: basicSeqs, error: basicError } = await supabase
         .from('sequences')
         .select('*')
+        .neq('status', 'archived')
         .order('created_at', { ascending: false });
       if (basicError) throw basicError;
       return NextResponse.json({
@@ -76,24 +78,82 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, description } = body;
+    const { name, steps } = body;
 
     if (!name?.trim()) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Le nom est obligatoire' }, { status: 400 });
     }
 
-    const { data: sequence, error } = await supabase
+    // Validate 3 steps
+    if (!steps || !Array.isArray(steps) || steps.length !== 3) {
+      return NextResponse.json({ error: 'La séquence doit contenir exactement 3 étapes' }, { status: 400 });
+    }
+
+    // Validate each step has a template_id
+    for (let i = 0; i < steps.length; i++) {
+      if (!steps[i].template_id) {
+        return NextResponse.json({ error: `L'étape ${i + 1} doit avoir un template` }, { status: 400 });
+      }
+    }
+
+    // Validate step 1 delay is 0
+    if (steps[0].delay_days !== 0) {
+      return NextResponse.json({ error: "L'étape 1 doit avoir un délai de 0 (envoi immédiat)" }, { status: 400 });
+    }
+
+    // Validate steps 2 and 3 have delay > 0
+    if (!steps[1].delay_days || steps[1].delay_days < 1) {
+      return NextResponse.json({ error: "L'étape 2 doit avoir un délai d'au moins 1 jour" }, { status: 400 });
+    }
+    if (!steps[2].delay_days || steps[2].delay_days < 1) {
+      return NextResponse.json({ error: "L'étape 3 doit avoir un délai d'au moins 1 jour" }, { status: 400 });
+    }
+
+    // 1. Create the sequence
+    const { data: sequence, error: seqError } = await supabase
       .from('sequences')
       .insert({
         name: name.trim(),
-        description: description?.trim() || null,
         status: 'draft',
         created_by: user.id,
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (seqError) throw seqError;
+
+    // 2. Create the 3 steps
+    const { error: stepsError } = await supabase
+      .from('sequence_steps')
+      .insert([
+        {
+          sequence_id: sequence.id,
+          step_order: 1,
+          step_type: 'email',
+          template_id: steps[0].template_id,
+          delay_days: 0,
+        },
+        {
+          sequence_id: sequence.id,
+          step_order: 2,
+          step_type: 'email',
+          template_id: steps[1].template_id,
+          delay_days: steps[1].delay_days,
+        },
+        {
+          sequence_id: sequence.id,
+          step_order: 3,
+          step_type: 'email',
+          template_id: steps[2].template_id,
+          delay_days: steps[2].delay_days,
+        },
+      ]);
+
+    if (stepsError) {
+      // Clean up the sequence if steps failed
+      await supabase.from('sequences').delete().eq('id', sequence.id);
+      throw stepsError;
+    }
 
     return NextResponse.json({ sequence });
   } catch (error: any) {

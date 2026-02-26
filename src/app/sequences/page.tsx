@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
-import { SequenceBuilderSheet } from '@/components/sequence-builder-sheet';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Loader2, Zap, Layers, Users, MoreHorizontal, Play, Pause, Trash2, Pencil } from 'lucide-react';
+import { Plus, Loader2, Zap, Users, MoreHorizontal, Play, Pause, Trash2, Pencil } from 'lucide-react';
 
 interface SequenceItem {
   id: string;
@@ -35,10 +34,6 @@ export default function SequencesPage() {
   const [sequences, setSequences] = useState<SequenceItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Sheet state
-  const [selectedSequenceId, setSelectedSequenceId] = useState<string | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-
   const fetchSequences = async () => {
     try {
       const response = await fetch('/api/sequences');
@@ -56,33 +51,6 @@ export default function SequencesPage() {
   useEffect(() => {
     fetchSequences();
   }, []);
-
-  const handleCreate = async () => {
-    try {
-      const response = await fetch('/api/sequences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Nouvelle séquence', description: '' }),
-      });
-
-      if (response.ok) {
-        const { sequence } = await response.json();
-        // Open in sheet instead of navigating
-        setSelectedSequenceId(sequence.id);
-        setSheetOpen(true);
-        fetchSequences();
-      } else {
-        toast.error('Erreur lors de la création');
-      }
-    } catch {
-      toast.error('Erreur lors de la création');
-    }
-  };
-
-  const openSequence = (id: string) => {
-    setSelectedSequenceId(id);
-    setSheetOpen(true);
-  };
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     try {
@@ -131,7 +99,7 @@ export default function SequencesPage() {
               { label: 'Actives', value: activeCount },
               { label: 'Inscrits', value: totalEnrollments },
             ]} />
-            <Button size="sm" onClick={handleCreate}>
+            <Button size="sm" onClick={() => router.push('/sequences/new')}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Nouvelle séquence
             </Button>
@@ -149,7 +117,7 @@ export default function SequencesPage() {
               <p className="text-xs text-muted-foreground mb-4">
                 Créez votre première séquence pour automatiser vos emails
               </p>
-              <Button size="sm" onClick={handleCreate}>
+              <Button size="sm" onClick={() => router.push('/sequences/new')}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Créer une séquence
               </Button>
@@ -161,7 +129,6 @@ export default function SequencesPage() {
                   <TableRow>
                     <TableHead className="text-xs">Nom</TableHead>
                     <TableHead className="text-xs">Statut</TableHead>
-                    <TableHead className="text-xs">Étapes</TableHead>
                     <TableHead className="text-xs">Inscrits</TableHead>
                     <TableHead className="text-xs">Créé par</TableHead>
                     <TableHead className="text-xs">Date</TableHead>
@@ -175,24 +142,13 @@ export default function SequencesPage() {
                       <TableRow
                         key={seq.id}
                         className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openSequence(seq.id)}
+                        onClick={() => router.push(`/sequences/${seq.id}`)}
                       >
                         <TableCell className="py-2">
-                          <div>
-                            <div className="text-sm font-medium">{seq.name}</div>
-                            {seq.description && (
-                              <div className="text-xs text-muted-foreground truncate max-w-xs">{seq.description}</div>
-                            )}
-                          </div>
+                          <div className="text-sm font-medium">{seq.name}</div>
                         </TableCell>
                         <TableCell className="py-2">
                           <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <span className="flex items-center gap-1 text-sm font-mono">
-                            <Layers className="h-3 w-3 text-muted-foreground" />
-                            {seq.step_count}
-                          </span>
                         </TableCell>
                         <TableCell className="py-2">
                           <span className="flex items-center gap-1 text-sm font-mono">
@@ -214,7 +170,7 @@ export default function SequencesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openSequence(seq.id)}>
+                              <DropdownMenuItem onClick={() => router.push(`/sequences/${seq.id}`)}>
                                 <Pencil className="mr-2 h-3.5 w-3.5" />
                                 Modifier
                               </DropdownMenuItem>
@@ -247,14 +203,6 @@ export default function SequencesPage() {
           )}
         </div>
       </div>
-
-      {/* Builder sheet */}
-      <SequenceBuilderSheet
-        sequenceId={selectedSequenceId}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        onSequenceUpdated={fetchSequences}
-      />
     </>
   );
 }

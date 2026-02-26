@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 
+const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'];
+
 export async function POST(request: Request) {
   try {
     const { supabase, error: clientError } = await createServerClient();
@@ -78,20 +80,24 @@ export async function POST(request: Request) {
     }
 
     // Prepare contacts for insertion
-    const contactsToInsert = contactsToProcess.map((contact: any) => ({
-      email: (contact.email || '').toLowerCase().trim(),
-      first_name: contact.first_name || contact.firstName || null,
-      last_name: contact.last_name || contact.lastName || null,
-      company_name: contact.company_name || contact.companyName || null,
-      company_domain: contact.company_domain || contact.companyDomain || null,
-      job_title: contact.job_title || contact.jobTitle || null,
-      linkedin_url: contact.linkedin_url || contact.linkedinUrl || null,
-      industry: industry || contact.industry || null,
-      raw_data: contact,
-      created_by: user.id,
-      created_by_email: user.email,
-      assigned_to: user.id, // Auto-assign to importer
-    }));
+    const contactsToInsert = contactsToProcess.map((contact: any) => {
+      const status = contact.status && VALID_STATUSES.includes(contact.status) ? contact.status : 'new';
+      return {
+        email: (contact.email || '').toLowerCase().trim(),
+        first_name: contact.first_name || contact.firstName || null,
+        last_name: contact.last_name || contact.lastName || null,
+        company_name: contact.company_name || contact.companyName || null,
+        company_domain: contact.company_domain || contact.companyDomain || null,
+        job_title: contact.job_title || contact.jobTitle || null,
+        linkedin_url: contact.linkedin_url || contact.linkedinUrl || null,
+        industry: industry || contact.industry || null,
+        status,
+        raw_data: contact,
+        created_by: user.id,
+        created_by_email: user.email,
+        assigned_to: user.id, // Auto-assign to importer
+      };
+    });
 
     const { data: insertedContacts, error: insertError } = await supabase
       .from('contacts')

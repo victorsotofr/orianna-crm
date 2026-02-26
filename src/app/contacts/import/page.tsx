@@ -13,6 +13,35 @@ import { toast } from 'sonner';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { IndustrySelector } from '@/components/industry-selector';
+import { ContactStatusBadge } from '@/components/contact-status-badge';
+
+const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'] as const;
+
+const STATUS_ALIASES: Record<string, string> = {
+  'nouveau': 'new',
+  'new': 'new',
+  'contacté': 'contacted',
+  'contacte': 'contacted',
+  'contacted': 'contacted',
+  'répondu': 'replied',
+  'repondu': 'replied',
+  'replied': 'replied',
+  'qualifié': 'qualified',
+  'qualifie': 'qualified',
+  'qualified': 'qualified',
+  'non qualifié': 'unqualified',
+  'non qualifie': 'unqualified',
+  'unqualified': 'unqualified',
+  'ne pas contacter': 'do_not_contact',
+  'do_not_contact': 'do_not_contact',
+  'dnc': 'do_not_contact',
+};
+
+function normalizeStatus(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const normalized = raw.toLowerCase().trim();
+  return STATUS_ALIASES[normalized] || (VALID_STATUSES.includes(normalized as any) ? normalized : undefined);
+}
 
 interface ParsedContact {
   email: string;
@@ -39,12 +68,14 @@ interface DuplicateInfo {
 
 // Auto-detect headers in EN/FR
 function normalizeContact(raw: ParsedContact): ParsedContact {
+  const rawStatus = raw.status || raw.Status || raw.STATUS || raw.statut || raw.Statut || raw.STATUT || undefined;
   return {
     ...raw,
     email: (raw.email || raw.Email || raw.EMAIL || raw['e-mail'] || raw['E-mail'] || '').toLowerCase().trim(),
     first_name: raw.first_name || raw.firstName || raw.prénom || raw.Prénom || raw['First Name'] || raw['first name'] || undefined,
     last_name: raw.last_name || raw.lastName || raw.nom || raw.Nom || raw['Last Name'] || raw['last name'] || undefined,
     company_name: raw.company_name || raw.companyName || raw.entreprise || raw.Entreprise || raw.société || raw.Société || raw['Company Name'] || raw['company name'] || raw.company || raw.Company || undefined,
+    status: normalizeStatus(rawStatus),
   };
 }
 
@@ -226,7 +257,7 @@ export default function ImportPage() {
               <CardHeader>
                 <CardTitle>Télécharger un fichier CSV</CardTitle>
                 <CardDescription>
-                  Format auto-détecté: email, firstName/prénom, lastName/nom, companyName/entreprise
+                  Format auto-détecté: email, firstName/prénom, lastName/nom, companyName/entreprise, status/statut
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -328,6 +359,7 @@ export default function ImportPage() {
                           <TableHead className="text-xs w-8">#</TableHead>
                           <TableHead className="text-xs">Contact</TableHead>
                           <TableHead className="text-xs">Entreprise</TableHead>
+                          <TableHead className="text-xs">Statut</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -352,6 +384,9 @@ export default function ImportPage() {
                               ) : (
                                 <span className="text-muted-foreground text-xs">&mdash;</span>
                               )}
+                            </TableCell>
+                            <TableCell className="py-1.5">
+                              <ContactStatusBadge status={contact.status || 'new'} />
                             </TableCell>
                           </TableRow>
                         ))}

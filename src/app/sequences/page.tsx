@@ -9,7 +9,7 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Plus, Loader2, Zap, Users, MoreHorizontal, Play, Pause, Trash2, Pencil } from 'lucide-react';
+import { Plus, Loader2, Zap, Users, MoreHorizontal, Play, Pause, Trash2, Pencil, Archive, RotateCcw } from 'lucide-react';
 
 interface SequenceItem {
   id: string;
@@ -33,10 +33,12 @@ export default function SequencesPage() {
   const router = useRouter();
   const [sequences, setSequences] = useState<SequenceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
 
   const fetchSequences = async () => {
     try {
-      const response = await fetch('/api/sequences');
+      const url = showArchived ? '/api/sequences?include_archived=true' : '/api/sequences';
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setSequences(data.sequences);
@@ -49,8 +51,9 @@ export default function SequencesPage() {
   };
 
   useEffect(() => {
+    setLoading(true);
     fetchSequences();
-  }, []);
+  }, [showArchived]);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     try {
@@ -84,7 +87,25 @@ export default function SequencesPage() {
     }
   };
 
+  const handleRestore = async (id: string) => {
+    try {
+      await fetch(`/api/sequences/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'draft' }),
+      });
+      toast.success('Séquence restaurée');
+      fetchSequences();
+    } catch {
+      toast.error('Erreur');
+    }
+  };
+
+  const displayed = showArchived
+    ? sequences
+    : sequences.filter(s => s.status !== 'archived');
   const activeCount = sequences.filter(s => s.status === 'active').length;
+  const archivedCount = sequences.filter(s => s.status === 'archived').length;
   const totalEnrollments = sequences.reduce((sum, s) => sum + (s.enrollment_count || 0), 0);
 
   return (
@@ -94,11 +115,24 @@ export default function SequencesPage() {
         <div className="page-content">
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-3">
-            <CompactStatsBar stats={[
-              { label: 'Total', value: sequences.length },
-              { label: 'Actives', value: activeCount },
-              { label: 'Inscrits', value: totalEnrollments },
-            ]} />
+            <div className="flex items-center gap-4">
+              <CompactStatsBar stats={[
+                { label: 'Total', value: sequences.filter(s => s.status !== 'archived').length },
+                { label: 'Actives', value: activeCount },
+                { label: 'Inscrits', value: totalEnrollments },
+              ]} />
+              {archivedCount > 0 && (
+                <Button
+                  variant={showArchived ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setShowArchived(!showArchived)}
+                  className="text-xs"
+                >
+                  <Archive className="mr-1.5 h-3 w-3" />
+                  {showArchived ? 'Masquer archivées' : `Archivées (${archivedCount})`}
+                </Button>
+              )}
+            </div>
             <Button size="sm" onClick={() => router.push('/sequences/new')}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Nouvelle séquence
@@ -110,17 +144,21 @@ export default function SequencesPage() {
             <div className="flex items-center justify-center flex-1">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : sequences.length === 0 ? (
+          ) : displayed.length === 0 ? (
             <div className="flex flex-col items-center justify-center flex-1 text-center">
               <Zap className="h-10 w-10 text-muted-foreground mb-3" />
-              <h3 className="text-sm font-medium mb-1">Aucune séquence</h3>
+              <h3 className="text-sm font-medium mb-1">
+                {showArchived ? 'Aucune séquence archivée' : 'Aucune séquence'}
+              </h3>
               <p className="text-xs text-muted-foreground mb-4">
-                Créez votre première séquence pour automatiser vos emails
+                {showArchived ? 'Les séquences archivées apparaîtront ici' : 'Créez votre première séquence pour automatiser vos emails'}
               </p>
-              <Button size="sm" onClick={() => router.push('/sequences/new')}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Créer une séquence
-              </Button>
+              {!showArchived && (
+                <Button size="sm" onClick={() => router.push('/sequences/new')}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Créer une séquence
+                </Button>
+              )}
             </div>
           ) : (
             <div className="table-container">
@@ -136,12 +174,13 @@ export default function SequencesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sequences.map((seq) => {
+                  {displayed.map((seq) => {
                     const badge = statusBadge[seq.status] || statusBadge.draft;
+                    const isArchived = seq.status === 'archived';
                     return (
                       <TableRow
                         key={seq.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${isArchived ? 'opacity-60' : ''}`}
                         onClick={() => router.push(`/sequences/${seq.id}`)}
                       >
                         <TableCell className="py-2">
@@ -170,27 +209,36 @@ export default function SequencesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => router.push(`/sequences/${seq.id}`)}>
-                                <Pencil className="mr-2 h-3.5 w-3.5" />
-                                Modifier
-                              </DropdownMenuItem>
-                              {(seq.status === 'draft' || seq.status === 'paused') && (
-                                <DropdownMenuItem onClick={() => handleToggleStatus(seq.id, seq.status)}>
-                                  <Play className="mr-2 h-3.5 w-3.5" />
-                                  Activer
+                              {isArchived ? (
+                                <DropdownMenuItem onClick={() => handleRestore(seq.id)}>
+                                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                                  Restaurer
                                 </DropdownMenuItem>
+                              ) : (
+                                <>
+                                  <DropdownMenuItem onClick={() => router.push(`/sequences/${seq.id}`)}>
+                                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                                    Modifier
+                                  </DropdownMenuItem>
+                                  {(seq.status === 'draft' || seq.status === 'paused') && (
+                                    <DropdownMenuItem onClick={() => handleToggleStatus(seq.id, seq.status)}>
+                                      <Play className="mr-2 h-3.5 w-3.5" />
+                                      Activer
+                                    </DropdownMenuItem>
+                                  )}
+                                  {seq.status === 'active' && (
+                                    <DropdownMenuItem onClick={() => handleToggleStatus(seq.id, seq.status)}>
+                                      <Pause className="mr-2 h-3.5 w-3.5" />
+                                      Pause
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => handleArchive(seq.id)} className="text-destructive">
+                                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                    Archiver
+                                  </DropdownMenuItem>
+                                </>
                               )}
-                              {seq.status === 'active' && (
-                                <DropdownMenuItem onClick={() => handleToggleStatus(seq.id, seq.status)}>
-                                  <Pause className="mr-2 h-3.5 w-3.5" />
-                                  Pause
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleArchive(seq.id)} className="text-destructive">
-                                <Trash2 className="mr-2 h-3.5 w-3.5" />
-                                Archiver
-                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

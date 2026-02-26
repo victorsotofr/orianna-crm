@@ -13,23 +13,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: sequences, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const includeArchived = searchParams.get('include_archived') === 'true';
+
+    let query = supabase
       .from('sequences')
       .select(`
         *,
         sequence_steps (id),
         team_members!sequences_created_by_fkey (display_name)
       `)
-      .neq('status', 'archived')
       .order('created_at', { ascending: false });
+
+    if (!includeArchived) {
+      query = query.neq('status', 'archived');
+    }
+
+    const { data: sequences, error } = await query;
 
     if (error) {
       // Fallback without join
-      const { data: basicSeqs, error: basicError } = await supabase
+      let fallbackQuery = supabase
         .from('sequences')
         .select('*')
-        .neq('status', 'archived')
         .order('created_at', { ascending: false });
+      if (!includeArchived) {
+        fallbackQuery = fallbackQuery.neq('status', 'archived');
+      }
+      const { data: basicSeqs, error: basicError } = await fallbackQuery;
       if (basicError) throw basicError;
       return NextResponse.json({
         sequences: (basicSeqs || []).map(seq => ({

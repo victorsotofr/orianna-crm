@@ -11,10 +11,11 @@ import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Mail, Clock, Plus } from 'lucide-react';
 import type { Template } from '@/types/database';
 
-const STEP_LABELS = [
-  { title: 'Premier Contact', subtitle: 'Envoi immédiat dès inscription du contact' },
-  { title: 'Première Relance', subtitle: 'Envoi si pas de réponse' },
-  { title: 'Dernier Contact', subtitle: 'Envoi si pas de réponse' },
+const STEP_LABELS = ['Premier Contact', 'Première Relance', 'Dernier Contact'];
+const STEP_COLORS = [
+  { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', numBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400' },
+  { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', numBg: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400' },
+  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300', numBg: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400' },
 ];
 
 export default function NewSequencePage() {
@@ -25,11 +26,11 @@ export default function NewSequencePage() {
 
   // Form state
   const [name, setName] = useState('');
-  const [step1TemplateId, setStep1TemplateId] = useState('');
-  const [step2TemplateId, setStep2TemplateId] = useState('');
-  const [step2DelayDays, setStep2DelayDays] = useState(3);
-  const [step3TemplateId, setStep3TemplateId] = useState('');
-  const [step3DelayDays, setStep3DelayDays] = useState(5);
+  const [stepEdits, setStepEdits] = useState([
+    { template_id: '', delay_days: 0 },
+    { template_id: '', delay_days: 3 },
+    { template_id: '', delay_days: 5 },
+  ]);
 
   useEffect(() => {
     fetch('/api/templates')
@@ -39,21 +40,23 @@ export default function NewSequencePage() {
       .finally(() => setLoadingTemplates(false));
   }, []);
 
+  const updateStep = (idx: number, field: 'template_id' | 'delay_days', value: string | number) => {
+    setStepEdits(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  };
+
   const handleCreate = async () => {
     if (!name.trim()) {
       toast.error('Le nom de la séquence est obligatoire');
       return;
     }
-    if (!step1TemplateId || !step2TemplateId || !step3TemplateId) {
-      toast.error('Sélectionnez un template pour chaque étape');
-      return;
+    for (let i = 0; i < 3; i++) {
+      if (!stepEdits[i].template_id) {
+        toast.error(`Sélectionnez un template pour l'étape ${i + 1}`);
+        return;
+      }
     }
-    if (step2DelayDays < 1) {
-      toast.error("Le délai de l'étape 2 doit être d'au moins 1 jour");
-      return;
-    }
-    if (step3DelayDays < 1) {
-      toast.error("Le délai de l'étape 3 doit être d'au moins 1 jour");
+    if (stepEdits[1].delay_days < 1 || stepEdits[2].delay_days < 1) {
+      toast.error("Les délais des étapes 2 et 3 doivent être d'au moins 1 jour");
       return;
     }
 
@@ -64,11 +67,10 @@ export default function NewSequencePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          steps: [
-            { template_id: step1TemplateId, delay_days: 0 },
-            { template_id: step2TemplateId, delay_days: step2DelayDays },
-            { template_id: step3TemplateId, delay_days: step3DelayDays },
-          ],
+          steps: stepEdits.map(s => ({
+            template_id: s.template_id,
+            delay_days: s.delay_days,
+          })),
         }),
       });
 
@@ -87,52 +89,26 @@ export default function NewSequencePage() {
     }
   };
 
-  const templateSelect = (value: string, onChange: (v: string) => void) => (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">Template d&apos;email</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder="Sélectionner un template..." />
-        </SelectTrigger>
-        <SelectContent>
-          {templates.map((tpl) => (
-            <SelectItem key={tpl.id} value={tpl.id}>
-              <span>{tpl.name}</span>
-              <span className="ml-2 text-xs text-muted-foreground">— {tpl.subject}</span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        variant="link"
-        size="sm"
-        className="h-auto p-0 text-xs"
-        onClick={() => router.push('/templates')}
-      >
-        <Plus className="mr-1 h-3 w-3" />
-        Créer un nouveau template
-      </Button>
-    </div>
-  );
-
   return (
     <>
       <SiteHeader title="Nouvelle séquence" />
       <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-6 py-4 md:py-6 px-4 lg:px-6 max-w-2xl mx-auto w-full">
-          <Button variant="ghost" className="w-fit" onClick={() => router.push('/sequences')}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Retour
-          </Button>
+        <div className="flex flex-1 flex-col gap-4 py-3 px-4 lg:px-6">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => router.push('/sequences')}>
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+              Retour
+            </Button>
+          </div>
 
           {/* Sequence name */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Nom de la séquence</Label>
+          <div className="flex items-center gap-3 max-w-lg">
+            <Label className="text-xs text-muted-foreground shrink-0">Nom de la séquence</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: Spanish Property Investors"
-              className="text-base"
+              className="h-9"
             />
           </div>
 
@@ -141,125 +117,103 @@ export default function NewSequencePage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Step 1: Premier Contact */}
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-blue-50 dark:bg-blue-950/40 border-b px-4 py-3 flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400 text-sm font-bold">
-                    1
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">{STEP_LABELS[0].title}</p>
-                    <p className="text-xs text-blue-600/70 dark:text-blue-400/70">{STEP_LABELS[0].subtitle}</p>
-                  </div>
-                </div>
-                <div className="p-4 space-y-3">
-                  {templateSelect(step1TemplateId, setStep1TemplateId)}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>Envoi immédiat (dès inscription du contact)</span>
-                  </div>
-                </div>
-              </div>
+            <>
+              {/* 3 step cards - HORIZONTAL */}
+              <div className="grid grid-cols-3 gap-3 items-start">
+                {[0, 1, 2].map((idx) => {
+                  const color = STEP_COLORS[idx];
+                  return (
+                    <div key={idx} className={`border rounded-lg overflow-hidden ${color.border} flex flex-col`}>
+                      {/* Header */}
+                      <div className={`${color.bg} border-b px-3 py-2 flex items-center gap-2`}>
+                        <div className={`flex h-6 w-6 items-center justify-center rounded-md ${color.numBg} text-xs font-bold`}>
+                          {idx + 1}
+                        </div>
+                        <p className={`text-xs font-semibold ${color.text}`}>{STEP_LABELS[idx]}</p>
+                      </div>
 
-              {/* Connector */}
-              <div className="flex flex-col items-center gap-1 py-1">
-                <div className="w-px h-4 bg-border" />
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                  <Clock className="h-3 w-3" />
-                  Si pas de réponse...
-                </div>
-                <div className="w-px h-4 bg-border" />
-              </div>
+                      {/* Body */}
+                      <div className="p-3 space-y-2.5 flex-1">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Template d&apos;email</Label>
+                          <Select
+                            value={stepEdits[idx].template_id}
+                            onValueChange={(v) => updateStep(idx, 'template_id', v)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Sélectionner..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {templates.map((tpl) => (
+                                <SelectItem key={tpl.id} value={tpl.id}>
+                                  {tpl.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-[11px]"
+                            onClick={() => router.push('/templates')}
+                          >
+                            <Plus className="mr-0.5 h-3 w-3" />
+                            Nouveau template
+                          </Button>
+                        </div>
 
-              {/* Step 2: Première Relance */}
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-orange-50 dark:bg-orange-950/40 border-b px-4 py-3 flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400 text-sm font-bold">
-                    2
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">{STEP_LABELS[1].title}</p>
-                    <p className="text-xs text-orange-600/70 dark:text-orange-400/70">{STEP_LABELS[1].subtitle}</p>
-                  </div>
-                </div>
-                <div className="p-4 space-y-3">
-                  {templateSelect(step2TemplateId, setStep2TemplateId)}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Délai après l&apos;Étape 1</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={step2DelayDays}
-                        onChange={(e) => setStep2DelayDays(parseInt(e.target.value) || 1)}
-                        className="w-20 h-9"
-                      />
-                      <span className="text-sm text-muted-foreground">jours</span>
+                        {idx === 0 ? (
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            Envoi immédiat
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              Délai après Étape {idx}
+                            </Label>
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                type="number"
+                                min={1}
+                                value={stepEdits[idx].delay_days}
+                                onChange={(e) => updateStep(idx, 'delay_days', parseInt(e.target.value) || 1)}
+                                className="w-16 h-8 text-xs"
+                              />
+                              <span className="text-xs text-muted-foreground">jours</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer */}
+                      {idx < 2 && (
+                        <div className="text-center text-[10px] text-muted-foreground bg-muted/50 py-1 border-t">
+                          Si pas de réponse &rarr;
+                        </div>
+                      )}
+                      {idx === 2 && (
+                        <div className="text-center text-[10px] text-muted-foreground bg-muted/50 py-1 border-t">
+                          Fin de la séquence
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
 
-              {/* Connector */}
-              <div className="flex flex-col items-center gap-1 py-1">
-                <div className="w-px h-4 bg-border" />
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                  <Clock className="h-3 w-3" />
-                  Si pas de réponse...
-                </div>
-                <div className="w-px h-4 bg-border" />
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <Button variant="outline" size="sm" onClick={() => router.push('/sequences')}>
+                  Annuler
+                </Button>
+                <Button size="sm" onClick={handleCreate} disabled={saving || loadingTemplates}>
+                  {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Mail className="mr-1.5 h-3.5 w-3.5" />}
+                  Créer la séquence
+                </Button>
               </div>
-
-              {/* Step 3: Dernier Contact */}
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-red-50 dark:bg-red-950/40 border-b px-4 py-3 flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400 text-sm font-bold">
-                    3
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-red-700 dark:text-red-300">{STEP_LABELS[2].title}</p>
-                    <p className="text-xs text-red-600/70 dark:text-red-400/70">{STEP_LABELS[2].subtitle}</p>
-                  </div>
-                </div>
-                <div className="p-4 space-y-3">
-                  {templateSelect(step3TemplateId, setStep3TemplateId)}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Délai après l&apos;Étape 2</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={step3DelayDays}
-                        onChange={(e) => setStep3DelayDays(parseInt(e.target.value) || 1)}
-                        className="w-20 h-9"
-                      />
-                      <span className="text-sm text-muted-foreground">jours</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* End marker */}
-              <div className="flex flex-col items-center gap-1 py-1">
-                <div className="w-px h-4 bg-border" />
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-                  Fin de la séquence
-                </div>
-              </div>
-            </div>
+            </>
           )}
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2 pb-6 border-t">
-            <Button variant="outline" onClick={() => router.push('/sequences')}>
-              Annuler
-            </Button>
-            <Button onClick={handleCreate} disabled={saving || loadingTemplates}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
-              Créer la séquence
-            </Button>
-          </div>
         </div>
       </div>
     </>

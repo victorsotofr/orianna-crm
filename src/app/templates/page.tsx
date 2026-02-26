@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -8,7 +9,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { TemplateForm } from '@/components/template-form';
 import { toast } from 'sonner';
 import { Plus, Loader2, FileText, Eye, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
 import { Template } from '@/types/database';
@@ -21,13 +21,10 @@ interface Industry {
 }
 
 export default function TemplatesPage() {
+  const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [industries, setIndustries] = useState<Industry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -95,21 +92,6 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleFormSuccess = () => {
-    fetchTemplates();
-    setEditOpen(false);
-    setAddOpen(false);
-    setSelectedTemplate(null);
-  };
-
-  const renderPreviewHtml = (htmlContent: string) => {
-    return htmlContent
-      .replace(/\{\{\s*first_name\s*\}\}/g, 'Jean')
-      .replace(/\{\{\s*last_name\s*\}\}/g, 'Dupont')
-      .replace(/\{\{\s*company_name\s*\}\}/g, 'Entreprise Example')
-      .replace(/\{\{\s*video_url\s*\}\}/g, 'https://example.com/video');
-  };
-
   return (
     <>
       <SiteHeader title="Templates" />
@@ -121,7 +103,7 @@ export default function TemplatesPage() {
               { label: 'Templates', value: templates.length },
               { label: 'Actifs', value: templates.filter(t => t.is_active !== false).length },
             ]} />
-            <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Button size="sm" onClick={() => router.push('/templates/new')}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Nouveau
             </Button>
@@ -137,7 +119,7 @@ export default function TemplatesPage() {
               <FileText className="h-10 w-10 text-muted-foreground mb-3" />
               <h3 className="text-sm font-medium mb-1">Aucun template</h3>
               <p className="text-xs text-muted-foreground mb-4">Créez votre premier template d&apos;email</p>
-              <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Button size="sm" onClick={() => router.push('/templates/new')}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Créer un template
               </Button>
@@ -158,7 +140,11 @@ export default function TemplatesPage() {
                   {templates.map((template) => {
                     const variables = extractTemplateVariables(template.html_content);
                     return (
-                      <TableRow key={template.id}>
+                      <TableRow
+                        key={template.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => router.push(`/templates/${template.id}`)}
+                      >
                         <TableCell className="py-2 text-sm font-medium">{template.name}</TableCell>
                         <TableCell className="py-2 text-sm text-muted-foreground max-w-xs truncate">
                           {template.subject}
@@ -178,7 +164,7 @@ export default function TemplatesPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="py-2">
+                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -186,13 +172,9 @@ export default function TemplatesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => { setSelectedTemplate(template); setPreviewOpen(true); }}>
+                              <DropdownMenuItem onClick={() => router.push(`/templates/${template.id}`)}>
                                 <Eye className="mr-2 h-3.5 w-3.5" />
-                                Prévisualiser
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => { setSelectedTemplate(template); setEditOpen(true); }}>
-                                <Pencil className="mr-2 h-3.5 w-3.5" />
-                                Modifier
+                                Voir / Modifier
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -214,67 +196,6 @@ export default function TemplatesPage() {
           )}
         </div>
       </div>
-
-      {/* Add dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nouveau Template</DialogTitle>
-            <DialogDescription>Créez un nouveau template d&apos;email</DialogDescription>
-          </DialogHeader>
-          <TemplateForm onSuccess={handleFormSuccess} />
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Modifier le Template</DialogTitle>
-            <DialogDescription>Modifiez les informations du template</DialogDescription>
-          </DialogHeader>
-          {selectedTemplate && <TemplateForm template={selectedTemplate} onSuccess={handleFormSuccess} />}
-        </DialogContent>
-      </Dialog>
-
-      {/* Preview dialog */}
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selectedTemplate?.name}</DialogTitle>
-            <DialogDescription>
-              <strong>Sujet:</strong> {selectedTemplate?.subject}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Variables</p>
-                <div className="flex flex-wrap gap-1">
-                  {selectedTemplate && extractTemplateVariables(selectedTemplate.html_content).map((v) => (
-                    <Badge key={v} variant="secondary" className="font-mono text-xs">{`{{ ${v} }}`}</Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Industrie</p>
-                {selectedTemplate && (
-                  <Badge variant="outline">{getIndustryLabel(selectedTemplate.industry)}</Badge>
-                )}
-              </div>
-            </div>
-            <div className="col-span-2 border rounded-lg p-4 bg-muted/30 max-h-[400px] overflow-y-auto">
-              <p className="text-xs font-medium text-muted-foreground mb-3">Aperçu</p>
-              <div
-                className="prose prose-sm max-w-none dark:prose-invert"
-                dangerouslySetInnerHTML={{
-                  __html: selectedTemplate ? renderPreviewHtml(selectedTemplate.html_content) : '',
-                }}
-              />
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

@@ -2,25 +2,51 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SequenceTimeline } from '@/components/sequence-timeline';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SiteHeader } from '@/components/site-header';
-import { SequenceStatsPanel } from '@/components/sequence-stats-panel';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Save, Play, Pause, Users, Layers, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Play, Pause, Users, Mail, Clock, Archive } from 'lucide-react';
 import type { Sequence, SequenceStep, Template, Contact } from '@/types/database';
+
+interface StepWithTemplate extends SequenceStep {
+  templates?: { id: string; name: string; subject: string } | null;
+}
+
+interface StepStat {
+  step_id: string;
+  step_order: number;
+  total_sent: number;
+  total_opened: number;
+  total_replied: number;
+  total_bounced: number;
+}
 
 interface SequenceDetail {
   sequence: Sequence;
-  steps: (SequenceStep & { templates?: { id: string; name: string; subject: string } | null })[];
+  steps: StepWithTemplate[];
   stats: { active: number; completed: number; total: number };
+  enrolledContactIds: string[];
 }
+
+const STEP_LABELS = ['Premier Contact', 'Première Relance', 'Dernier Contact'];
+const STEP_COLORS = [
+  { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', numBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400' },
+  { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', numBg: 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400' },
+  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', text: 'text-red-700 dark:text-red-300', numBg: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400' },
+];
+
+const statusBadge: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
+  draft: { label: 'Brouillon', variant: 'secondary' },
+  active: { label: 'Active', variant: 'default' },
+  paused: { label: 'Pausée', variant: 'outline' },
+  archived: { label: 'Archivée', variant: 'destructive' },
+};
 
 export default function SequenceDetailPage() {
   const router = useRouter();
@@ -30,12 +56,15 @@ export default function SequenceDetailPage() {
   const [data, setData] = useState<SequenceDetail | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [stepStats, setStepStats] = useState<StepStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // Editable fields
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+
+  // Step edits: template_id and delay_days for each of the 3 steps
+  const [stepEdits, setStepEdits] = useState<{ template_id: string; delay_days: number }[]>([]);
 
   // Enroll form
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -47,17 +76,29 @@ export default function SequenceDetailPage() {
 
   const fetchAll = async () => {
     try {
-      const [seqRes, tplRes, contactsRes] = await Promise.all([
+      const [seqRes, tplRes, contactsRes, statsRes] = await Promise.all([
         fetch(`/api/sequences/${sequenceId}`),
         fetch('/api/templates'),
         fetch('/api/contacts?limit=500'),
+        fetch(`/api/sequences/${sequenceId}/stats`),
       ]);
 
       if (seqRes.ok) {
-        const d = await seqRes.json();
+        const d: SequenceDetail = await seqRes.json();
         setData(d);
         setName(d.sequence.name);
-        setDescription(d.sequence.description || '');
+        // Initialize step edits from existing steps
+        const edits = d.steps
+          .sort((a, b) => a.step_order - b.step_order)
+          .map(s => ({
+            template_id: s.template_id || '',
+            delay_days: s.delay_days,
+          }));
+        // Ensure we always have 3 entries
+        while (edits.length < 3) {
+          edits.push({ template_id: '', delay_days: edits.length === 0 ? 0 : 3 });
+        }
+        setStepEdits(edits.slice(0, 3));
       }
 
       if (tplRes.ok) {
@@ -69,6 +110,11 @@ export default function SequenceDetailPage() {
         const { contacts: cts } = await contactsRes.json();
         setContacts(cts || []);
       }
+
+      if (statsRes.ok) {
+        const { stats: ss } = await statsRes.json();
+        setStepStats(ss || []);
+      }
     } catch (error) {
       console.error('Error loading sequence:', error);
     } finally {
@@ -77,20 +123,45 @@ export default function SequenceDetailPage() {
   };
 
   const handleSave = async () => {
+    if (!data) return;
+
+    // Validate
+    for (let i = 0; i < 3; i++) {
+      if (!stepEdits[i]?.template_id) {
+        toast.error(`Sélectionnez un template pour l'étape ${i + 1}`);
+        return;
+      }
+    }
+    if (stepEdits[1].delay_days < 1 || stepEdits[2].delay_days < 1) {
+      toast.error('Les délais des étapes 2 et 3 doivent être d\'au moins 1 jour');
+      return;
+    }
+
     setSaving(true);
     try {
-      const response = await fetch(`/api/sequences/${sequenceId}`, {
+      // Update sequence name
+      const nameRes = await fetch(`/api/sequences/${sequenceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name }),
       });
+      if (!nameRes.ok) throw new Error('Failed to update name');
 
-      if (response.ok) {
-        toast.success('Séquence mise à jour');
-        fetchAll();
-      } else {
-        toast.error('Erreur lors de la mise à jour');
+      // Update each step
+      const steps = data.steps.sort((a, b) => a.step_order - b.step_order);
+      for (let i = 0; i < Math.min(steps.length, 3); i++) {
+        await fetch(`/api/sequences/${sequenceId}/steps/${steps[i].id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template_id: stepEdits[i].template_id,
+            delay_days: i === 0 ? 0 : stepEdits[i].delay_days,
+          }),
+        });
       }
+
+      toast.success('Séquence mise à jour');
+      fetchAll();
     } catch {
       toast.error('Erreur lors de la mise à jour');
     } finally {
@@ -102,15 +173,14 @@ export default function SequenceDetailPage() {
     try {
       const response = await fetch(`/api/sequences/${sequenceId}/activate`, { method: 'POST' });
       const result = await response.json();
-
       if (response.ok) {
         toast.success('Séquence activée');
         fetchAll();
       } else {
-        toast.error(result.error || 'Erreur lors de l\'activation');
+        toast.error(result.error || "Erreur lors de l'activation");
       }
     } catch {
-      toast.error('Erreur lors de l\'activation');
+      toast.error("Erreur lors de l'activation");
     }
   };
 
@@ -121,7 +191,6 @@ export default function SequenceDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'paused' }),
       });
-
       if (response.ok) {
         toast.success('Séquence mise en pause');
         fetchAll();
@@ -131,67 +200,14 @@ export default function SequenceDetailPage() {
     }
   };
 
-  const handleAddStep = async (
-    stepData: { step_type: string; template_id: string | null; delay_days: number; instructions: string | null },
-    insertAfterOrder?: number
-  ) => {
-    const response = await fetch(`/api/sequences/${sequenceId}/steps`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...stepData,
-        insert_after_order: insertAfterOrder,
-      }),
-    });
-
-    if (response.ok) {
-      toast.success('Étape ajoutée');
-      await fetchAll();
-    } else {
-      const result = await response.json();
-      toast.error(result.error || "Erreur lors de l'ajout");
-    }
-  };
-
-  const handleDeleteStep = async (stepId: string) => {
-    if (!confirm('Supprimer cette étape ?')) return;
-
-    const response = await fetch(`/api/sequences/${sequenceId}/steps/${stepId}`, { method: 'DELETE' });
-    if (response.ok) {
-      toast.success('Étape supprimée');
-      await fetchAll();
-    } else {
-      toast.error('Erreur lors de la suppression');
-    }
-  };
-
-  const handleMoveStep = async (stepId: string, direction: "up" | "down") => {
-    if (!data) return;
-    const currentSteps = data.steps;
-    const idx = currentSteps.findIndex(s => s.id === stepId);
-    if (idx === -1) return;
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= currentSteps.length) return;
-
-    const stepA = currentSteps[idx];
-    const stepB = currentSteps[swapIdx];
-
+  const handleArchive = async () => {
+    if (!confirm('Archiver cette séquence ?')) return;
     try {
-      await Promise.all([
-        fetch(`/api/sequences/${sequenceId}/steps/${stepA.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step_order: stepB.step_order }),
-        }),
-        fetch(`/api/sequences/${sequenceId}/steps/${stepB.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step_order: stepA.step_order }),
-        }),
-      ]);
-      await fetchAll();
+      await fetch(`/api/sequences/${sequenceId}`, { method: 'DELETE' });
+      toast.success('Séquence archivée');
+      router.push('/sequences');
     } catch {
-      toast.error("Erreur lors du déplacement");
+      toast.error('Erreur');
     }
   };
 
@@ -225,6 +241,10 @@ export default function SequenceDetailPage() {
     }
   };
 
+  const updateStepEdit = (index: number, field: 'template_id' | 'delay_days', value: string | number) => {
+    setStepEdits(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
+  };
+
   if (loading || !data) {
     return (
       <>
@@ -236,15 +256,18 @@ export default function SequenceDetailPage() {
     );
   }
 
-  const { sequence, steps, stats } = data;
+  const { sequence, stats } = data;
+  const badge = statusBadge[sequence.status] || statusBadge.draft;
   const isDraft = sequence.status === 'draft';
   const isActive = sequence.status === 'active';
+  const isPaused = sequence.status === 'paused';
+  const enrolledSet = new Set(data.enrolledContactIds || []);
 
   return (
     <>
       <SiteHeader title={sequence.name} />
       <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6 max-w-3xl mx-auto w-full">
           {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => router.push('/sequences')}>
@@ -252,79 +275,143 @@ export default function SequenceDetailPage() {
               Retour
             </Button>
             <div className="flex items-center gap-2">
-              <Badge variant={sequence.status === 'active' ? 'default' : 'secondary'}>
-                {sequence.status === 'draft' ? 'Brouillon' :
-                 sequence.status === 'active' ? 'Active' :
-                 sequence.status === 'paused' ? 'Pausée' : 'Archivée'}
-              </Badge>
-              {isDraft && (
-                <Button onClick={handleActivate} disabled={steps.length === 0}>
-                  <Play className="mr-2 h-4 w-4" />
+              <Badge variant={badge.variant}>{badge.label}</Badge>
+              {(isDraft || isPaused) && (
+                <Button size="sm" onClick={handleActivate}>
+                  <Play className="mr-1.5 h-3.5 w-3.5" />
                   Activer
                 </Button>
               )}
               {isActive && (
-                <Button variant="outline" onClick={handlePause}>
-                  <Pause className="mr-2 h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={handlePause}>
+                  <Pause className="mr-1.5 h-3.5 w-3.5" />
                   Pause
                 </Button>
               )}
-              <Button variant="outline" onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Enregistrer
+              <Button variant="ghost" size="sm" onClick={handleArchive} className="text-destructive hover:text-destructive">
+                <Archive className="mr-1.5 h-3.5 w-3.5" />
+                Archiver
               </Button>
             </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Étapes</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Layers className="h-5 w-5 text-muted-foreground" />
-                  {steps.length}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Inscrits actifs</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Users className="h-5 w-5 text-muted-foreground" />
-                  {stats.active}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Terminés</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-muted-foreground" />
-                  {stats.completed}
-                </CardTitle>
-              </CardHeader>
-            </Card>
           </div>
 
           <Tabs defaultValue="steps" className="space-y-4">
             <TabsList>
               <TabsTrigger value="steps">Étapes</TabsTrigger>
-              <TabsTrigger value="enroll">Inscrire des contacts</TabsTrigger>
+              <TabsTrigger value="enroll">Inscrits</TabsTrigger>
               <TabsTrigger value="stats">Statistiques</TabsTrigger>
-              <TabsTrigger value="settings">Paramètres</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="steps">
-              <SequenceTimeline
-                steps={steps}
-                templates={templates}
-                onAddStep={handleAddStep}
-                onDeleteStep={handleDeleteStep}
-                onMoveStep={handleMoveStep}
-              />
+            {/* Steps tab */}
+            <TabsContent value="steps" className="space-y-4">
+              {/* Sequence name */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Nom de la séquence</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              {/* 3 step cards */}
+              <div className="space-y-3">
+                {[0, 1, 2].map((idx) => {
+                  const color = STEP_COLORS[idx];
+                  const stat = stepStats.find(s => s.step_order === idx + 1);
+
+                  return (
+                    <div key={idx}>
+                      {/* Connector between steps */}
+                      {idx > 0 && (
+                        <div className="flex flex-col items-center gap-1 py-2">
+                          <div className="w-px h-3 bg-border" />
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full">
+                            <Clock className="h-3 w-3" />
+                            Si pas de réponse
+                          </div>
+                          <div className="w-px h-3 bg-border" />
+                        </div>
+                      )}
+
+                      <div className={`border rounded-lg overflow-hidden ${color.border}`}>
+                        <div className={`${color.bg} border-b px-4 py-2.5 flex items-center gap-3`}>
+                          <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${color.numBg} text-sm font-bold`}>
+                            {idx + 1}
+                          </div>
+                          <p className={`text-sm font-semibold ${color.text}`}>{STEP_LABELS[idx]}</p>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Template d&apos;email</Label>
+                            <Select
+                              value={stepEdits[idx]?.template_id || ''}
+                              onValueChange={(v) => updateStepEdit(idx, 'template_id', v)}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Sélectionner un template..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {templates.map((tpl) => (
+                                  <SelectItem key={tpl.id} value={tpl.id}>
+                                    {tpl.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {idx === 0 ? (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>Envoi immédiat</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-muted-foreground">
+                                Délai après l&apos;Étape {idx}
+                              </Label>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={stepEdits[idx]?.delay_days || ''}
+                                  onChange={(e) => updateStepEdit(idx, 'delay_days', parseInt(e.target.value) || 1)}
+                                  className="w-20 h-9"
+                                />
+                                <span className="text-sm text-muted-foreground">jours</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step stats if available */}
+                          {stat && stat.total_sent > 0 && (
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1 border-t">
+                              <span>{stat.total_sent} envoyés</span>
+                              <span>{stat.total_opened} ouverts ({stat.total_sent > 0 ? Math.round(stat.total_opened / stat.total_sent * 100) : 0}%)</span>
+                              <span>{stat.total_replied} réponses ({stat.total_sent > 0 ? Math.round(stat.total_replied / stat.total_sent * 100) : 0}%)</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* End marker */}
+              <div className="flex flex-col items-center gap-1 py-1">
+                <div className="w-px h-4 bg-border" />
+                <div className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                  Fin de la séquence
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Enregistrer
+                </Button>
+              </div>
             </TabsContent>
 
+            {/* Enroll tab */}
             <TabsContent value="enroll" className="space-y-4">
               {!isActive ? (
                 <Card>
@@ -335,36 +422,44 @@ export default function SequenceDetailPage() {
               ) : (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Inscrire des contacts</CardTitle>
+                    <CardTitle className="text-base">Inscrire des contacts</CardTitle>
                     <CardDescription>
                       Sélectionnez les contacts à inscrire dans cette séquence
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="max-h-[300px] overflow-y-auto border rounded-lg p-2 space-y-1">
-                      {contacts.map((contact) => (
-                        <label
-                          key={contact.id}
-                          className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedContacts.includes(contact.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedContacts([...selectedContacts, contact.id]);
-                              } else {
-                                setSelectedContacts(selectedContacts.filter((id) => id !== contact.id));
-                              }
-                            }}
-                            className="rounded"
-                          />
-                          <span className="text-sm">
-                            {contact.first_name} {contact.last_name}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{contact.email}</span>
-                        </label>
-                      ))}
+                    {enrolledSet.size > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {enrolledSet.size} contact(s) déjà inscrit(s)
+                      </p>
+                    )}
+                    <div className="max-h-[300px] overflow-y-auto border rounded-lg p-2 space-y-0.5">
+                      {contacts.map((contact) => {
+                        const alreadyEnrolled = enrolledSet.has(contact.id);
+                        return (
+                          <label
+                            key={contact.id}
+                            className={`flex items-center gap-2 p-2 rounded text-sm ${alreadyEnrolled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted cursor-pointer'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedContacts.includes(contact.id)}
+                              disabled={alreadyEnrolled}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedContacts([...selectedContacts, contact.id]);
+                                } else {
+                                  setSelectedContacts(selectedContacts.filter((id) => id !== contact.id));
+                                }
+                              }}
+                              className="rounded"
+                            />
+                            <span>{contact.first_name} {contact.last_name}</span>
+                            <span className="text-xs text-muted-foreground font-mono">{contact.email}</span>
+                            {alreadyEnrolled && <Badge variant="outline" className="text-[10px] ml-auto">Inscrit</Badge>}
+                          </label>
+                        );
+                      })}
                       {contacts.length === 0 && (
                         <p className="text-sm text-muted-foreground text-center py-4">Aucun contact disponible</p>
                       )}
@@ -380,7 +475,7 @@ export default function SequenceDetailPage() {
               {stats.total > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Inscriptions ({stats.total})</CardTitle>
+                    <CardTitle className="text-base">Inscriptions ({stats.total})</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex gap-4 text-sm">
@@ -393,30 +488,55 @@ export default function SequenceDetailPage() {
               )}
             </TabsContent>
 
+            {/* Stats tab */}
             <TabsContent value="stats" className="space-y-4">
-              <SequenceStatsPanel sequenceId={sequenceId} />
-            </TabsContent>
+              {stepStats.length === 0 || stepStats.every(s => s.total_sent === 0) ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-muted-foreground">
+                    <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Aucune statistique disponible</p>
+                    <p className="text-xs mt-1">Les statistiques apparaîtront après l&apos;envoi des premiers emails</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {stepStats.map((stat, idx) => {
+                    const color = STEP_COLORS[idx] || STEP_COLORS[0];
+                    const openRate = stat.total_sent > 0 ? Math.round(stat.total_opened / stat.total_sent * 100) : 0;
+                    const replyRate = stat.total_sent > 0 ? Math.round(stat.total_replied / stat.total_sent * 100) : 0;
 
-            <TabsContent value="settings" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Paramètres de la séquence</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Nom</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Description</Label>
-                    <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-                  </div>
-                  <Button onClick={handleSave} disabled={saving}>
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Enregistrer
-                  </Button>
-                </CardContent>
-              </Card>
+                    return (
+                      <Card key={stat.step_id} className={color.border}>
+                        <CardHeader className={`${color.bg} py-3`}>
+                          <CardTitle className={`text-sm ${color.text}`}>
+                            {STEP_LABELS[idx] || `Étape ${idx + 1}`}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="py-3">
+                          <div className="grid grid-cols-4 gap-4 text-center">
+                            <div>
+                              <p className="text-lg font-semibold font-mono">{stat.total_sent}</p>
+                              <p className="text-xs text-muted-foreground">Envoyés</p>
+                            </div>
+                            <div>
+                              <p className="text-lg font-semibold font-mono">{stat.total_opened}</p>
+                              <p className="text-xs text-muted-foreground">Ouverts ({openRate}%)</p>
+                            </div>
+                            <div>
+                              <p className="text-lg font-semibold font-mono">{stat.total_replied}</p>
+                              <p className="text-xs text-muted-foreground">Réponses ({replyRate}%)</p>
+                            </div>
+                            <div>
+                              <p className="text-lg font-semibold font-mono">{stat.total_bounced}</p>
+                              <p className="text-xs text-muted-foreground">Bounces</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>

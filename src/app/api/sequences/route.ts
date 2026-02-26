@@ -29,7 +29,14 @@ export async function GET(request: NextRequest) {
         .select('*')
         .order('created_at', { ascending: false });
       if (basicError) throw basicError;
-      return NextResponse.json({ sequences: basicSeqs || [] });
+      return NextResponse.json({
+        sequences: (basicSeqs || []).map(seq => ({
+          ...seq,
+          step_count: 0,
+          enrollment_count: 0,
+          created_by_name: null,
+        })),
+      });
     }
 
     // Enrich with enrollment counts

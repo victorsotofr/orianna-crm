@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContactStatusBadge } from "@/components/contact-status-badge"
+import { IndustrySelector } from "@/components/industry-selector"
 import {
   Sheet,
   SheetContent,
@@ -15,7 +16,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { toast } from "sonner"
-import { Save, Loader2, Trash2, Mail, Building2, Phone, MessageSquare, UserCheck } from "lucide-react"
+import { Save, Loader2, Trash2, Mail, Building2, Phone, MessageSquare, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react"
 import type { Contact, Comment, TeamMember } from "@/types/database"
 
 interface ContactDetailSheetProps {
@@ -51,6 +52,7 @@ export function ContactDetailSheet({
   const [notes, setNotes] = useState("")
   const [status, setStatus] = useState("new")
   const [assignedTo, setAssignedTo] = useState<string>("unassigned")
+  const [industry, setIndustry] = useState("")
 
   useEffect(() => {
     if (contactId && open) {
@@ -80,6 +82,7 @@ export function ContactDetailSheet({
         setNotes(c.notes || "")
         setStatus(c.status || "new")
         setAssignedTo(c.assigned_to || "unassigned")
+        setIndustry(c.industry || "")
       }
 
       if (commentsRes.ok) {
@@ -116,6 +119,7 @@ export function ContactDetailSheet({
           notes,
           status,
           assigned_to: assignedTo === "unassigned" ? null : assignedTo,
+          industry: industry || null,
         }),
       })
 
@@ -147,6 +151,29 @@ export function ContactDetailSheet({
       }
     } catch {
       toast.error("Erreur lors de la suppression")
+    }
+  }
+
+  const handleReplyAction = async (type: 'hot' | 'cold') => {
+    if (!contactId) return
+    const label = type === 'hot' ? 'qualifié' : 'non qualifié'
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/reply-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      })
+
+      if (response.ok) {
+        toast.success(`Contact marqué comme ${label}`)
+        fetchContact()
+        onContactUpdated?.()
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Erreur')
+      }
+    } catch {
+      toast.error("Erreur lors de l'action")
     }
   }
 
@@ -193,7 +220,27 @@ export function ContactDetailSheet({
           <div className="space-y-5 mt-4">
             {/* Status + actions */}
             <div className="flex items-center justify-between">
-              <ContactStatusBadge status={status} />
+              <div className="flex items-center gap-2">
+                <ContactStatusBadge status={status} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
+                  onClick={() => handleReplyAction('hot')}
+                >
+                  <ThumbsUp className="mr-1 h-3 w-3" />
+                  Chaud
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  onClick={() => handleReplyAction('cold')}
+                >
+                  <ThumbsDown className="mr-1 h-3 w-3" />
+                  Froid
+                </Button>
+              </div>
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive">
                   <Trash2 className="h-4 w-4" />
@@ -260,6 +307,12 @@ export function ContactDetailSheet({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Industry */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Industrie</Label>
+              <IndustrySelector value={industry} onValueChange={setIndustry} placeholder="Sélectionnez..." className="h-8 text-sm" />
             </div>
 
             {/* Owner assignment */}

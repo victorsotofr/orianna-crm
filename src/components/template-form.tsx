@@ -21,6 +21,7 @@ import { Template } from "@/types/database"
 import { IndustrySelector } from "@/components/industry-selector"
 import { VariablePicker, AVAILABLE_VARIABLES } from "@/components/variable-picker"
 import { RichTextEditor } from "@/components/rich-text-editor"
+import type { Editor } from "@tiptap/react"
 
 const formSchema = z.object({
   name: z
@@ -66,7 +67,7 @@ function renderPreview(html: string): string {
 export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
   const [submitting, setSubmitting] = React.useState(false)
   const [editorTab, setEditorTab] = React.useState<string>("visual")
-  const editorRef = React.useRef<HTMLDivElement>(null)
+  const editorRef = React.useRef<Editor | null>(null)
   const codeRef = React.useRef<HTMLTextAreaElement>(null)
   const isEditing = !!template
 
@@ -101,12 +102,10 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
       })
     } else {
       // Insert into rich text editor
-      const el = editorRef.current
-      if (el) {
-        el.focus()
-        document.execCommand("insertHTML", false, variable)
-        // Trigger update
-        form.setValue("html_content", el.innerHTML, { shouldDirty: true })
+      const editor = editorRef.current
+      if (editor) {
+        editor.chain().focus().insertContent(variable).run()
+        form.setValue("html_content", editor.getHTML(), { shouldDirty: true })
       }
     }
   }
@@ -246,12 +245,12 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
 
                 <TabsContent value="visual" className="mt-0">
                   <RichTextEditor
-                    ref={editorRef}
                     value={field.value}
                     onChange={(html) => {
                       field.onChange(html)
                     }}
                     placeholder="Bonjour {{first_name}}, ..."
+                    onEditorReady={(editor) => { editorRef.current = editor }}
                   />
                 </TabsContent>
 

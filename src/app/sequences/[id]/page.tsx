@@ -8,14 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SequenceStepCard } from '@/components/sequence-step-card';
-import { EnrollmentTable } from '@/components/enrollment-table';
+import { SequenceTimeline } from '@/components/sequence-timeline';
 import { SiteHeader } from '@/components/site-header';
+import { SequenceStatsPanel } from '@/components/sequence-stats-panel';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Loader2, Save, Play, Pause, Users, Layers, CheckCircle } from 'lucide-react';
-import type { Sequence, SequenceStep, SequenceEnrollment, Template, Contact } from '@/types/database';
+import { ArrowLeft, Loader2, Save, Play, Pause, Users, Layers, CheckCircle } from 'lucide-react';
+import type { Sequence, SequenceStep, Template, Contact } from '@/types/database';
 
 interface SequenceDetail {
   sequence: Sequence;
@@ -31,20 +30,12 @@ export default function SequenceDetailPage() {
   const [data, setData] = useState<SequenceDetail | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [enrollments, setEnrollments] = useState<(SequenceEnrollment & { contacts?: Contact })[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // Editable fields
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-
-  // New step form
-  const [newStepType, setNewStepType] = useState<string>('email');
-  const [newStepTemplateId, setNewStepTemplateId] = useState<string>('');
-  const [newStepDelay, setNewStepDelay] = useState('0');
-  const [newStepInstructions, setNewStepInstructions] = useState('');
-  const [addingStep, setAddingStep] = useState(false);
 
   // Enroll form
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -78,27 +69,10 @@ export default function SequenceDetailPage() {
         const { contacts: cts } = await contactsRes.json();
         setContacts(cts || []);
       }
-
-      // Fetch enrollments
-      await fetchEnrollments();
     } catch (error) {
       console.error('Error loading sequence:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchEnrollments = async () => {
-    try {
-      // Use supabase client through an API - for now just refetch sequence detail which has stats
-      // We'll create a simple enrollments fetch from the sequence detail
-      const res = await fetch(`/api/sequences/${sequenceId}`);
-      if (res.ok) {
-        const d = await res.json();
-        setData(d);
-      }
-    } catch (error) {
-      console.error('Error fetching enrollments:', error);
     }
   };
 
@@ -117,7 +91,7 @@ export default function SequenceDetailPage() {
       } else {
         toast.error('Erreur lors de la mise à jour');
       }
-    } catch (error) {
+    } catch {
       toast.error('Erreur lors de la mise à jour');
     } finally {
       setSaving(false);
@@ -135,7 +109,7 @@ export default function SequenceDetailPage() {
       } else {
         toast.error(result.error || 'Erreur lors de l\'activation');
       }
-    } catch (error) {
+    } catch {
       toast.error('Erreur lors de l\'activation');
     }
   };
@@ -152,54 +126,72 @@ export default function SequenceDetailPage() {
         toast.success('Séquence mise en pause');
         fetchAll();
       }
-    } catch (error) {
+    } catch {
       toast.error('Erreur');
     }
   };
 
-  const handleAddStep = async () => {
-    setAddingStep(true);
-    try {
-      const response = await fetch(`/api/sequences/${sequenceId}/steps`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          step_type: newStepType,
-          template_id: newStepType === 'email' ? newStepTemplateId || null : null,
-          delay_days: parseInt(newStepDelay) || 0,
-          instructions: newStepInstructions || null,
-        }),
-      });
+  const handleAddStep = async (
+    stepData: { step_type: string; template_id: string | null; delay_days: number; instructions: string | null },
+    insertAfterOrder?: number
+  ) => {
+    const response = await fetch(`/api/sequences/${sequenceId}/steps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...stepData,
+        insert_after_order: insertAfterOrder,
+      }),
+    });
 
-      if (response.ok) {
-        toast.success('Étape ajoutée');
-        setNewStepType('email');
-        setNewStepTemplateId('');
-        setNewStepDelay('0');
-        setNewStepInstructions('');
-        fetchAll();
-      } else {
-        const result = await response.json();
-        toast.error(result.error || "Erreur lors de l'ajout");
-      }
-    } catch (error) {
-      toast.error("Erreur lors de l'ajout de l'étape");
-    } finally {
-      setAddingStep(false);
+    if (response.ok) {
+      toast.success('Étape ajoutée');
+      await fetchAll();
+    } else {
+      const result = await response.json();
+      toast.error(result.error || "Erreur lors de l'ajout");
     }
   };
 
   const handleDeleteStep = async (stepId: string) => {
     if (!confirm('Supprimer cette étape ?')) return;
 
-    try {
-      const response = await fetch(`/api/sequences/${sequenceId}/steps/${stepId}`, { method: 'DELETE' });
-      if (response.ok) {
-        toast.success('Étape supprimée');
-        fetchAll();
-      }
-    } catch (error) {
+    const response = await fetch(`/api/sequences/${sequenceId}/steps/${stepId}`, { method: 'DELETE' });
+    if (response.ok) {
+      toast.success('Étape supprimée');
+      await fetchAll();
+    } else {
       toast.error('Erreur lors de la suppression');
+    }
+  };
+
+  const handleMoveStep = async (stepId: string, direction: "up" | "down") => {
+    if (!data) return;
+    const currentSteps = data.steps;
+    const idx = currentSteps.findIndex(s => s.id === stepId);
+    if (idx === -1) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= currentSteps.length) return;
+
+    const stepA = currentSteps[idx];
+    const stepB = currentSteps[swapIdx];
+
+    try {
+      await Promise.all([
+        fetch(`/api/sequences/${sequenceId}/steps/${stepA.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step_order: stepB.step_order }),
+        }),
+        fetch(`/api/sequences/${sequenceId}/steps/${stepB.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step_order: stepA.step_order }),
+        }),
+      ]);
+      await fetchAll();
+    } catch {
+      toast.error("Erreur lors du déplacement");
     }
   };
 
@@ -226,29 +218,10 @@ export default function SequenceDetailPage() {
         const result = await response.json();
         toast.error(result.error || "Erreur lors de l'inscription");
       }
-    } catch (error) {
+    } catch {
       toast.error("Erreur lors de l'inscription");
     } finally {
       setEnrolling(false);
-    }
-  };
-
-  const handleEnrollmentAction = async (enrollmentId: string, action: string) => {
-    try {
-      const response = await fetch(`/api/enrollments/${enrollmentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-
-      if (response.ok) {
-        toast.success('Action effectuée');
-        fetchAll();
-      } else {
-        toast.error("Erreur lors de l'action");
-      }
-    } catch (error) {
-      toast.error("Erreur lors de l'action");
     }
   };
 
@@ -338,85 +311,18 @@ export default function SequenceDetailPage() {
             <TabsList>
               <TabsTrigger value="steps">Étapes</TabsTrigger>
               <TabsTrigger value="enroll">Inscrire des contacts</TabsTrigger>
+              <TabsTrigger value="stats">Statistiques</TabsTrigger>
               <TabsTrigger value="settings">Paramètres</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="steps" className="space-y-4">
-              {/* Existing steps */}
-              {steps.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center py-8">
-                    <p className="text-muted-foreground mb-4">Aucune étape. Ajoutez votre première étape ci-dessous.</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {steps.map((step) => (
-                    <SequenceStepCard key={step.id} step={step} onDelete={handleDeleteStep} />
-                  ))}
-                </div>
-              )}
-
-              {/* Add step form */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Ajouter une étape</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Type</Label>
-                      <Select value={newStepType} onValueChange={setNewStepType}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="email">Email</SelectItem>
-                          <SelectItem value="manual_task">Tâche manuelle</SelectItem>
-                          <SelectItem value="wait">Attente</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Délai (jours)</Label>
-                      <Input type="number" min="0" value={newStepDelay} onChange={(e) => setNewStepDelay(e.target.value)} />
-                    </div>
-                  </div>
-
-                  {newStepType === 'email' && (
-                    <div className="space-y-2">
-                      <Label>Template</Label>
-                      <Select value={newStepTemplateId} onValueChange={setNewStepTemplateId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner un template..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {templates.map((tpl) => (
-                            <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {newStepType === 'manual_task' && (
-                    <div className="space-y-2">
-                      <Label>Instructions</Label>
-                      <Textarea
-                        value={newStepInstructions}
-                        onChange={(e) => setNewStepInstructions(e.target.value)}
-                        placeholder="Instructions pour la tâche manuelle..."
-                        rows={2}
-                      />
-                    </div>
-                  )}
-
-                  <Button onClick={handleAddStep} disabled={addingStep}>
-                    {addingStep ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                    Ajouter l&apos;étape
-                  </Button>
-                </CardContent>
-              </Card>
+            <TabsContent value="steps">
+              <SequenceTimeline
+                steps={steps}
+                templates={templates}
+                onAddStep={handleAddStep}
+                onDeleteStep={handleDeleteStep}
+                onMoveStep={handleMoveStep}
+              />
             </TabsContent>
 
             <TabsContent value="enroll" className="space-y-4">
@@ -471,7 +377,6 @@ export default function SequenceDetailPage() {
                 </Card>
               )}
 
-              {/* Enrollment stats summary */}
               {stats.total > 0 && (
                 <Card>
                   <CardHeader>
@@ -486,6 +391,10 @@ export default function SequenceDetailPage() {
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            <TabsContent value="stats" className="space-y-4">
+              <SequenceStatsPanel sequenceId={sequenceId} />
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-4">

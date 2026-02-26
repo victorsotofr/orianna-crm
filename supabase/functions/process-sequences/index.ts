@@ -3,6 +3,26 @@
 // Sends emails for auto steps, flags manual steps for review
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createHmac } from 'https://deno.land/std@0.224.0/node/crypto.ts'
+
+const TRACKING_SECRET = Deno.env.get('TRACKING_SECRET') || 'orianna-tracking-secret'
+
+function generateTrackingHmac(statId: string): string {
+  const hmac = createHmac('sha256', TRACKING_SECRET)
+  hmac.update(statId)
+  return hmac.digest('hex').substring(0, 16)
+}
+
+function injectTrackingPixel(html: string, statId: string, appUrl: string): string {
+  const hmac = generateTrackingHmac(statId)
+  const pixelUrl = `${appUrl}/api/track/open?id=${statId}&h=${hmac}`
+  const pixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`
+  // Insert before closing body tag, or append
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${pixel}</body>`)
+  }
+  return html + pixel
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,9 +105,39 @@ Deno.serve(async (req) => {
             continue
           }
 
-          // We need to call the existing email send infrastructure
-          // For Edge Functions, we call the Next.js API route or handle inline
-          // Since we can't import Node.js nodemailer in Deno, we call the app's API
+          // A/B variant selection
+          let selectedTemplate = step.templates
+          let variant: 'A' | 'B' = 'A'
+
+          if (step.template_b_id && step.ab_split_pct != null) {
+            const rand = Math.random() * 100
+            if (rand >= step.ab_split_pct) {
+              variant = 'B'
+              // Fetch template B
+              const { data: templateB } = await supabase
+                .from('templates')
+                .select('*')
+                .eq('id', step.template_b_id)
+                .single()
+              if (templateB) selectedTemplate = templateB
+            }
+          }
+
+          // Insert email_stats record
+          const appUrl = Deno.env.get('APP_URL') || `https://${Deno.env.get('VERCEL_URL') || 'localhost:3000'}`
+          const { data: emailStat } = await supabase
+            .from('email_stats')
+            .insert({
+              enrollment_id: enrollment.id,
+              step_id: step.id,
+              contact_id: enrollment.contact_id,
+              template_id: selectedTemplate.id,
+              variant,
+            })
+            .select('id')
+            .single()
+
+          // Call send email function
           const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-sequence-email`, {
             method: 'POST',
             headers: {
@@ -97,15 +147,17 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               enrollment_id: enrollment.id,
               contact: enrollment.contacts,
-              template: step.templates,
+              template: selectedTemplate,
               user_settings: settings,
               sequence_id: enrollment.sequence_id,
               step_order: nextStepOrder,
+              variant,
+              // Inject tracking pixel into HTML content
+              html_override: emailStat?.id
+                ? injectTrackingPixel(selectedTemplate.html_content, emailStat.id, appUrl)
+                : undefined,
             }),
           }).catch(() => null)
-
-          // Whether email succeeds or not, advance the enrollment
-          // In production, add error handling per email
 
           // Calculate next action time
           const { data: nextStepAfter } = await supabase
@@ -138,8 +190,14 @@ Deno.serve(async (req) => {
           await supabase.from('contact_timeline').insert({
             contact_id: enrollment.contact_id,
             event_type: 'email_sent',
-            title: `Email envoyé: ${step.templates.name}`,
-            metadata: { sequence_id: enrollment.sequence_id, step_order: nextStepOrder, template_id: step.template_id },
+            title: `Email envoyé: ${selectedTemplate.name}${variant === 'B' ? ' (B)' : ''}`,
+            metadata: {
+              sequence_id: enrollment.sequence_id,
+              step_order: nextStepOrder,
+              template_id: selectedTemplate.id,
+              variant,
+              email_stat_id: emailStat?.id,
+            },
             created_by: enrollment.sequences?.created_by,
           })
 

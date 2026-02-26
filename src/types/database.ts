@@ -109,6 +109,7 @@ export interface Sequence {
   name: string;
   description: string | null;
   status: 'draft' | 'active' | 'paused' | 'archived';
+  workflow_json: Record<string, unknown> | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -120,6 +121,8 @@ export interface SequenceStep {
   step_order: number;
   step_type: 'email' | 'manual_task' | 'wait';
   template_id: string | null;
+  template_b_id: string | null;
+  ab_split_pct: number;
   delay_days: number;
   instructions: string | null;
   created_at: string;
@@ -135,6 +138,22 @@ export interface SequenceEnrollment {
   enrolled_by: string | null;
   enrolled_at: string;
   completed_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface EmailStat {
+  id: string;
+  enrollment_id: string | null;
+  step_id: string | null;
+  contact_id: string;
+  template_id: string | null;
+  variant: 'A' | 'B';
+  sent_at: string;
+  opened_at: string | null;
+  replied_at: string | null;
+  bounced_at: string | null;
+  message_id: string | null;
+  metadata: Record<string, unknown>;
 }
 
 export interface Comment {

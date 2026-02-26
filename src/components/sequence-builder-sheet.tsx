@@ -6,9 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SequenceStepCard } from "@/components/sequence-step-card"
+import { SequenceTimeline } from "@/components/sequence-timeline"
 import {
   Sheet,
   SheetContent,
@@ -17,7 +16,8 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { toast } from "sonner"
-import { Plus, Loader2, Save, Play, Pause, Users, Layers, CheckCircle, Trash2 } from "lucide-react"
+import { Loader2, Save, Play, Pause, Users, Layers, CheckCircle, Trash2, ExternalLink } from "lucide-react"
+import { useRouter } from "next/navigation"
 import type { Sequence, SequenceStep, Template, Contact } from "@/types/database"
 
 interface SequenceDetail {
@@ -47,6 +47,7 @@ export function SequenceBuilderSheet({
   onOpenChange,
   onSequenceUpdated,
 }: SequenceBuilderSheetProps) {
+  const router = useRouter()
   const [data, setData] = useState<SequenceDetail | null>(null)
   const [templates, setTemplates] = useState<Template[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -55,13 +56,6 @@ export function SequenceBuilderSheet({
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-
-  // New step form
-  const [newStepType, setNewStepType] = useState<string>("email")
-  const [newStepTemplateId, setNewStepTemplateId] = useState<string>("")
-  const [newStepDelay, setNewStepDelay] = useState("0")
-  const [newStepInstructions, setNewStepInstructions] = useState("")
-  const [addingStep, setAddingStep] = useState(false)
 
   // Enroll
   const [selectedContacts, setSelectedContacts] = useState<string[]>([])
@@ -162,47 +156,35 @@ export function SequenceBuilderSheet({
     }
   }
 
-  const handleAddStep = async () => {
+  const handleAddStep = async (
+    stepData: { step_type: string; template_id: string | null; delay_days: number; instructions: string | null },
+    insertAfterOrder?: number
+  ) => {
     if (!sequenceId) return
-    setAddingStep(true)
-    try {
-      const response = await fetch(`/api/sequences/${sequenceId}/steps`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          step_type: newStepType,
-          template_id: newStepType === "email" ? newStepTemplateId || null : null,
-          delay_days: parseInt(newStepDelay) || 0,
-          instructions: newStepInstructions || null,
-        }),
-      })
-      if (response.ok) {
-        toast.success("Étape ajoutée")
-        setNewStepType("email")
-        setNewStepTemplateId("")
-        setNewStepDelay("0")
-        setNewStepInstructions("")
-        fetchAll()
-      } else {
-        const result = await response.json()
-        toast.error(result.error || "Erreur lors de l'ajout")
-      }
-    } catch {
-      toast.error("Erreur lors de l'ajout de l'étape")
-    } finally {
-      setAddingStep(false)
+    const response = await fetch(`/api/sequences/${sequenceId}/steps`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...stepData,
+        insert_after_order: insertAfterOrder,
+      }),
+    })
+    if (response.ok) {
+      toast.success("Étape ajoutée")
+      await fetchAll()
+    } else {
+      const result = await response.json()
+      toast.error(result.error || "Erreur lors de l'ajout")
     }
   }
 
   const handleDeleteStep = async (stepId: string) => {
     if (!sequenceId || !confirm("Supprimer cette étape ?")) return
-    try {
-      const response = await fetch(`/api/sequences/${sequenceId}/steps/${stepId}`, { method: "DELETE" })
-      if (response.ok) {
-        toast.success("Étape supprimée")
-        fetchAll()
-      }
-    } catch {
+    const response = await fetch(`/api/sequences/${sequenceId}/steps/${stepId}`, { method: "DELETE" })
+    if (response.ok) {
+      toast.success("Étape supprimée")
+      await fetchAll()
+    } else {
       toast.error("Erreur lors de la suppression")
     }
   }
@@ -231,7 +213,7 @@ export function SequenceBuilderSheet({
           body: JSON.stringify({ step_order: stepA.step_order }),
         }),
       ])
-      fetchAll()
+      await fetchAll()
     } catch {
       toast.error("Erreur lors du déplacement")
     }
@@ -312,6 +294,19 @@ export function SequenceBuilderSheet({
           </div>
         ) : data ? (
           <div className="mt-4 space-y-4">
+            {/* Open full page */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onOpenChange(false)
+                router.push(`/sequences/${sequenceId}`)
+              }}
+            >
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+              Ouvrir en pleine page
+            </Button>
+
             {/* Actions */}
             <div className="flex items-center gap-2">
               {isDraft && (
@@ -351,84 +346,14 @@ export function SequenceBuilderSheet({
                 <TabsTrigger value="settings" className="text-xs">Paramètres</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="steps" className="space-y-3">
-                {steps.length === 0 ? (
-                  <div className="border rounded-lg py-6 text-center text-sm text-muted-foreground">
-                    Aucune étape. Ajoutez-en une ci-dessous.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {steps.map((step, idx) => (
-                      <SequenceStepCard
-                        key={step.id}
-                        step={step}
-                        onDelete={handleDeleteStep}
-                        onMoveUp={(id) => handleMoveStep(id, "up")}
-                        onMoveDown={(id) => handleMoveStep(id, "down")}
-                        isFirst={idx === 0}
-                        isLast={idx === steps.length - 1}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Add step */}
-                <div className="border rounded-lg p-3 space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Ajouter une étape</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Type</Label>
-                      <Select value={newStepType} onValueChange={setNewStepType}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="email">Email</SelectItem>
-                          <SelectItem value="manual_task">Tâche manuelle</SelectItem>
-                          <SelectItem value="wait">Attente</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Délai (jours)</Label>
-                      <Input type="number" min="0" value={newStepDelay} onChange={(e) => setNewStepDelay(e.target.value)} className="h-8 text-xs" />
-                    </div>
-                  </div>
-
-                  {newStepType === "email" && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">Template</Label>
-                      <Select value={newStepTemplateId} onValueChange={setNewStepTemplateId}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Sélectionner..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {templates.map((tpl) => (
-                            <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {newStepType === "manual_task" && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">Instructions</Label>
-                      <Textarea
-                        value={newStepInstructions}
-                        onChange={(e) => setNewStepInstructions(e.target.value)}
-                        placeholder="Instructions..."
-                        rows={2}
-                        className="text-xs"
-                      />
-                    </div>
-                  )}
-
-                  <Button size="sm" onClick={handleAddStep} disabled={addingStep}>
-                    {addingStep ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
-                    Ajouter
-                  </Button>
-                </div>
+              <TabsContent value="steps">
+                <SequenceTimeline
+                  steps={steps}
+                  templates={templates}
+                  onAddStep={handleAddStep}
+                  onDeleteStep={handleDeleteStep}
+                  onMoveStep={handleMoveStep}
+                />
               </TabsContent>
 
               <TabsContent value="enroll" className="space-y-3">

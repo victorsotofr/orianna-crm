@@ -15,23 +15,44 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const body = await request.json();
-    const { step_type, template_id, delay_days, instructions } = body;
+    const { step_type, template_id, delay_days, instructions, insert_after_order } = body;
 
-    // Get current max step_order
-    const { data: existingSteps } = await supabase
-      .from('sequence_steps')
-      .select('step_order')
-      .eq('sequence_id', sequenceId)
-      .order('step_order', { ascending: false })
-      .limit(1);
+    let newOrder: number;
 
-    const nextOrder = (existingSteps?.[0]?.step_order || 0) + 1;
+    if (insert_after_order != null) {
+      // Shift all steps after the insertion point
+      const { data: stepsToShift } = await supabase
+        .from('sequence_steps')
+        .select('id, step_order')
+        .eq('sequence_id', sequenceId)
+        .gt('step_order', insert_after_order)
+        .order('step_order', { ascending: false });
+
+      for (const s of stepsToShift || []) {
+        await supabase
+          .from('sequence_steps')
+          .update({ step_order: s.step_order + 1 })
+          .eq('id', s.id);
+      }
+
+      newOrder = insert_after_order + 1;
+    } else {
+      // Append at end
+      const { data: existingSteps } = await supabase
+        .from('sequence_steps')
+        .select('step_order')
+        .eq('sequence_id', sequenceId)
+        .order('step_order', { ascending: false })
+        .limit(1);
+
+      newOrder = (existingSteps?.[0]?.step_order || 0) + 1;
+    }
 
     const { data: step, error } = await supabase
       .from('sequence_steps')
       .insert({
         sequence_id: sequenceId,
-        step_order: nextOrder,
+        step_order: newOrder,
         step_type: step_type || 'email',
         template_id: template_id || null,
         delay_days: delay_days || 0,

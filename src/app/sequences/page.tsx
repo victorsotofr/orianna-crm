@@ -117,7 +117,7 @@ export default function SequencesPage() {
   };
 
   const activeCount = sequences.filter(s => s.status === 'active').length;
-  const totalEnrollments = sequences.reduce((sum, s) => sum + s.enrollment_count, 0);
+  const totalEnrollments = sequences.reduce((sum, s) => sum + (s.enrollment_count || 0), 0);
 
   return (
     <>
@@ -197,7 +197,7 @@ export default function SequencesPage() {
                         <TableCell className="py-2">
                           <span className="flex items-center gap-1 text-sm font-mono">
                             <Users className="h-3 w-3 text-muted-foreground" />
-                            {seq.enrollment_count}
+                            {seq.enrollment_count || 0}
                           </span>
                         </TableCell>
                         <TableCell className="py-2 text-xs text-muted-foreground">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,13 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { ContactDetailTimeline } from '@/components/contact-detail-timeline';
+import { IndustrySelector } from '@/components/industry-selector';
+import { StickySaveBar } from '@/components/sticky-save-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Loader2, Trash2, Mail, Building2, Phone, User, MessageSquare } from 'lucide-react';
-import type { Contact, ContactTimeline, Comment } from '@/types/database';
+import { ArrowLeft, Loader2, Trash2, Mail, Building2, Phone, MessageSquare, UserCheck, ThumbsUp, ThumbsDown } from 'lucide-react';
+import type { Contact, ContactTimeline, Comment, TeamMember } from '@/types/database';
 
 export default function ContactDetailPage() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function ContactDetailPage() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [timeline, setTimeline] = useState<ContactTimeline[]>([]);
   const [comments, setComments] = useState<(Comment & { team_members?: { display_name: string } })[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newComment, setNewComment] = useState('');
@@ -38,6 +40,11 @@ export default function ContactDetailPage() {
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState('new');
+  const [industry, setIndustry] = useState('');
+  const [assignedTo, setAssignedTo] = useState<string>('unassigned');
+
+  // Track original values for dirty detection
+  const [originalValues, setOriginalValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchAll();
@@ -45,10 +52,11 @@ export default function ContactDetailPage() {
 
   const fetchAll = async () => {
     try {
-      const [contactRes, timelineRes, commentsRes] = await Promise.all([
+      const [contactRes, timelineRes, commentsRes, teamRes] = await Promise.all([
         fetch(`/api/contacts/${contactId}`),
         fetch(`/api/timeline?contact_id=${contactId}`),
         fetch(`/api/comments?contact_id=${contactId}`),
+        fetch('/api/contacts?limit=1&include_team=true'),
       ]);
 
       if (contactRes.ok) {
@@ -62,6 +70,20 @@ export default function ContactDetailPage() {
         setPhone(c.phone || '');
         setNotes(c.notes || '');
         setStatus(c.status || 'new');
+        setIndustry(c.industry || '');
+        setAssignedTo(c.assigned_to || 'unassigned');
+        setOriginalValues({
+          firstName: c.first_name || '',
+          lastName: c.last_name || '',
+          email: c.email || '',
+          companyName: c.company_name || '',
+          jobTitle: c.job_title || '',
+          phone: c.phone || '',
+          notes: c.notes || '',
+          status: c.status || 'new',
+          industry: c.industry || '',
+          assignedTo: c.assigned_to || 'unassigned',
+        });
       }
 
       if (timelineRes.ok) {
@@ -73,6 +95,11 @@ export default function ContactDetailPage() {
         const { comments: cmts } = await commentsRes.json();
         setComments(cmts);
       }
+
+      if (teamRes.ok) {
+        const data = await teamRes.json();
+        if (data.teamMembers) setTeamMembers(data.teamMembers);
+      }
     } catch (error) {
       console.error('Error fetching contact:', error);
       toast.error('Erreur lors du chargement du contact');
@@ -80,6 +107,32 @@ export default function ContactDetailPage() {
       setLoading(false);
     }
   };
+
+  const hasChanges = contact !== null && (
+    firstName !== originalValues.firstName ||
+    lastName !== originalValues.lastName ||
+    email !== originalValues.email ||
+    companyName !== originalValues.companyName ||
+    jobTitle !== originalValues.jobTitle ||
+    phone !== originalValues.phone ||
+    notes !== originalValues.notes ||
+    status !== originalValues.status ||
+    industry !== originalValues.industry ||
+    assignedTo !== originalValues.assignedTo
+  );
+
+  const handleDiscard = useCallback(() => {
+    setFirstName(originalValues.firstName || '');
+    setLastName(originalValues.lastName || '');
+    setEmail(originalValues.email || '');
+    setCompanyName(originalValues.companyName || '');
+    setJobTitle(originalValues.jobTitle || '');
+    setPhone(originalValues.phone || '');
+    setNotes(originalValues.notes || '');
+    setStatus(originalValues.status || 'new');
+    setIndustry(originalValues.industry || '');
+    setAssignedTo(originalValues.assignedTo || 'unassigned');
+  }, [originalValues]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -96,6 +149,8 @@ export default function ContactDetailPage() {
           phone,
           notes,
           status,
+          industry: industry || null,
+          assigned_to: assignedTo === 'unassigned' ? null : assignedTo,
         }),
       });
 
@@ -129,6 +184,27 @@ export default function ContactDetailPage() {
     }
   };
 
+  const handleReplyAction = async (type: 'hot' | 'cold') => {
+    const label = type === 'hot' ? 'qualifié' : 'non qualifié';
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/reply-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+
+      if (response.ok) {
+        toast.success(`Contact marqué comme ${label}`);
+        fetchAll();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Erreur');
+      }
+    } catch (error) {
+      toast.error('Erreur lors de l\'action');
+    }
+  };
+
   const handlePostComment = async () => {
     if (!newComment.trim()) return;
     setPostingComment(true);
@@ -142,7 +218,6 @@ export default function ContactDetailPage() {
       if (response.ok) {
         setNewComment('');
         toast.success('Commentaire ajouté');
-        // Refresh comments and timeline
         const [commentsRes, timelineRes] = await Promise.all([
           fetch(`/api/comments?contact_id=${contactId}`),
           fetch(`/api/timeline?contact_id=${contactId}`),
@@ -183,7 +258,7 @@ export default function ContactDetailPage() {
     <>
       <SiteHeader title={`${contact.first_name || ''} ${contact.last_name || ''}`} />
       <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6 pb-16">
           {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => router.push('/contacts')}>
@@ -194,10 +269,6 @@ export default function ContactDetailPage() {
               <Button variant="destructive" size="sm" onClick={handleDelete}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Supprimer
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Enregistrer
               </Button>
             </div>
           </div>
@@ -210,6 +281,24 @@ export default function ContactDetailPage() {
                   <CardTitle>Informations</CardTitle>
                   <div className="flex items-center gap-2 pt-2">
                     <ContactStatusBadge status={status} />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
+                      onClick={() => handleReplyAction('hot')}
+                    >
+                      <ThumbsUp className="mr-1.5 h-3.5 w-3.5" />
+                      Chaud
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                      onClick={() => handleReplyAction('cold')}
+                    >
+                      <ThumbsDown className="mr-1.5 h-3.5 w-3.5" />
+                      Froid
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -264,6 +353,31 @@ export default function ContactDetailPage() {
                           <SelectItem value="qualified">Qualifié</SelectItem>
                           <SelectItem value="unqualified">Non qualifié</SelectItem>
                           <SelectItem value="do_not_contact">Ne pas contacter</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Industrie</Label>
+                      <IndustrySelector value={industry} onValueChange={setIndustry} placeholder="Sélectionnez..." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1">
+                        <UserCheck className="h-4 w-4 text-muted-foreground" />
+                        Propriétaire
+                      </Label>
+                      <Select value={assignedTo} onValueChange={setAssignedTo}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Non assigné" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Non assigné</SelectItem>
+                          {teamMembers.map(member => (
+                            <SelectItem key={member.user_id} value={member.user_id}>
+                              {member.display_name || member.email}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -327,6 +441,13 @@ export default function ContactDetailPage() {
           </div>
         </div>
       </div>
+
+      <StickySaveBar
+        onSave={handleSave}
+        saving={saving}
+        hasChanges={hasChanges}
+        onDiscard={handleDiscard}
+      />
     </>
   );
 }

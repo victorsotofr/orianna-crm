@@ -94,6 +94,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if ('name' in body) updates.name = body.name;
     if ('description' in body) updates.description = body.description;
     if ('status' in body) updates.status = body.status;
+    if ('workflow_json' in body) updates.workflow_json = body.workflow_json;
     updates.updated_at = new Date().toISOString();
 
     const { data: sequence, error } = await supabase

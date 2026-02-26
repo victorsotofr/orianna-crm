@@ -21,7 +21,6 @@ export async function GET(request: Request) {
     let query = client
       .from('templates')
       .select('*')
-      .eq('is_active', true)
       .order('industry', { ascending: true });
 
     if (industry && industry !== 'all') {
@@ -85,7 +84,6 @@ export async function POST(request: Request) {
         subject,
         industry,
         html_content,
-        is_active: true,
       })
       .select()
       .single();

@@ -11,7 +11,8 @@ import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { ContactDetailSheet } from '@/components/contact-detail-sheet';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Mail, Building2 } from 'lucide-react';
+import { Plus, Upload, Loader2, Mail, Building2, Trash2, X } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { Contact, TeamMember } from '@/types/database';
 
 const OWNER_COLORS: Record<string, string> = {};
@@ -39,6 +40,10 @@ export default function ContactsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [ownerFilter, setOwnerFilter] = useState('all');
   const [search, setSearch] = useState('');
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Sheet state
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
@@ -71,6 +76,43 @@ export default function ContactsPage() {
   const openContact = (id: string) => {
     setSelectedContactId(id);
     setSheetOpen(true);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(c => c.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Supprimer ${selectedIds.size} contact(s) ? Cette action est irréversible.`)) return;
+    setBulkDeleting(true);
+    try {
+      const response = await fetch('/api/contacts/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_ids: Array.from(selectedIds) }),
+      });
+      if (response.ok) {
+        setSelectedIds(new Set());
+        fetchContacts();
+      }
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const filtered = contacts.filter((c) => {
@@ -179,6 +221,12 @@ export default function ContactsPage() {
               <Table>
                 <TableHeader className="bg-muted/50 sticky top-0 z-10">
                   <TableRow>
+                    <TableHead className="w-10 text-xs">
+                      <Checkbox
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead className="text-xs">Contact</TableHead>
                     <TableHead className="text-xs">Entreprise</TableHead>
                     <TableHead className="text-xs">Statut</TableHead>
@@ -194,6 +242,12 @@ export default function ContactsPage() {
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => openContact(contact.id)}
                       >
+                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(contact.id)}
+                            onCheckedChange={() => toggleSelect(contact.id)}
+                          />
+                        </TableCell>
                         <TableCell className="py-2">
                           <div>
                             <div className="text-sm font-medium">
@@ -232,13 +286,33 @@ export default function ContactsPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-32 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
                         Aucun contact trouvé.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+            </div>
+          )}
+
+          {/* Bulk action bar */}
+          {selectedIds.size > 0 && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-lg px-4 py-2.5">
+              <span className="text-sm font-medium">{selectedIds.size} sélectionné(s)</span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                Supprimer
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                <X className="mr-1.5 h-3.5 w-3.5" />
+                Désélectionner
+              </Button>
             </div>
           )}
         </div>

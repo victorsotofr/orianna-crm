@@ -58,6 +58,8 @@ export default function AuthLayout({
 
   return (
     <SidebarProvider
+      open={true}
+      onOpenChange={() => {}}
       style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
     >
       <AppSidebar

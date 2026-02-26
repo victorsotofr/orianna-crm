@@ -3,18 +3,24 @@
 // Sends emails for auto steps, flags manual steps for review
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { createHmac } from 'https://deno.land/std@0.224.0/node/crypto.ts'
 
 const TRACKING_SECRET = Deno.env.get('TRACKING_SECRET') || 'orianna-tracking-secret'
 
-function generateTrackingHmac(statId: string): string {
-  const hmac = createHmac('sha256', TRACKING_SECRET)
-  hmac.update(statId)
-  return hmac.digest('hex').substring(0, 16)
+async function generateTrackingHmac(statId: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(TRACKING_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(statId))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16)
 }
 
-function injectTrackingPixel(html: string, statId: string, appUrl: string): string {
-  const hmac = generateTrackingHmac(statId)
+async function injectTrackingPixel(html: string, statId: string, appUrl: string): Promise<string> {
+  const hmac = await generateTrackingHmac(statId)
   const pixelUrl = `${appUrl}/api/track/open?id=${statId}&h=${hmac}`
   const pixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none" alt="" />`
   // Insert before closing body tag, or append
@@ -137,11 +143,11 @@ Deno.serve(async (req) => {
             .select('id')
             .single()
 
-          // Call send email function
-          const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-sequence-email`, {
+          // Call send email function via Next.js API route
+          const sendRes = await fetch(`${appUrl}/api/sequences/send-email`, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${serviceRoleKey}`,
+              'x-service-key': serviceRoleKey,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -154,7 +160,7 @@ Deno.serve(async (req) => {
               variant,
               // Inject tracking pixel into HTML content
               html_override: emailStat?.id
-                ? injectTrackingPixel(selectedTemplate.html_content, emailStat.id, appUrl)
+                ? await injectTrackingPixel(selectedTemplate.html_content, emailStat.id, appUrl)
                 : undefined,
             }),
           }).catch(() => null)

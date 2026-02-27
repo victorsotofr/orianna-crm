@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 
@@ -15,6 +15,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [showImapPassword, setShowImapPassword] = useState(false);
+  const [smtpPasswordSaved, setSmtpPasswordSaved] = useState(false);
+  const [imapPasswordSaved, setImapPasswordSaved] = useState(false);
 
   const [smtpHost, setSmtpHost] = useState('webmail.polytechnique.fr');
   const [smtpPort, setSmtpPort] = useState('587');
@@ -75,13 +80,15 @@ export default function SettingsPage() {
             smtpHost: settings.smtp_host || 'webmail.polytechnique.fr',
             smtpPort: String(settings.smtp_port || '587'),
             smtpUser: settings.smtp_user || '',
-            smtpPassword: settings.has_password ? '••••••••' : '',
+            smtpPassword: '',
             imapHost: settings.imap_host || 'webmail.polytechnique.fr',
             imapPort: String(settings.imap_port || '993'),
             imapUser: settings.imap_user || '',
-            imapPassword: settings.has_imap_password ? '••••••••' : '',
+            imapPassword: '',
             dailySendLimit: String(settings.daily_send_limit || '50'),
           };
+          setSmtpPasswordSaved(!!settings.has_password);
+          setImapPasswordSaved(!!settings.has_imap_password);
           setSmtpHost(vals.smtpHost);
           setSmtpPort(vals.smtpPort);
           setSmtpUser(vals.smtpUser);
@@ -108,8 +115,7 @@ export default function SettingsPage() {
       toast.error('Veuillez remplir tous les champs SMTP requis');
       return;
     }
-    const isPlaceholder = smtpPassword === '••••••••';
-    if (!smtpPassword && !isPlaceholder) {
+    if (!smtpPassword && !smtpPasswordSaved) {
       toast.error('Veuillez entrer un mot de passe SMTP');
       return;
     }
@@ -121,8 +127,8 @@ export default function SettingsPage() {
         imapHost, imapPort, imapUser,
         dailySendLimit,
       };
-      if (!isPlaceholder) body.smtpPassword = smtpPassword;
-      if (imapPassword && imapPassword !== '••••••••') body.imapPassword = imapPassword;
+      if (smtpPassword) body.smtpPassword = smtpPassword;
+      if (imapPassword) body.imapPassword = imapPassword;
 
       const response = await fetch('/api/settings/save', {
         method: 'POST',
@@ -161,8 +167,7 @@ export default function SettingsPage() {
       toast.error('Remplissez les champs SMTP');
       return;
     }
-    const isPlaceholder = smtpPassword === '••••••••';
-    if (!smtpPassword && !isPlaceholder) {
+    if (!smtpPassword && !smtpPasswordSaved) {
       toast.error('Mot de passe requis');
       return;
     }
@@ -171,9 +176,9 @@ export default function SettingsPage() {
     try {
       const body: Record<string, string | boolean> = {
         smtpHost, smtpPort, smtpUser,
-        useSavedPassword: isPlaceholder,
+        useSavedPassword: !smtpPassword && smtpPasswordSaved,
       };
-      if (!isPlaceholder) body.smtpPassword = smtpPassword;
+      if (smtpPassword) body.smtpPassword = smtpPassword;
 
       const response = await fetch('/api/settings/test-smtp', {
         method: 'POST',
@@ -237,9 +242,24 @@ export default function SettingsPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Mot de passe</Label>
-                <Input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} className="h-8 text-sm" />
+                <div className="relative">
+                  <Input
+                    type={showSmtpPassword ? 'text' : 'password'}
+                    value={smtpPassword}
+                    onChange={(e) => setSmtpPassword(e.target.value)}
+                    placeholder={smtpPasswordSaved ? 'Mot de passe sauvegardé' : ''}
+                    className="h-8 text-sm pr-8"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showSmtpPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
                 <p className="text-[11px] text-muted-foreground">
-                  {smtpPassword === '••••••••' ? 'Mot de passe sauvegardé' : 'Sera chiffré avant stockage'}
+                  {smtpPasswordSaved && !smtpPassword ? 'Laisser vide pour garder le mot de passe actuel' : 'Sera chiffré avant stockage'}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing}>
@@ -272,9 +292,24 @@ export default function SettingsPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Mot de passe</Label>
-                <Input type="password" value={imapPassword} onChange={(e) => setImapPassword(e.target.value)} className="h-8 text-sm" />
+                <div className="relative">
+                  <Input
+                    type={showImapPassword ? 'text' : 'password'}
+                    value={imapPassword}
+                    onChange={(e) => setImapPassword(e.target.value)}
+                    placeholder={imapPasswordSaved ? 'Mot de passe sauvegardé' : ''}
+                    className="h-8 text-sm pr-8"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowImapPassword(!showImapPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showImapPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
                 <p className="text-[11px] text-muted-foreground">
-                  {imapPassword === '••••••••' ? 'Mot de passe sauvegardé' : 'Sera chiffré avant stockage'}
+                  {imapPasswordSaved && !imapPassword ? 'Laisser vide pour garder le mot de passe actuel' : 'Sera chiffré avant stockage'}
                 </p>
               </div>
             </CardContent>

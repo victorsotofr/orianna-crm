@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ sequence });
   } catch (error: any) {
-    console.error('Sequence activate error:', error);
+    console.error('Sequence activate error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to activate sequence' }, { status: 500 });
   }
 }

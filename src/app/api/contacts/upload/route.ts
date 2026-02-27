@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       message: `${insertedContacts?.length || 0} contacts importés`,
     });
   } catch (error: any) {
-    console.error('Contact upload error:', error);
+    console.error('Contact upload error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to upload contacts' },
       { status: 500 }

@@ -155,8 +155,8 @@ export async function POST(request: Request) {
 
         sentCount++;
       } catch (error: any) {
-        console.error(`Failed to send email to ${contact.email}:`, error);
-        errors.push(`${contact.email}: ${error.message}`);
+        console.error('Campaign email send error:', error instanceof Error ? error.message : error);
+        errors.push(error.message || 'Send failed');
       }
     }
 
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error: any) {
-    console.error('Campaign send error:', error);
+    console.error('Campaign send error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

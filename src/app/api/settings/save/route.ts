@@ -8,14 +8,12 @@ export async function POST(request: Request) {
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
-      console.error('🔴 Failed to create Supabase client:', clientError);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.error('🔴 Auth error:', authError);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -84,7 +82,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, message: 'Settings saved successfully' });
   } catch (error: any) {
-    console.error('Settings save error:', error);
+    console.error('Settings save error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to save settings' },
       { status: 500 }
@@ -133,7 +131,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ settings: null });
   } catch (error: any) {
-    console.error('Settings fetch error:', error);
+    console.error('Settings fetch error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch settings' },
       { status: 500 }

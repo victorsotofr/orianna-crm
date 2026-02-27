@@ -9,18 +9,14 @@ export async function POST(request: Request) {
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
-      console.error('🔴 Failed to create Supabase client:', clientError);
       return NextResponse.json({ error: 'Unauthorized - Please log in again' }, { status: 401 });
     }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.error('🔴 Auth error:', authError);
       return NextResponse.json({ error: 'Unauthorized - Invalid session' }, { status: 401 });
     }
-
-    console.log('✅ User authenticated:', user.email);
 
     const body = await request.json();
     const { smtpHost, smtpPort, smtpUser, smtpPassword } = body;
@@ -33,18 +29,9 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('🔧 SMTP Config:', {
-      host: smtpHost,
-      port: smtpPort,
-      user: smtpUser,
-      passwordLength: smtpPassword.length,
-    });
-
     const encryptedPassword = encrypt(smtpPassword);
-    console.log('🔑 Password encrypted successfully');
 
     // Test SMTP connection
-    console.log('📧 Testing SMTP connection...');
     const testResult = await testSmtpConnection({
       host: smtpHost,
       port: parseInt(smtpPort),
@@ -52,20 +39,14 @@ export async function POST(request: Request) {
       passwordEncrypted: encryptedPassword,
     });
 
-    console.log('🔍 Test result:', testResult);
-
     if (!testResult.success) {
-      console.error('❌ SMTP connection failed:', testResult.error);
       return NextResponse.json(
         { error: `Connection failed: ${testResult.error}` },
         { status: 400 }
       );
     }
 
-    console.log('✅ SMTP connection successful, sending test email...');
-
     // Send a simple test email to the SMTP user (campaign email address)
-    console.log('📧 Sending simple test email to:', smtpUser);
     const emailResult = await sendEmail(
       {
         host: smtpHost,
@@ -82,21 +63,18 @@ export async function POST(request: Request) {
     );
 
     if (!emailResult.success) {
-      console.error('❌ Email send failed:', emailResult.error);
       return NextResponse.json(
         { error: `Test email failed: ${emailResult.error}` },
         { status: 400 }
       );
     }
 
-    console.log('✅ Test email sent successfully!');
-
     return NextResponse.json({
       success: true,
       message: `Configuration valide! Un email de test a été envoyé à ${smtpUser}`,
     });
   } catch (error: any) {
-    console.error('❌ SMTP test error:', error.message, error.code);
+    console.error('SMTP test error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to test SMTP connection' },
       { status: 500 }

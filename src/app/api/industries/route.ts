@@ -25,7 +25,6 @@ export async function GET(request: Request) {
       .order('display_name', { ascending: true });
 
     if (error) {
-      console.error('Industries fetch error:', error);
       throw error;
     }
 
@@ -39,7 +38,7 @@ export async function GET(request: Request) {
       ]
     });
   } catch (error: any) {
-    console.error('Industries API error:', error);
+    console.error('Industries API error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch industries' },
       { status: 500 }
@@ -90,8 +89,6 @@ export async function POST(request: Request) {
       .replace(/\s+/g, '_') // Replace spaces with underscores
       .substring(0, 100); // Limit length
 
-    console.log('🏭 Creating custom industry:', { name, displayName, user_id: user.id });
-
     // Check if industry already exists (case-insensitive)
     const { data: existing } = await supabase
       .from('custom_industries')
@@ -100,7 +97,6 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (existing) {
-      console.log('⚠️ Industry already exists:', existing);
       return NextResponse.json({ 
         industry: existing,
         message: 'Cette industrie existe déjà',
@@ -121,7 +117,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error('❌ Industry creation error:', error);
+      console.error('Industry creation error:', error instanceof Error ? error.message : error);
       
       // Handle unique constraint violation
       if (error.code === '23505') {
@@ -134,14 +130,12 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    console.log('✅ Custom industry created:', industry);
-
     return NextResponse.json({ 
       industry,
       message: 'Industrie créée avec succès'
     }, { status: 201 });
   } catch (error: any) {
-    console.error('❌ Create industry error:', error);
+    console.error('Create industry error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to create industry' },
       { status: 500 }

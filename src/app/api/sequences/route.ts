@@ -61,7 +61,7 @@ export async function GET() {
 
     return NextResponse.json({ sequences: enriched });
   } catch (error: any) {
-    console.error('Sequences list error:', error);
+    console.error('Sequences list error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch sequences' }, { status: 500 });
   }
 }
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ sequence });
   } catch (error: any) {
-    console.error('Sequence create error:', error);
+    console.error('Sequence create error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to create sequence' }, { status: 500 });
   }
 }

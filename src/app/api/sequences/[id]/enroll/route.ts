@@ -91,7 +91,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ enrolled, skipped });
   } catch (error: any) {
-    console.error('Enroll error:', error);
+    console.error('Enroll error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to enroll contacts' }, { status: 500 });
   }
 }

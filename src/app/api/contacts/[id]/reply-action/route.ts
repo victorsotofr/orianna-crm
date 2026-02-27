@@ -44,7 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .eq('status', 'active');
 
     if (enrollError) {
-      console.error('Error stopping enrollments:', enrollError);
+      console.error('Error stopping enrollments:', enrollError instanceof Error ? enrollError.message : enrollError);
     }
 
     // Insert timeline entry
@@ -61,7 +61,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ success: true, status: newStatus });
   } catch (error: any) {
-    console.error('Reply action error:', error);
+    console.error('Reply action error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to process reply action' }, { status: 500 });
   }
 }

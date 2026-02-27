@@ -47,7 +47,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       assignedName,
     });
   } catch (error: any) {
-    console.error('Contact detail error:', error);
+    console.error('Contact detail error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch contact' }, { status: 500 });
   }
 }
@@ -99,7 +99,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ contact });
   } catch (error: any) {
-    console.error('Contact update error:', error);
+    console.error('Contact update error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to update contact' }, { status: 500 });
   }
 }
@@ -126,7 +126,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Contact delete error:', error);
+    console.error('Contact delete error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to delete contact' }, { status: 500 });
   }
 }

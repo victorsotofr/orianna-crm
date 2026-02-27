@@ -92,7 +92,7 @@ export async function GET(request: Request) {
       recentSends: recentSends || [],
     });
   } catch (error: any) {
-    console.error('Dashboard stats error:', error);
+    console.error('Dashboard stats error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch dashboard stats' },
       { status: 500 }

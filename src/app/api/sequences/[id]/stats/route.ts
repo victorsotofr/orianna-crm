@@ -80,7 +80,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       stats: Array.from(statsMap.values()).sort((a, b) => a.step_order - b.step_order),
     });
   } catch (error: any) {
-    console.error('Sequence stats error:', error);
+    console.error('Sequence stats error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch stats' }, { status: 500 });
   }
 }

@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 import { getServiceSupabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 
 export async function POST(request: Request) {
   try {
-    // Validate service key
+    // Validate service key (timing-safe comparison)
     const serviceKey = request.headers.get('x-service-key');
-    if (!serviceKey || serviceKey !== process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const expectedKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey || !expectedKey) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    try {
+      const providedBuf = Buffer.from(serviceKey);
+      const expectedBuf = Buffer.from(expectedKey);
+      if (providedBuf.length !== expectedBuf.length || !timingSafeEqual(providedBuf, expectedBuf)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    } catch {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -111,7 +122,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
   } catch (error: any) {
-    console.error('Send email error:', error);
+    console.error('Send email error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to send email' }, { status: 500 });
   }
 }

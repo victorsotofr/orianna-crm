@@ -100,7 +100,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ enrollment: updated });
   } catch (error: any) {
-    console.error('Enrollment update error:', error);
+    console.error('Enrollment update error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to update enrollment' }, { status: 500 });
   }
 }

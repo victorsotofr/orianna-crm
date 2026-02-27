@@ -87,11 +87,11 @@ const columns: ColumnDef<Contact>[] = [
     cell: ({ row }) => <ContactStatusBadge status={row.original.status || "new"} />,
   },
   {
-    accessorKey: "industry",
-    header: "Industrie",
+    accessorKey: "location",
+    header: "Ville",
     cell: ({ row }) => {
-      if (!row.original.industry) return <span className="text-muted-foreground text-sm">&mdash;</span>
-      return <Badge variant="outline">{row.original.industry}</Badge>
+      if (!row.original.location) return <span className="text-muted-foreground text-sm">&mdash;</span>
+      return <span className="text-sm">{row.original.location}</span>
     },
   },
   {

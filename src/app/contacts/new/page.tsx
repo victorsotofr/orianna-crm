@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { SiteHeader } from '@/components/site-header';
-import { IndustrySelector } from '@/components/industry-selector';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 
@@ -22,7 +21,8 @@ export default function NewContactPage() {
   const [companyName, setCompanyName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [phone, setPhone] = useState('');
-  const [industry, setIndustry] = useState('');
+  const [location, setLocation] = useState('');
+  const [education, setEducation] = useState('');
   const [notes, setNotes] = useState('');
 
   const handleSave = async () => {
@@ -43,7 +43,8 @@ export default function NewContactPage() {
           company_name: companyName,
           job_title: jobTitle,
           phone,
-          industry: industry || null,
+          location: location || null,
+          education: education || null,
           notes,
         }),
       });
@@ -109,13 +110,13 @@ export default function NewContactPage() {
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+33 6 12 34 56 78" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Industrie</Label>
-                  <IndustrySelector
-                    value={industry}
-                    onValueChange={setIndustry}
-                    placeholder="Sélectionner..."
-                  />
+                  <Label>Ville</Label>
+                  <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Paris" />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Formation</Label>
+                <Input value={education} onChange={(e) => setEducation(e.target.value)} placeholder="École / Diplôme" />
               </div>
               <div className="space-y-2">
                 <Label>Notes</Label>

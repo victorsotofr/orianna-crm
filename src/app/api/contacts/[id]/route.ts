@@ -68,7 +68,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const body = await request.json();
     const updates: Record<string, any> = {};
 
-    const allowedFields = ['first_name', 'last_name', 'email', 'company_name', 'company_domain', 'job_title', 'linkedin_url', 'industry', 'phone', 'notes', 'status', 'assigned_to'];
+    const allowedFields = ['first_name', 'last_name', 'email', 'company_name', 'company_domain', 'job_title', 'linkedin_url', 'location', 'education', 'first_contact', 'second_contact', 'third_contact', 'phone', 'notes', 'status', 'assigned_to'];
     for (const field of allowedFields) {
       if (field in body) {
         updates[field] = body[field];

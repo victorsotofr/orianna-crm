@@ -12,7 +12,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
-import { IndustrySelector } from '@/components/industry-selector';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 
 const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'] as const;
@@ -87,7 +86,6 @@ export default function ImportPage() {
   const [validContacts, setValidContacts] = useState<ParsedContact[]>([]);
   const [invalidEmails, setInvalidEmails] = useState<string[]>([]);
   const [csvDuplicates, setCsvDuplicates] = useState<number>(0);
-  const [selectedIndustry, setSelectedIndustry] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [step, setStep] = useState<'upload' | 'preview' | 'duplicates'>('upload');
@@ -148,10 +146,6 @@ export default function ImportPage() {
 
   const handleCheckDuplicates = async () => {
     if (validContacts.length === 0) return;
-    if (!selectedIndustry) {
-      toast.error('Veuillez sélectionner une industrie');
-      return;
-    }
 
     setChecking(true);
     try {
@@ -160,7 +154,6 @@ export default function ImportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contacts: validContacts,
-          industry: selectedIndustry,
           check_duplicates: true,
         }),
       });
@@ -199,7 +192,6 @@ export default function ImportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contacts: validContacts,
-          industry: selectedIndustry,
           skip_duplicates: skipDuplicates,
         }),
       });
@@ -328,20 +320,6 @@ export default function ImportPage() {
                 </Alert>
               )}
 
-              <Card>
-                <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm">Industrie</CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-3">
-                  <IndustrySelector
-                    value={selectedIndustry}
-                    onValueChange={setSelectedIndustry}
-                    placeholder="Choisissez une industrie..."
-                    className="w-full md:w-[400px]"
-                  />
-                </CardContent>
-              </Card>
-
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="py-3 px-4">
                   <CardTitle className="text-sm">Aperçu</CardTitle>
@@ -405,7 +383,7 @@ export default function ImportPage() {
                 <Button variant="outline" size="sm" onClick={resetAll}>
                   Annuler
                 </Button>
-                <Button size="sm" onClick={handleCheckDuplicates} disabled={checking || !selectedIndustry}>
+                <Button size="sm" onClick={handleCheckDuplicates} disabled={checking}>
                   {checking ? (
                     <>
                       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

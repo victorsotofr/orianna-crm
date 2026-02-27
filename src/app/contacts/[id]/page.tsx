@@ -10,12 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { ContactDetailTimeline } from '@/components/contact-detail-timeline';
-import { IndustrySelector } from '@/components/industry-selector';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Trash2, Mail, Building2, Phone, MessageSquare, UserCheck, ThumbsUp, ThumbsDown } from 'lucide-react';
-import type { Contact, ContactTimeline, Comment, TeamMember } from '@/types/database';
+import { ArrowLeft, Loader2, Trash2, Mail, Building2, Phone, UserCheck, ThumbsUp, ThumbsDown } from 'lucide-react';
+import type { Contact, ContactTimeline, TeamMember } from '@/types/database';
 
 export default function ContactDetailPage() {
   const router = useRouter();
@@ -24,12 +23,9 @@ export default function ContactDetailPage() {
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [timeline, setTimeline] = useState<ContactTimeline[]>([]);
-  const [comments, setComments] = useState<(Comment & { team_members?: { display_name: string } })[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [newComment, setNewComment] = useState('');
-  const [postingComment, setPostingComment] = useState(false);
 
   // Editable fields
   const [firstName, setFirstName] = useState('');
@@ -40,8 +36,12 @@ export default function ContactDetailPage() {
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState('new');
-  const [industry, setIndustry] = useState('');
   const [assignedTo, setAssignedTo] = useState<string>('unassigned');
+  const [location, setLocation] = useState('');
+  const [education, setEducation] = useState('');
+  const [firstContact, setFirstContact] = useState('');
+  const [secondContact, setSecondContact] = useState('');
+  const [thirdContact, setThirdContact] = useState('');
 
   // Track original values for dirty detection
   const [originalValues, setOriginalValues] = useState<Record<string, string>>({});
@@ -52,10 +52,9 @@ export default function ContactDetailPage() {
 
   const fetchAll = async () => {
     try {
-      const [contactRes, timelineRes, commentsRes, teamRes] = await Promise.all([
+      const [contactRes, timelineRes, teamRes] = await Promise.all([
         fetch(`/api/contacts/${contactId}`),
         fetch(`/api/timeline?contact_id=${contactId}`),
-        fetch(`/api/comments?contact_id=${contactId}`),
         fetch('/api/contacts?limit=1&include_team=true'),
       ]);
 
@@ -70,8 +69,12 @@ export default function ContactDetailPage() {
         setPhone(c.phone || '');
         setNotes(c.notes || '');
         setStatus(c.status || 'new');
-        setIndustry(c.industry || '');
         setAssignedTo(c.assigned_to || 'unassigned');
+        setLocation(c.location || '');
+        setEducation(c.education || '');
+        setFirstContact(c.first_contact || '');
+        setSecondContact(c.second_contact || '');
+        setThirdContact(c.third_contact || '');
         setOriginalValues({
           firstName: c.first_name || '',
           lastName: c.last_name || '',
@@ -81,19 +84,18 @@ export default function ContactDetailPage() {
           phone: c.phone || '',
           notes: c.notes || '',
           status: c.status || 'new',
-          industry: c.industry || '',
           assignedTo: c.assigned_to || 'unassigned',
+          location: c.location || '',
+          education: c.education || '',
+          firstContact: c.first_contact || '',
+          secondContact: c.second_contact || '',
+          thirdContact: c.third_contact || '',
         });
       }
 
       if (timelineRes.ok) {
         const { events } = await timelineRes.json();
         setTimeline(events);
-      }
-
-      if (commentsRes.ok) {
-        const { comments: cmts } = await commentsRes.json();
-        setComments(cmts);
       }
 
       if (teamRes.ok) {
@@ -117,8 +119,12 @@ export default function ContactDetailPage() {
     phone !== originalValues.phone ||
     notes !== originalValues.notes ||
     status !== originalValues.status ||
-    industry !== originalValues.industry ||
-    assignedTo !== originalValues.assignedTo
+    assignedTo !== originalValues.assignedTo ||
+    location !== originalValues.location ||
+    education !== originalValues.education ||
+    firstContact !== originalValues.firstContact ||
+    secondContact !== originalValues.secondContact ||
+    thirdContact !== originalValues.thirdContact
   );
 
   const handleDiscard = useCallback(() => {
@@ -130,8 +136,12 @@ export default function ContactDetailPage() {
     setPhone(originalValues.phone || '');
     setNotes(originalValues.notes || '');
     setStatus(originalValues.status || 'new');
-    setIndustry(originalValues.industry || '');
     setAssignedTo(originalValues.assignedTo || 'unassigned');
+    setLocation(originalValues.location || '');
+    setEducation(originalValues.education || '');
+    setFirstContact(originalValues.firstContact || '');
+    setSecondContact(originalValues.secondContact || '');
+    setThirdContact(originalValues.thirdContact || '');
   }, [originalValues]);
 
   const handleSave = async () => {
@@ -149,8 +159,12 @@ export default function ContactDetailPage() {
           phone,
           notes,
           status,
-          industry: industry || null,
           assigned_to: assignedTo === 'unassigned' ? null : assignedTo,
+          location: location || null,
+          education: education || null,
+          first_contact: firstContact || null,
+          second_contact: secondContact || null,
+          third_contact: thirdContact || null,
         }),
       });
 
@@ -202,33 +216,6 @@ export default function ContactDetailPage() {
       }
     } catch (error) {
       toast.error('Erreur lors de l\'action');
-    }
-  };
-
-  const handlePostComment = async () => {
-    if (!newComment.trim()) return;
-    setPostingComment(true);
-    try {
-      const response = await fetch('/api/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact_id: contactId, content: newComment }),
-      });
-
-      if (response.ok) {
-        setNewComment('');
-        toast.success('Commentaire ajouté');
-        const [commentsRes, timelineRes] = await Promise.all([
-          fetch(`/api/comments?contact_id=${contactId}`),
-          fetch(`/api/timeline?contact_id=${contactId}`),
-        ]);
-        if (commentsRes.ok) setComments((await commentsRes.json()).comments);
-        if (timelineRes.ok) setTimeline((await timelineRes.json()).events);
-      }
-    } catch (error) {
-      toast.error("Erreur lors de l'ajout du commentaire");
-    } finally {
-      setPostingComment(false);
     }
   };
 
@@ -359,9 +346,15 @@ export default function ContactDetailPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Industrie</Label>
-                      <IndustrySelector value={industry} onValueChange={setIndustry} placeholder="Sélectionnez..." />
+                      <Label>Ville</Label>
+                      <Input value={location} onChange={(e) => setLocation(e.target.value)} />
                     </div>
+                    <div className="space-y-2">
+                      <Label>Formation</Label>
+                      <Input value={education} onChange={(e) => setEducation(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="flex items-center gap-1">
                         <UserCheck className="h-4 w-4 text-muted-foreground" />
@@ -382,6 +375,32 @@ export default function ContactDetailPage() {
                       </Select>
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>1er Contact</Label>
+                      <Input type="date" value={firstContact} onChange={(e) => setFirstContact(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>2e Contact</Label>
+                      <Input type="date" value={secondContact} onChange={(e) => setSecondContact(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>3e Contact</Label>
+                      <Input type="date" value={thirdContact} onChange={(e) => setThirdContact(e.target.value)} />
+                    </div>
+                  </div>
+                  {contact.follow_up_1 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-muted-foreground">Relance 1 (auto)</Label>
+                        <Input value={contact.follow_up_1} readOnly disabled className="bg-muted" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-muted-foreground">Relance 2 (auto)</Label>
+                        <Input value={contact.follow_up_2 || ''} readOnly disabled className="bg-muted" />
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label>Notes</Label>
                     <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Notes sur ce contact..." />
@@ -389,41 +408,6 @@ export default function ContactDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* Comments */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5" />
-                    Commentaires ({comments.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-2">
-                    <Textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Ajouter un commentaire..."
-                      rows={2}
-                      className="flex-1"
-                    />
-                    <Button onClick={handlePostComment} disabled={postingComment || !newComment.trim()} size="sm">
-                      {postingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Envoyer'}
-                    </Button>
-                  </div>
-                  {comments.map((comment) => (
-                    <div key={comment.id} className="border-l-2 border-muted pl-4 py-2">
-                      <p className="text-sm">{comment.content}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {comment.team_members?.display_name || 'Utilisateur'} &middot;{' '}
-                        {new Date(comment.created_at).toLocaleString('fr-FR')}
-                      </p>
-                    </div>
-                  ))}
-                  {comments.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">Aucun commentaire</p>
-                  )}
-                </CardContent>
-              </Card>
             </div>
 
             {/* Right: Timeline */}

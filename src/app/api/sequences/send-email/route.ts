@@ -33,9 +33,12 @@ export async function POST(request: Request) {
       last_name: contact.last_name || '',
       email: contact.email || '',
       company_name: contact.company_name || '',
+      agency: contact.company_name || '',
       company_domain: contact.company_domain || '',
       job_title: contact.job_title || '',
-      industry: contact.industry || '',
+      role: contact.job_title || '',
+      location: contact.location || '',
+      education: contact.education || '',
     };
 
     // Render subject and body

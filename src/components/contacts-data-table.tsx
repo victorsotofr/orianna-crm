@@ -179,24 +179,11 @@ const columns: ColumnDef<Contact>[] = [
     ),
   },
   {
-    accessorKey: "industry",
-    header: "Industrie",
+    accessorKey: "location",
+    header: "Ville",
     cell: ({ row }) => {
-      if (!row.original.industry) return <span className="text-muted-foreground text-sm">—</span>
-      
-      const colors: { [key: string]: string } = {
-        real_estate: "bg-blue-500",
-        notary: "bg-purple-500",
-        hotel: "bg-green-500",
-        other: "bg-gray-500",
-      }
-      const color = colors[row.original.industry] || "bg-orange-500"
-      
-      return (
-        <Badge className={`${color} text-white`}>
-          {row.original.industry}
-        </Badge>
-      )
+      if (!row.original.location) return <span className="text-muted-foreground text-sm">—</span>
+      return <span className="text-sm">{row.original.location}</span>
     },
   },
 ]

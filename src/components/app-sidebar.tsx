@@ -5,7 +5,7 @@ import {
   Home,
   Users,
   FileText,
-  Zap,
+  Send,
   Settings,
   GalleryVerticalEnd,
 } from "lucide-react"
@@ -33,9 +33,9 @@ const data = {
       icon: Users,
     },
     {
-      title: "Séquences",
-      url: "/sequences",
-      icon: Zap,
+      title: "Campagnes",
+      url: "/campaigns",
+      icon: Send,
     },
     {
       title: "Templates",

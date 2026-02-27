@@ -4,32 +4,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ContactStatusBadge } from '@/components/contact-status-badge';
-import { ContactDetailSheet } from '@/components/contact-detail-sheet';
+import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Mail, Building2, Trash2, X } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
-
-const OWNER_COLORS: Record<string, string> = {};
-const COLOR_PALETTE = [
-  'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-  'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
-  'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300',
-];
-
-function getOwnerColor(userId: string, index: number): string {
-  if (!OWNER_COLORS[userId]) {
-    OWNER_COLORS[userId] = COLOR_PALETTE[index % COLOR_PALETTE.length];
-  }
-  return OWNER_COLORS[userId];
-}
 
 export default function ContactsPage() {
   const router = useRouter();
@@ -41,13 +23,10 @@ export default function ContactsPage() {
   const [ownerFilter, setOwnerFilter] = useState('all');
   const [search, setSearch] = useState('');
 
-  // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  // Sheet state
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [bulkOwner, setBulkOwner] = useState('');
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -72,11 +51,6 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
-
-  const openContact = (id: string) => {
-    setSelectedContactId(id);
-    setSheetOpen(true);
-  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -107,12 +81,47 @@ export default function ContactsPage() {
       if (response.ok) {
         setSelectedIds(new Set());
         fetchContacts();
+        toast.success('Contacts supprimés');
       }
     } catch (error) {
       console.error('Bulk delete error:', error);
+      toast.error('Erreur lors de la suppression');
     } finally {
       setBulkDeleting(false);
     }
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkOwner) return;
+    setBulkAssigning(true);
+    try {
+      const assignValue = bulkOwner === 'unassigned' ? null : bulkOwner;
+      const promises = Array.from(selectedIds).map(id =>
+        fetch(`/api/contacts/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assigned_to: assignValue }),
+        })
+      );
+      await Promise.all(promises);
+      toast.success(`${selectedIds.size} contact(s) assigné(s)`);
+      setSelectedIds(new Set());
+      setBulkOwner('');
+      fetchContacts();
+    } catch (error) {
+      console.error('Bulk assign error:', error);
+      toast.error("Erreur lors de l'assignation");
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const handleCellUpdate = (contactId: string, field: string, value: string | null) => {
+    setContacts(prev =>
+      prev.map(c =>
+        c.id === contactId ? { ...c, [field]: value } : c
+      )
+    );
   };
 
   const filtered = contacts.filter((c) => {
@@ -122,43 +131,46 @@ export default function ContactsPage() {
       c.email?.toLowerCase().includes(q) ||
       c.first_name?.toLowerCase().includes(q) ||
       c.last_name?.toLowerCase().includes(q) ||
-      c.company_name?.toLowerCase().includes(q)
+      c.company_name?.toLowerCase().includes(q) ||
+      c.location?.toLowerCase().includes(q)
     );
   });
 
-  const getOwnerName = (assignedTo: string | null) => {
-    if (!assignedTo) return null;
-    const member = teamMembers.find(m => m.user_id === assignedTo);
-    return member?.display_name || member?.email?.split('@')[0] || null;
-  };
-
-  const getOwnerBadge = (assignedTo: string | null) => {
-    if (!assignedTo) return <span className="text-muted-foreground text-xs">Non assigné</span>;
-    const member = teamMembers.find(m => m.user_id === assignedTo);
-    if (!member) return <span className="text-muted-foreground text-xs">—</span>;
-    const idx = teamMembers.indexOf(member);
-    const name = member.display_name || member.email.split('@')[0];
-    return (
-      <Badge variant="secondary" className={`text-xs ${getOwnerColor(member.user_id, idx)}`}>
-        {name}
-      </Badge>
-    );
-  };
-
-  // Ownership stats
   const ownerCounts = contacts.reduce<Record<string, number>>((acc, c) => {
     const key = c.assigned_to || 'unassigned';
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
 
+  const COLUMNS = [
+    { key: 'assigned_to', label: 'Propriétaire', type: 'owner' as const },
+    { key: 'status', label: 'Statut', type: 'status' as const },
+    { key: 'company_name', label: 'Agence', type: 'text' as const },
+    { key: 'company_domain', label: 'Site web', type: 'text' as const },
+    { key: 'location', label: 'Ville', type: 'text' as const },
+    { key: 'first_name', label: 'Prénom', type: 'text' as const },
+    { key: 'last_name', label: 'Nom', type: 'text' as const },
+    { key: 'email', label: 'Email', type: 'text' as const },
+    { key: 'linkedin_url', label: 'LinkedIn', type: 'text' as const },
+    { key: 'job_title', label: 'Poste', type: 'text' as const },
+    { key: 'education', label: 'Formation', type: 'text' as const },
+    { key: 'phone', label: 'Téléphone', type: 'text' as const },
+    { key: 'notes', label: 'Notes', type: 'text' as const },
+    { key: 'created_at', label: 'Ajouté', type: 'readonly-date' as const },
+    { key: 'first_contact', label: '1er Contact', type: 'date' as const },
+    { key: 'follow_up_1', label: 'Relance 1', type: 'readonly-date' as const },
+    { key: 'follow_up_2', label: 'Relance 2', type: 'readonly-date' as const },
+    { key: 'second_contact', label: '2e Contact', type: 'date' as const },
+    { key: 'third_contact', label: '3e Contact', type: 'date' as const },
+  ];
+
   return (
     <>
       <SiteHeader title="Contacts" />
       <div className="page-container">
         <div className="page-content">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between gap-3">
+          {/* Toolbar — always visible */}
+          <div className="flex items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-2 flex-1">
               <Input
                 placeholder="Rechercher..."
@@ -211,120 +223,110 @@ export default function ContactsPage() {
             </div>
           </div>
 
-          {/* Table */}
+          {/* Scrollable table area — fills remaining height, scrolls both axes */}
           {loading ? (
             <div className="flex items-center justify-center flex-1">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="table-container">
-              <Table>
-                <TableHeader className="bg-muted/50 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead className="w-10 text-xs">
+            <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">
+              <table className="text-sm border-collapse" style={{ minWidth: '2200px' }}>
+                <thead className="bg-muted/50 sticky top-0 z-10">
+                  <tr className="border-b">
+                    <th className="h-9 px-2 text-left text-xs font-medium w-10 sticky left-0 bg-muted/50 z-20">
                       <Checkbox
                         checked={filtered.length > 0 && selectedIds.size === filtered.length}
                         onCheckedChange={toggleSelectAll}
                       />
-                    </TableHead>
-                    <TableHead className="text-xs">Contact</TableHead>
-                    <TableHead className="text-xs">Entreprise</TableHead>
-                    <TableHead className="text-xs">Statut</TableHead>
-                    <TableHead className="text-xs">Propriétaire</TableHead>
-                    <TableHead className="text-xs">Industrie</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+                    </th>
+                    {COLUMNS.map(col => (
+                      <th key={col.key} className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
                   {filtered.length > 0 ? (
                     filtered.map((contact) => (
-                      <TableRow
-                        key={contact.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => openContact(contact.id)}
-                      >
-                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                      <tr key={contact.id} className="border-b hover:bg-muted/30 transition-colors">
+                        <td className="px-2 py-1 sticky left-0 bg-card z-10">
                           <Checkbox
                             checked={selectedIds.has(contact.id)}
                             onCheckedChange={() => toggleSelect(contact.id)}
                           />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <div>
-                            <div className="text-sm font-medium">
-                              {contact.first_name || ''} {contact.last_name || ''}
-                            </div>
-                            <div className="text-xs text-muted-foreground font-mono flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              {contact.email}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          {contact.company_name ? (
-                            <div className="flex items-center gap-1.5 text-sm">
-                              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                              {contact.company_name}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">&mdash;</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <ContactStatusBadge status={contact.status || 'new'} />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          {getOwnerBadge(contact.assigned_to)}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          {contact.industry ? (
-                            <Badge variant="outline" className="text-xs">{contact.industry}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">&mdash;</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                        {COLUMNS.map(col => (
+                          <td key={col.key} className="px-3 py-1">
+                            <EditableCell
+                              contactId={contact.id}
+                              field={col.key}
+                              value={(contact as any)[col.key]}
+                              type={col.type}
+                              teamMembers={col.type === 'owner' ? teamMembers : undefined}
+                              onUpdate={handleCellUpdate}
+                            />
+                          </td>
+                        ))}
+                      </tr>
                     ))
                   ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                    <tr>
+                      <td colSpan={COLUMNS.length + 1} className="h-32 text-center text-sm text-muted-foreground">
                         Aucun contact trouvé.
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-
-          {/* Bulk action bar */}
-          {selectedIds.size > 0 && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-lg px-4 py-2.5">
-              <span className="text-sm font-medium">{selectedIds.size} sélectionné(s)</span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBulkDelete}
-                disabled={bulkDeleting}
-              >
-                {bulkDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-                Supprimer
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-                <X className="mr-1.5 h-3.5 w-3.5" />
-                Désélectionner
-              </Button>
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       </div>
 
-      <ContactDetailSheet
-        contactId={selectedContactId}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        onContactUpdated={fetchContacts}
-        onContactDeleted={fetchContacts}
-      />
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-lg px-4 py-2.5">
+          <span className="text-sm font-medium">{selectedIds.size} sélectionné(s)</span>
+          <div className="flex items-center gap-2 border-l pl-3">
+            <UserCheck className="h-3.5 w-3.5 text-muted-foreground" />
+            <Select value={bulkOwner} onValueChange={setBulkOwner}>
+              <SelectTrigger className="h-7 w-[160px] text-xs">
+                <SelectValue placeholder="Assigner à..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Non assigné</SelectItem>
+                {teamMembers.map(member => (
+                  <SelectItem key={member.user_id} value={member.user_id}>
+                    {member.display_name || member.email.split('@')[0]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkAssign}
+              disabled={!bulkOwner || bulkAssigning}
+            >
+              {bulkAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Assigner'}
+            </Button>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+          >
+            {bulkDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+            Supprimer
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Désélectionner
+          </Button>
+        </div>
+      )}
     </>
   );
 }

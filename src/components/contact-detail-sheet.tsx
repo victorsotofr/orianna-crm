@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ContactStatusBadge } from "@/components/contact-status-badge"
-import { IndustrySelector } from "@/components/industry-selector"
 import {
   Sheet,
   SheetContent,
@@ -16,8 +15,8 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { toast } from "sonner"
-import { Save, Loader2, Trash2, Mail, Building2, Phone, MessageSquare, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react"
-import type { Contact, Comment, TeamMember } from "@/types/database"
+import { Save, Loader2, Trash2, Mail, Building2, Phone, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react"
+import type { Contact, TeamMember } from "@/types/database"
 
 interface ContactDetailSheetProps {
   contactId: string | null
@@ -35,12 +34,9 @@ export function ContactDetailSheet({
   onContactDeleted,
 }: ContactDetailSheetProps) {
   const [contact, setContact] = useState<Contact | null>(null)
-  const [comments, setComments] = useState<(Comment & { team_members?: { display_name: string } })[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [newComment, setNewComment] = useState("")
-  const [postingComment, setPostingComment] = useState(false)
 
   // Editable fields
   const [firstName, setFirstName] = useState("")
@@ -52,7 +48,11 @@ export function ContactDetailSheet({
   const [notes, setNotes] = useState("")
   const [status, setStatus] = useState("new")
   const [assignedTo, setAssignedTo] = useState<string>("unassigned")
-  const [industry, setIndustry] = useState("")
+  const [location, setLocation] = useState("")
+  const [education, setEducation] = useState("")
+  const [firstContact, setFirstContact] = useState("")
+  const [secondContact, setSecondContact] = useState("")
+  const [thirdContact, setThirdContact] = useState("")
 
   useEffect(() => {
     if (contactId && open) {
@@ -64,9 +64,8 @@ export function ContactDetailSheet({
   const fetchContact = async () => {
     if (!contactId) return
     try {
-      const [contactRes, commentsRes, teamRes] = await Promise.all([
+      const [contactRes, teamRes] = await Promise.all([
         fetch(`/api/contacts/${contactId}`),
-        fetch(`/api/comments?contact_id=${contactId}`),
         fetch('/api/contacts?limit=1&include_team=true'),
       ])
 
@@ -82,12 +81,11 @@ export function ContactDetailSheet({
         setNotes(c.notes || "")
         setStatus(c.status || "new")
         setAssignedTo(c.assigned_to || "unassigned")
-        setIndustry(c.industry || "")
-      }
-
-      if (commentsRes.ok) {
-        const { comments: cmts } = await commentsRes.json()
-        setComments(cmts)
+        setLocation(c.location || "")
+        setEducation(c.education || "")
+        setFirstContact(c.first_contact || "")
+        setSecondContact(c.second_contact || "")
+        setThirdContact(c.third_contact || "")
       }
 
       if (teamRes.ok) {
@@ -119,7 +117,11 @@ export function ContactDetailSheet({
           notes,
           status,
           assigned_to: assignedTo === "unassigned" ? null : assignedTo,
-          industry: industry || null,
+          location: location || null,
+          education: education || null,
+          first_contact: firstContact || null,
+          second_contact: secondContact || null,
+          third_contact: thirdContact || null,
         }),
       })
 
@@ -174,29 +176,6 @@ export function ContactDetailSheet({
       }
     } catch {
       toast.error("Erreur lors de l'action")
-    }
-  }
-
-  const handlePostComment = async () => {
-    if (!newComment.trim() || !contactId) return
-    setPostingComment(true)
-    try {
-      const response = await fetch("/api/comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contact_id: contactId, content: newComment }),
-      })
-
-      if (response.ok) {
-        setNewComment("")
-        toast.success("Commentaire ajouté")
-        const commentsRes = await fetch(`/api/comments?contact_id=${contactId}`)
-        if (commentsRes.ok) setComments((await commentsRes.json()).comments)
-      }
-    } catch {
-      toast.error("Erreur lors de l'ajout du commentaire")
-    } finally {
-      setPostingComment(false)
     }
   }
 
@@ -309,11 +288,44 @@ export function ContactDetailSheet({
               </div>
             </div>
 
-            {/* Industry */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Industrie</Label>
-              <IndustrySelector value={industry} onValueChange={setIndustry} placeholder="Sélectionnez..." className="h-8 text-sm" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Ville</Label>
+                <Input value={location} onChange={(e) => setLocation(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Formation</Label>
+                <Input value={education} onChange={(e) => setEducation(e.target.value)} className="h-8 text-sm" />
+              </div>
             </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">1er Contact</Label>
+                <Input type="date" value={firstContact} onChange={(e) => setFirstContact(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">2e Contact</Label>
+                <Input type="date" value={secondContact} onChange={(e) => setSecondContact(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">3e Contact</Label>
+                <Input type="date" value={thirdContact} onChange={(e) => setThirdContact(e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+
+            {contact?.follow_up_1 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Relance 1 (auto)</Label>
+                  <Input value={contact.follow_up_1} readOnly disabled className="h-8 text-sm bg-muted" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Relance 2 (auto)</Label>
+                  <Input value={contact.follow_up_2 || ''} readOnly disabled className="h-8 text-sm bg-muted" />
+                </div>
+              </div>
+            )}
 
             {/* Owner assignment */}
             <div className="space-y-1.5">
@@ -346,44 +358,6 @@ export function ContactDetailSheet({
               />
             </div>
 
-            {/* Comments */}
-            <div className="border-t pt-4 space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-1.5">
-                <MessageSquare className="h-3.5 w-3.5" />
-                Commentaires ({comments.length})
-              </h4>
-              <div className="flex gap-2">
-                <Textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Ajouter un commentaire..."
-                  rows={2}
-                  className="flex-1 text-sm"
-                />
-                <Button
-                  size="sm"
-                  onClick={handlePostComment}
-                  disabled={postingComment || !newComment.trim()}
-                  className="self-end"
-                >
-                  {postingComment ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Envoyer"}
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {comments.map((comment) => (
-                  <div key={comment.id} className="border-l-2 border-muted pl-3 py-1.5">
-                    <p className="text-sm">{comment.content}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {comment.team_members?.display_name || "Utilisateur"} &middot;{" "}
-                      {new Date(comment.created_at).toLocaleString("fr-FR")}
-                    </p>
-                  </div>
-                ))}
-                {comments.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">Aucun commentaire</p>
-                )}
-              </div>
-            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center py-12">

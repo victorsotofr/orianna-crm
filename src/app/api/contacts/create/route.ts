@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { email, first_name, last_name, company_name, company_domain, job_title, linkedin_url, industry, phone, notes } = body;
+    const { email, first_name, last_name, company_name, company_domain, job_title, linkedin_url, location, education, phone, notes } = body;
 
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
@@ -41,7 +41,8 @@ export async function POST(request: Request) {
         company_domain: company_domain || null,
         job_title: job_title || null,
         linkedin_url: linkedin_url || null,
-        industry: industry || null,
+        location: location || null,
+        education: education || null,
         phone: phone || null,
         notes: notes || null,
         status: 'new',

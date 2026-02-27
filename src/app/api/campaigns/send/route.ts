@@ -1,0 +1,156 @@
+import { NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase-server';
+import { sendEmail } from '@/lib/email-sender';
+import { renderTemplate } from '@/lib/template-renderer';
+
+export async function POST(request: Request) {
+  try {
+    const { supabase, error: clientError } = await createServerClient();
+    if (!supabase || clientError) {
+      return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { contactIds, templateId, stage } = await request.json();
+
+    if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+      return NextResponse.json({ error: 'No contacts selected' }, { status: 400 });
+    }
+    if (!templateId) {
+      return NextResponse.json({ error: 'No template selected' }, { status: 400 });
+    }
+    if (!['first', 'second', 'third'].includes(stage)) {
+      return NextResponse.json({ error: 'Invalid stage' }, { status: 400 });
+    }
+
+    // Fetch template
+    const { data: template, error: templateError } = await supabase
+      .from('templates')
+      .select('*')
+      .eq('id', templateId)
+      .single();
+
+    if (templateError || !template) {
+      return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    }
+
+    // Fetch contacts
+    const { data: contacts, error: contactsError } = await supabase
+      .from('contacts')
+      .select('*')
+      .in('id', contactIds);
+
+    if (contactsError || !contacts) {
+      return NextResponse.json({ error: 'Contacts not found' }, { status: 404 });
+    }
+
+    // Get user settings for SMTP
+    const { data: userSettings } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!userSettings?.smtp_host || !userSettings?.smtp_user || !userSettings?.smtp_password_encrypted) {
+      return NextResponse.json({
+        error: 'Configuration SMTP manquante. Allez dans Paramètres pour configurer votre email.',
+      }, { status: 400 });
+    }
+
+    let sentCount = 0;
+    const errors: string[] = [];
+
+    for (const contact of contacts) {
+      try {
+        // Build template variables
+        const variables: Record<string, string> = {
+          first_name: contact.first_name || '',
+          last_name: contact.last_name || '',
+          email: contact.email || '',
+          company_name: contact.company_name || '',
+          agency: contact.company_name || '',
+          company_domain: contact.company_domain || '',
+          job_title: contact.job_title || '',
+          role: contact.job_title || '',
+          location: contact.location || '',
+          education: contact.education || '',
+        };
+
+        // Render subject and body
+        const renderedSubject = renderTemplate(template.subject || '', variables);
+        let renderedHtml = renderTemplate(template.html_content || '', variables);
+
+        // Append signature if present
+        if (userSettings.signature_html) {
+          renderedHtml = `${renderedHtml}<br/><br/>${userSettings.signature_html}`;
+        }
+
+        // Send email via SMTP
+        const result = await sendEmail(
+          {
+            host: userSettings.smtp_host,
+            port: userSettings.smtp_port || 587,
+            user: userSettings.smtp_user,
+            passwordEncrypted: userSettings.smtp_password_encrypted,
+          },
+          {
+            to: contact.email,
+            subject: renderedSubject,
+            html: renderedHtml,
+            from: userSettings.smtp_user,
+          }
+        );
+
+        if (!result.success) {
+          throw new Error(result.error || 'Email sending failed');
+        }
+
+        // Update contact date field
+        const dateField = stage === 'first' ? 'first_contact'
+          : stage === 'second' ? 'second_contact'
+          : 'third_contact';
+
+        await supabase
+          .from('contacts')
+          .update({
+            [dateField]: new Date().toISOString().split('T')[0],
+            status: 'contacted',
+          })
+          .eq('id', contact.id);
+
+        // Log timeline event
+        await supabase.from('contact_timeline').insert({
+          contact_id: contact.id,
+          event_type: 'email_sent',
+          title: `Email envoyé (${stage === 'first' ? 'Premier contact' : stage === 'second' ? 'Relance 1' : 'Relance 2'})`,
+          description: renderedSubject,
+          metadata: {
+            template_id: templateId,
+            template_name: template.name,
+            stage,
+            message_id: result.messageId,
+          },
+          created_by: user.id,
+        });
+
+        sentCount++;
+      } catch (error: any) {
+        console.error(`Failed to send email to ${contact.email}:`, error);
+        errors.push(`${contact.email}: ${error.message}`);
+      }
+    }
+
+    return NextResponse.json({
+      sent: sentCount,
+      total: contacts.length,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error: any) {
+    console.error('Campaign send error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

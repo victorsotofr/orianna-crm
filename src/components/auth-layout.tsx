@@ -70,7 +70,7 @@ export default function AuthLayout({
           avatar: user.user_metadata?.avatar_url,
         }}
       />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <KeyboardShortcutsProvider>
           {children}
         </KeyboardShortcutsProvider>

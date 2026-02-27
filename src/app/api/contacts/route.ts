@@ -17,7 +17,6 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const assignedTo = searchParams.get('assigned_to');
     const owner = searchParams.get('owner');
-    const industry = searchParams.get('industry');
     const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -38,7 +37,6 @@ export async function GET(request: NextRequest) {
     } else if (owner && owner !== 'all') {
       query = query.eq('assigned_to', owner);
     }
-    if (industry) query = query.eq('industry', industry);
     if (search) {
       query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,company_name.ilike.%${search}%`);
     }

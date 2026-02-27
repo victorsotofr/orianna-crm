@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { contacts, industry, check_duplicates, skip_duplicates } = body;
+    const { contacts, check_duplicates, skip_duplicates } = body;
 
     if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
       return NextResponse.json({ error: 'No contacts provided' }, { status: 400 });
@@ -90,7 +90,8 @@ export async function POST(request: Request) {
         company_domain: contact.company_domain || contact.companyDomain || null,
         job_title: contact.job_title || contact.jobTitle || null,
         linkedin_url: contact.linkedin_url || contact.linkedinUrl || null,
-        industry: industry || contact.industry || null,
+        location: contact.location || contact.Location || contact.ville || contact.Ville || null,
+        education: contact.education || contact.Education || contact.formation || contact.Formation || null,
         status,
         raw_data: contact,
         created_by: user.id,

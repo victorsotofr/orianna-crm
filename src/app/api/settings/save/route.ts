@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
-import { encrypt } from '@/lib/encryption';
+import { encrypt, decrypt } from '@/lib/encryption';
 
 export async function POST(request: Request) {
   try {
@@ -119,14 +119,14 @@ export async function GET(request: Request) {
       throw error;
     }
 
-    // Don't return encrypted passwords, but indicate if they exist
+    // Return decrypted passwords for the authenticated user
     if (settings) {
       const { smtp_password_encrypted, imap_password_encrypted, ...safeSettings } = settings;
       return NextResponse.json({
         settings: {
           ...safeSettings,
-          has_password: !!smtp_password_encrypted,
-          has_imap_password: !!imap_password_encrypted,
+          smtp_password: smtp_password_encrypted ? decrypt(smtp_password_encrypted) : '',
+          imap_password: imap_password_encrypted ? decrypt(imap_password_encrypted) : '',
         }
       });
     }

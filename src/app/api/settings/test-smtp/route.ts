@@ -23,56 +23,25 @@ export async function POST(request: Request) {
     console.log('✅ User authenticated:', user.email);
 
     const body = await request.json();
-    const { smtpHost, smtpPort, smtpUser, smtpPassword, useSavedPassword } = body;
+    const { smtpHost, smtpPort, smtpUser, smtpPassword } = body;
 
     // Validate required fields
-    if (!smtpHost || !smtpPort || !smtpUser) {
+    if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
       return NextResponse.json(
         { error: 'SMTP configuration is incomplete' },
         { status: 400 }
       );
     }
 
-    let encryptedPassword: string;
+    console.log('🔧 SMTP Config:', {
+      host: smtpHost,
+      port: smtpPort,
+      user: smtpUser,
+      passwordLength: smtpPassword.length,
+    });
 
-    // If using saved password, fetch it from database
-    if (useSavedPassword) {
-      console.log('🔐 Using saved password from database...');
-      const { data: settings, error: settingsError } = await supabase
-        .from('user_settings')
-        .select('smtp_password_encrypted')
-        .eq('user_id', user.id)
-        .single();
-
-      if (settingsError || !settings?.smtp_password_encrypted) {
-        return NextResponse.json(
-          { error: 'No saved password found. Please enter your password.' },
-          { status: 400 }
-        );
-      }
-
-      encryptedPassword = settings.smtp_password_encrypted;
-      console.log('✅ Retrieved saved encrypted password');
-    } else {
-      // Validate password is provided
-      if (!smtpPassword) {
-        return NextResponse.json(
-          { error: 'SMTP password is required' },
-          { status: 400 }
-        );
-      }
-
-      console.log('🔧 SMTP Config:', {
-        host: smtpHost,
-        port: smtpPort,
-        user: smtpUser,
-        passwordLength: smtpPassword.length,
-      });
-
-      // Encrypt the password (for testing purposes)
-      encryptedPassword = encrypt(smtpPassword);
-      console.log('🔑 Password encrypted successfully');
-    }
+    const encryptedPassword = encrypt(smtpPassword);
+    console.log('🔑 Password encrypted successfully');
 
     // Test SMTP connection
     console.log('📧 Testing SMTP connection...');

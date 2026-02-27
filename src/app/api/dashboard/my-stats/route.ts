@@ -63,8 +63,8 @@ export async function GET() {
     const { data: myRecentSends } = await supabase
       .from('emails_sent')
       .select(`
-        id, sent_at, status,
-        contacts (id, email, first_name, last_name),
+        id, contact_id, sent_at, status, sent_by_email,
+        contacts (id, email, first_name, last_name, company_name),
         templates (id, name)
       `)
       .eq('sent_by', user.id)

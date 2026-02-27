@@ -90,6 +90,21 @@ export async function POST(request: Request) {
       }
     }
 
+    // Record in emails_sent for dashboard KPIs
+    // Look up user_id from user_settings (sequence sends are service-key authenticated)
+    const senderUserId = user_settings.user_id || null;
+    const senderEmail = user_settings.smtp_user || null;
+
+    await supabase.from('emails_sent').insert({
+      contact_id: contact.id,
+      template_id: template.id || null,
+      sent_by: senderUserId,
+      sent_by_email: senderEmail,
+      status: result.success ? 'sent' : 'failed',
+      message_id: result.success ? result.messageId : null,
+      error_message: result.success ? null : result.error,
+    });
+
     if (result.success) {
       return NextResponse.json({ success: true, messageId: result.messageId });
     } else {

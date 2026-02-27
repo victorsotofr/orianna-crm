@@ -101,8 +101,29 @@ export async function POST(request: Request) {
         );
 
         if (!result.success) {
+          // Record failed send in emails_sent
+          await supabase.from('emails_sent').insert({
+            contact_id: contact.id,
+            template_id: templateId,
+            sent_by: user.id,
+            sent_by_email: user.email,
+            status: 'failed',
+            error_message: result.error || 'Email sending failed',
+            follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
+          });
           throw new Error(result.error || 'Email sending failed');
         }
+
+        // Record successful send in emails_sent (for dashboard KPIs)
+        await supabase.from('emails_sent').insert({
+          contact_id: contact.id,
+          template_id: templateId,
+          sent_by: user.id,
+          sent_by_email: user.email,
+          status: 'sent',
+          message_id: result.messageId,
+          follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
+        });
 
         // Update contact date field
         const dateField = stage === 'first' ? 'first_contact'

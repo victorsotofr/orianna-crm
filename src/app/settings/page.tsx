@@ -211,7 +211,8 @@ export default function SettingsPage() {
   return (
     <>
       <SiteHeader title="Paramètres" />
-      <div className="px-4 py-4 lg:px-6 pb-16">
+      <div className="page-container">
+        <div className="page-content">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* SMTP */}
           <Card>
@@ -293,6 +294,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
         </div>
       </div>
 

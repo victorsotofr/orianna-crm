@@ -38,11 +38,17 @@ export async function GET() {
       .from('emails_sent')
       .select('*', { count: 'exact', head: true });
 
-    // Reply count
+    // Reply count (contacts that replied)
     const { count: totalReplies } = await supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'replied');
+
+    // Contacted contacts (any status except 'new' = they received at least one outreach)
+    const { count: contactedContacts } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .neq('status', 'new');
 
     // Active enrollments
     const { count: activeEnrollments } = await supabase
@@ -88,8 +94,8 @@ export async function GET() {
       .order('sent_at', { ascending: false })
       .limit(20);
 
-    const replyRate = totalEmails && totalEmails > 0
-      ? Math.round(((totalReplies || 0) / totalEmails) * 100)
+    const replyRate = contactedContacts && contactedContacts > 0
+      ? Math.round(((totalReplies || 0) / contactedContacts) * 100)
       : 0;
 
     return NextResponse.json({

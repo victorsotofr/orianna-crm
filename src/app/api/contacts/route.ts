@@ -18,51 +18,93 @@ export async function GET(request: NextRequest) {
     const assignedTo = searchParams.get('assigned_to');
     const owner = searchParams.get('owner');
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = (page - 1) * limit;
     const includeTeam = searchParams.get('include_team') === 'true';
 
-    let query = supabase
-      .from('contacts')
-      .select('*', { count: 'exact' });
-
-    if (status) query = query.eq('status', status);
-    if (assignedTo) query = query.eq('assigned_to', assignedTo);
-    // Owner filter: 'me', 'unassigned', or a user_id
-    if (owner === 'me') {
-      query = query.eq('assigned_to', user.id);
-    } else if (owner === 'unassigned') {
-      query = query.is('assigned_to', null);
-    } else if (owner && owner !== 'all') {
-      query = query.eq('assigned_to', owner);
+    // Build base filter function to apply to any query
+    function applyFilters(query: any) {
+      if (status) query = query.eq('status', status);
+      if (assignedTo) query = query.eq('assigned_to', assignedTo);
+      if (owner === 'me') {
+        query = query.eq('assigned_to', user!.id);
+      } else if (owner === 'unassigned') {
+        query = query.is('assigned_to', null);
+      } else if (owner && owner !== 'all') {
+        query = query.eq('assigned_to', owner);
+      }
+      if (search) {
+        query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,company_name.ilike.%${search}%`);
+      }
+      return query;
     }
-    if (search) {
-      query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,company_name.ilike.%${search}%`);
+
+    // Get exact count first
+    const countQuery = applyFilters(
+      supabase.from('contacts').select('*', { count: 'exact', head: true })
+    );
+    const { count } = await countQuery;
+    const totalFiltered = count || 0;
+
+    // Fetch contacts in batches of 1000 (Supabase max per request)
+    const batchSize = 1000;
+    const maxToFetch = Math.min(limit, totalFiltered);
+    let allContacts: any[] = [];
+
+    for (let offset = 0; offset < maxToFetch; offset += batchSize) {
+      const batchLimit = Math.min(batchSize, maxToFetch - offset);
+      const batchQuery = applyFilters(
+        supabase.from('contacts').select('*')
+      );
+      const { data: batch, error: batchError } = await batchQuery
+        .order('created_at', { ascending: false })
+        .range(offset, offset + batchLimit - 1);
+
+      if (batchError) throw batchError;
+      if (!batch || batch.length === 0) break;
+      allContacts = allContacts.concat(batch);
+      if (batch.length < batchLimit) break;
     }
 
-    const { data: contacts, count, error } = await query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw error;
-
-    // Optionally include team members for ownership display
+    // Optionally include team members and owner counts
     let teamMembers = null;
+    let ownerCounts: Record<string, number> = {};
     if (includeTeam) {
       const { data: members } = await supabase
         .from('team_members')
         .select('user_id, email, display_name, role');
       teamMembers = members;
+
+      // Compute owner counts using count queries (not affected by row limit)
+      const { count: totalContactsCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true });
+      ownerCounts['__total'] = totalContactsCount || 0;
+
+      const { count: unassignedCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .is('assigned_to', null);
+      ownerCounts['unassigned'] = unassignedCount || 0;
+
+      // Count per team member
+      if (members) {
+        await Promise.all(
+          members.map(async (member) => {
+            const { count: memberCount } = await supabase
+              .from('contacts')
+              .select('*', { count: 'exact', head: true })
+              .eq('assigned_to', member.user_id);
+            ownerCounts[member.user_id] = memberCount || 0;
+          })
+        );
+      }
     }
 
     return NextResponse.json({
-      contacts: contacts || [],
-      total: count || 0,
-      page,
-      limit,
-      totalPages: Math.ceil((count || 0) / limit),
+      contacts: allContacts,
+      total: totalFiltered,
       teamMembers,
+      ownerCounts,
       currentUserId: user.id,
     });
   } catch (error: any) {

@@ -42,6 +42,13 @@ export async function GET() {
       .eq('assigned_to', user.id)
       .eq('status', 'replied');
 
+    // My contacted contacts (any status except 'new')
+    const { count: myContactedContacts } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('assigned_to', user.id)
+      .neq('status', 'new');
+
     // My active enrollments (sequences I created)
     const { data: mySequences } = await supabase
       .from('sequences')
@@ -71,8 +78,8 @@ export async function GET() {
       .order('sent_at', { ascending: false })
       .limit(20);
 
-    const myReplyRate = myTotalEmails && myTotalEmails > 0
-      ? Math.round(((myReplies || 0) / myTotalEmails) * 100)
+    const myReplyRate = myContactedContacts && myContactedContacts > 0
+      ? Math.round(((myReplies || 0) / myContactedContacts) * 100)
       : 0;
 
     return NextResponse.json({

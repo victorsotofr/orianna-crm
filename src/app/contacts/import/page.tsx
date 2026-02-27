@@ -535,6 +535,11 @@ export default function ImportPage() {
                 <AlertDescription>
                   <strong>{dbDuplicates.length} contact(s)</strong> existent déjà dans la base de données.{' '}
                   <strong>{newCount}</strong> nouveau(x) contact(s) seront importé(s).
+                  {dbDuplicates.some(d => d.owner_name) && (
+                    <span className="block mt-1 text-orange-600 font-medium">
+                      Attention : certains contacts sont déjà assignés à un autre membre de l&apos;équipe. Ils ne seront pas ré-importés pour éviter les doublons d&apos;envoi.
+                    </span>
+                  )}
                 </AlertDescription>
               </Alert>
 

@@ -149,8 +149,9 @@ export default function CampaignsPage() {
         errorCount++;
       }
 
+      // 45s delay between sends to avoid spam flags on institutional SMTP
       if (i < contactIds.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 45000));
       }
     }
 

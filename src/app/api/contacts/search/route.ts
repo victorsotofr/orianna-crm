@@ -18,7 +18,6 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
-    const industry = searchParams.get('industry');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
@@ -31,13 +30,8 @@ export async function GET(request: Request) {
     // Apply search filter
     if (query) {
       queryBuilder = queryBuilder.or(
-        `email.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%,company_name.ilike.%${query}%`
+        `email.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%,company_name.ilike.%${query}%,location.ilike.%${query}%`
       );
-    }
-
-    // Apply industry filter
-    if (industry && industry !== 'all') {
-      queryBuilder = queryBuilder.eq('industry', industry);
     }
 
     // Apply pagination

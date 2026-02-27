@@ -8,7 +8,13 @@ export interface Contact {
   company_domain: string | null;
   job_title: string | null;
   linkedin_url: string | null;
-  industry: 'real_estate' | 'notary' | 'hotel' | 'other' | null;
+  location: string | null;
+  education: string | null;
+  first_contact: string | null;
+  second_contact: string | null;
+  third_contact: string | null;
+  follow_up_1: string | null; // generated column (first_contact + 3 days)
+  follow_up_2: string | null; // generated column (first_contact + 7 days)
   raw_data: Record<string, any> | null;
   created_at: string;
   updated_at: string;

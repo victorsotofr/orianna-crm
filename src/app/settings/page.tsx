@@ -211,94 +211,88 @@ export default function SettingsPage() {
   return (
     <>
       <SiteHeader title="Paramètres" />
-      <div className="page-container">
-        <div className="page-content pb-16">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 overflow-y-auto">
-            {/* SMTP */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Configuration SMTP</CardTitle>
-                <CardDescription className="text-xs">Paramètres d&apos;envoi d&apos;emails</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Serveur SMTP</Label>
-                    <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} className="h-8 text-sm" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Port</Label>
-                    <Input type="number" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} className="h-8 text-sm" />
-                  </div>
+      <div className="px-4 py-4 lg:px-6 pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* SMTP */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Configuration SMTP</CardTitle>
+              <CardDescription className="text-xs">Envoi d&apos;emails</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 space-y-1">
+                  <Label className="text-xs">Serveur</Label>
+                  <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} className="h-8 text-sm" />
                 </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Email / Utilisateur</Label>
-                  <Input type="email" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} className="h-8 text-sm" />
+                <div className="space-y-1">
+                  <Label className="text-xs">Port</Label>
+                  <Input type="number" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} className="h-8 text-sm" />
                 </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Utilisateur</Label>
+                <Input type="email" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Mot de passe</Label>
+                <Input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} className="h-8 text-sm" />
+                <p className="text-[11px] text-muted-foreground">
+                  {smtpPassword === '••••••••' ? 'Mot de passe sauvegardé' : 'Sera chiffré avant stockage'}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing}>
+                {testing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                Tester la connexion
+              </Button>
+            </CardContent>
+          </Card>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Mot de passe SMTP</Label>
-                  <Input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} className="h-8 text-sm" />
-                  <p className="text-xs text-muted-foreground">
-                    {smtpPassword === '••••••••' ? 'Mot de passe sauvegardé' : 'Sera chiffré avant stockage'}
-                  </p>
+          {/* IMAP */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Configuration IMAP</CardTitle>
+              <CardDescription className="text-xs">Détection des réponses (optionnel)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 space-y-1">
+                  <Label className="text-xs">Serveur</Label>
+                  <Input value={imapHost} onChange={(e) => setImapHost(e.target.value)} className="h-8 text-sm" />
                 </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Port</Label>
+                  <Input type="number" value={imapPort} onChange={(e) => setImapPort(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Utilisateur</Label>
+                <Input value={imapUser} onChange={(e) => setImapUser(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Mot de passe</Label>
+                <Input type="password" value={imapPassword} onChange={(e) => setImapPassword(e.target.value)} className="h-8 text-sm" />
+                <p className="text-[11px] text-muted-foreground">
+                  {imapPassword === '••••••••' ? 'Mot de passe sauvegardé' : 'Sera chiffré avant stockage'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-                <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing}>
-                  {testing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                  Tester la connexion
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* IMAP + Limits */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Configuration IMAP</CardTitle>
-                  <CardDescription className="text-xs">Détection des réponses (optionnel)</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Serveur IMAP</Label>
-                      <Input value={imapHost} onChange={(e) => setImapHost(e.target.value)} className="h-8 text-sm" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Port</Label>
-                      <Input type="number" value={imapPort} onChange={(e) => setImapPort(e.target.value)} className="h-8 text-sm" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Utilisateur IMAP</Label>
-                    <Input value={imapUser} onChange={(e) => setImapUser(e.target.value)} className="h-8 text-sm" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Mot de passe IMAP</Label>
-                    <Input type="password" value={imapPassword} onChange={(e) => setImapPassword(e.target.value)} className="h-8 text-sm" />
-                    <p className="text-xs text-muted-foreground">
-                      {imapPassword === '••••••••' ? 'Mot de passe sauvegardé' : 'Sera chiffré avant stockage'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Limites</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Limite quotidienne d&apos;envoi</Label>
-                    <Input type="number" value={dailySendLimit} onChange={(e) => setDailySendLimit(e.target.value)} className="h-8 text-sm w-32" />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+          {/* Limits */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Limites</CardTitle>
+              <CardDescription className="text-xs">Contrôle du volume d&apos;envoi</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1">
+                <Label className="text-xs">Limite quotidienne</Label>
+                <Input type="number" value={dailySendLimit} onChange={(e) => setDailySendLimit(e.target.value)} className="h-8 text-sm w-24" />
+                <p className="text-[11px] text-muted-foreground">Emails par jour maximum</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 

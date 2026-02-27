@@ -45,6 +45,7 @@ export default function CampaignsPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -120,37 +121,57 @@ export default function CampaignsPage() {
     }
 
     const stage = activeTab === 'etape1' ? 'first' : activeTab === 'etape2' ? 'second' : 'third';
+    const contactIds = Array.from(selectedContacts);
+    const total = contactIds.length;
 
     setSending(true);
-    try {
-      const response = await fetch('/api/campaigns/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contactIds: Array.from(selectedContacts),
-          templateId: selectedTemplate,
-          stage,
-        }),
-      });
+    setSendProgress({ current: 0, total });
 
-      const data = await response.json();
+    let sentCount = 0;
+    let errorCount = 0;
 
-      if (!response.ok) {
-        throw new Error(data.error || "Erreur lors de l'envoi");
+    for (let i = 0; i < contactIds.length; i++) {
+      setSendProgress({ current: i + 1, total });
+
+      try {
+        const response = await fetch('/api/campaigns/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contactIds: [contactIds[i]],
+            templateId: selectedTemplate,
+            stage,
+          }),
+        });
+
+        const data = await response.json();
+        if (response.ok && data.sent > 0) {
+          sentCount++;
+        } else {
+          errorCount++;
+        }
+      } catch {
+        errorCount++;
       }
 
-      toast.success(`${data.sent} email(s) envoyé(s) avec succès`);
-      if (data.errors?.length) {
-        toast.warning(`${data.errors.length} erreur(s) rencontrée(s)`);
+      // Delay between sends to avoid SMTP rate limits
+      if (i < contactIds.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
-      setSelectedContacts(new Set());
-      setSelectedTemplate('');
-      fetchData();
-    } catch (error: any) {
-      toast.error(error.message || "Erreur lors de l'envoi");
-    } finally {
-      setSending(false);
     }
+
+    if (sentCount > 0) {
+      toast.success(`${sentCount} email(s) envoyé(s) avec succès`);
+    }
+    if (errorCount > 0) {
+      toast.warning(`${errorCount} erreur(s) rencontrée(s)`);
+    }
+
+    setSelectedContacts(new Set());
+    setSelectedTemplate('');
+    setSending(false);
+    setSendProgress(null);
+    fetchData();
   };
 
   const toggleContact = (contactId: string) => {
@@ -224,7 +245,10 @@ export default function CampaignsPage() {
                 ) : (
                   <Send className="mr-1.5 h-3.5 w-3.5" />
                 )}
-                {sending ? 'Envoi...' : `Envoyer (${selectedContacts.size})`}
+                {sending && sendProgress
+                  ? `${sendProgress.current}/${sendProgress.total}`
+                  : `Envoyer (${selectedContacts.size})`
+                }
               </Button>
             </div>
           </div>

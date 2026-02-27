@@ -84,11 +84,6 @@ export async function POST(request: Request) {
         const renderedSubject = renderTemplate(template.subject || '', variables);
         const renderedHtml = renderTemplate(template.html_content || '', variables);
 
-        // Add delay between emails to avoid SMTP rate limits (skip first)
-        if (sentCount > 0) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-
         // Send email via SMTP
         const result = await sendEmail(
           {

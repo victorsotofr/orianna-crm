@@ -19,6 +19,8 @@ const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified
 const STATUS_ALIASES: Record<string, string> = {
   'nouveau': 'new',
   'new': 'new',
+  'no_contacted': 'new',
+  'not_contacted': 'new',
   'contacté': 'contacted',
   'contacte': 'contacted',
   'contacted': 'contacted',
@@ -65,6 +67,18 @@ interface DuplicateInfo {
   created_by: string | null;
 }
 
+const KNOWN_HEADERS = [
+  'email', 'e-mail', 'first_name', 'firstname', 'prénom', 'prenom',
+  'last_name', 'lastname', 'nom', 'company_name', 'companyname',
+  'entreprise', 'société', 'status', 'statut',
+];
+
+// Check if the first row looks like headers (contains known field names)
+function hasHeaderRow(keys: string[]): boolean {
+  const lowerKeys = keys.map(k => k.toLowerCase().trim());
+  return KNOWN_HEADERS.some(h => lowerKeys.includes(h));
+}
+
 // Auto-detect headers in EN/FR
 function normalizeContact(raw: ParsedContact): ParsedContact {
   const rawStatus = raw.status || raw.Status || raw.STATUS || raw.statut || raw.Statut || raw.STATUT || undefined;
@@ -76,6 +90,87 @@ function normalizeContact(raw: ParsedContact): ParsedContact {
     company_name: raw.company_name || raw.companyName || raw.entreprise || raw.Entreprise || raw.société || raw.Société || raw['Company Name'] || raw['company name'] || raw.company || raw.Company || undefined,
     status: normalizeStatus(rawStatus),
   };
+}
+
+// Auto-map columns for headerless CSVs by detecting content patterns
+function autoMapRows(rows: string[][]): ParsedContact[] {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const linkedinRegex = /linkedin\.com/i;
+  const allStatusValues = [...Object.keys(STATUS_ALIASES), ...VALID_STATUSES];
+
+  if (rows.length === 0 || !rows[0]) return [];
+
+  const colCount = rows[0].length;
+  const sampleRows = rows.slice(0, Math.min(5, rows.length));
+
+  // Detect key columns by content
+  let emailCol = -1;
+  let linkedinCol = -1;
+  let statusCol = -1;
+
+  for (let col = 0; col < colCount; col++) {
+    const values = sampleRows.map(r => (r[col] || '').trim()).filter(Boolean);
+    if (values.length === 0) continue;
+
+    if (emailCol === -1 && values.some(v => emailRegex.test(v))) {
+      emailCol = col;
+    } else if (linkedinCol === -1 && values.some(v => linkedinRegex.test(v))) {
+      linkedinCol = col;
+    } else if (statusCol === -1 && values.every(v => allStatusValues.includes(v.toLowerCase().replace(/\s+/g, '_')))) {
+      statusCol = col;
+    }
+  }
+
+  if (emailCol === -1) return []; // Can't import without email column
+
+  return rows.map(row => {
+    const contact: ParsedContact = {
+      email: (row[emailCol] || '').trim(),
+    };
+
+    // Map status if detected
+    if (statusCol >= 0) {
+      contact.status = normalizeStatus((row[statusCol] || '').trim()) || undefined;
+    }
+
+    // Map linkedin if detected
+    if (linkedinCol >= 0) {
+      contact.linkedin_url = (row[linkedinCol] || '').trim() || undefined;
+    }
+
+    // Map name columns: the 2 columns immediately before email are typically first_name, last_name
+    if (emailCol >= 2) {
+      contact.first_name = (row[emailCol - 2] || '').trim() || undefined;
+      contact.last_name = (row[emailCol - 1] || '').trim() || undefined;
+    } else if (emailCol >= 1) {
+      contact.first_name = (row[emailCol - 1] || '').trim() || undefined;
+    }
+
+    // Map company: typically after status, or 3+ columns before email
+    if (statusCol >= 0 && statusCol + 1 < emailCol - 2) {
+      contact.company_name = (row[statusCol + 1] || '').trim() || undefined;
+    } else if (emailCol >= 5) {
+      contact.company_name = (row[emailCol - 5] || '').trim() || undefined;
+    }
+
+    // Map location: column between company and first_name
+    if (emailCol >= 3 && statusCol >= 0 && statusCol + 2 < emailCol - 2) {
+      contact.location = (row[emailCol - 3] || '').trim() || undefined;
+    }
+
+    // Map job_title: typically 2 columns after email (after linkedin)
+    if (linkedinCol >= 0 && linkedinCol + 1 < colCount) {
+      contact.job_title = (row[linkedinCol + 1] || '').trim() || undefined;
+    }
+
+    // Map remaining columns after job_title: phone, education, notes
+    const jobTitleCol = linkedinCol >= 0 ? linkedinCol + 1 : emailCol + 2;
+    if (jobTitleCol + 1 < colCount) contact.phone = (row[jobTitleCol + 1] || '').trim() || undefined;
+    if (jobTitleCol + 2 < colCount) contact.education = (row[jobTitleCol + 2] || '').trim() || undefined;
+    if (jobTitleCol + 3 < colCount) contact.notes = (row[jobTitleCol + 3] || '').trim() || undefined;
+
+    return contact;
+  });
 }
 
 export default function ImportPage() {
@@ -99,6 +194,24 @@ export default function ImportPage() {
     return emailRegex.test(email);
   };
 
+  const processContacts = (contacts: ParsedContact[]) => {
+    const valid: ParsedContact[] = [];
+    const invalid: string[] = [];
+    const seen = new Set<string>();
+    let dupeCount = 0;
+
+    contacts.forEach((contact) => {
+      const email = (contact.email || '').toLowerCase().trim();
+      if (!email) { invalid.push('(empty email)'); return; }
+      if (!validateEmail(email)) { invalid.push(email); return; }
+      if (seen.has(email)) { dupeCount++; return; }
+      seen.add(email);
+      valid.push({ ...contact, email });
+    });
+
+    return { valid, invalid, dupeCount };
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
@@ -110,33 +223,51 @@ export default function ImportPage() {
 
     setFile(selectedFile);
 
+    // First pass: parse without headers to get raw arrays
     Papa.parse(selectedFile, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
-      complete: (results) => {
-        const data = results.data as ParsedContact[];
-        const valid: ParsedContact[] = [];
-        const invalid: string[] = [];
-        const seen = new Set<string>();
-        let dupeCount = 0;
+      complete: (rawResults) => {
+        const rows = rawResults.data as string[][];
+        if (rows.length === 0) {
+          toast.error('Fichier vide');
+          return;
+        }
 
-        data.forEach((rawContact) => {
-          const contact = normalizeContact(rawContact);
-          const email = contact.email;
+        // Check if first row looks like headers
+        const firstRow = rows[0];
+        const isHeaderRow = hasHeaderRow(firstRow);
 
-          if (!email) { invalid.push('(empty email)'); return; }
-          if (!validateEmail(email)) { invalid.push(email); return; }
-          if (seen.has(email)) { dupeCount++; return; }
+        let contacts: ParsedContact[];
 
-          seen.add(email);
-          valid.push(contact);
-        });
+        if (isHeaderRow) {
+          // Re-parse with headers
+          const headerKeys = firstRow;
+          const dataRows = rows.slice(1);
+          contacts = dataRows.map(row => {
+            const obj: ParsedContact = { email: '' };
+            headerKeys.forEach((key, i) => {
+              if (key && row[i] !== undefined) obj[key.trim()] = row[i];
+            });
+            return normalizeContact(obj);
+          });
+        } else {
+          // No headers: auto-detect columns by content
+          contacts = autoMapRows(rows);
+        }
+
+        const { valid, invalid, dupeCount } = processContacts(contacts);
 
         setValidContacts(valid);
         setInvalidEmails(invalid);
         setCsvDuplicates(dupeCount);
         setStep('preview');
-        toast.success(`${valid.length} contacts valides trouvés`);
+
+        if (valid.length > 0) {
+          toast.success(`${valid.length} contacts valides trouvés${!isHeaderRow ? ' (colonnes auto-détectées)' : ''}`);
+        } else {
+          toast.error('Aucun contact valide trouvé. Vérifiez le format du fichier.');
+        }
       },
       error: (error) => {
         toast.error(`Erreur lors de la lecture du fichier: ${error.message}`);

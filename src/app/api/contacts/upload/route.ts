@@ -90,6 +90,8 @@ export async function POST(request: Request) {
         company_domain: contact.company_domain || contact.companyDomain || null,
         job_title: contact.job_title || contact.jobTitle || null,
         linkedin_url: contact.linkedin_url || contact.linkedinUrl || null,
+        phone: contact.phone || contact.Phone || contact.téléphone || contact.Téléphone || null,
+        notes: contact.notes || contact.Notes || null,
         location: contact.location || contact.Location || contact.ville || contact.Ville || null,
         education: contact.education || contact.Education || contact.formation || contact.Formation || null,
         status,

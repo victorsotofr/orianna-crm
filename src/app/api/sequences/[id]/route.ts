@@ -70,7 +70,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       enrolledContactIds: (enrollments || []).map(e => e.contact_id),
     });
   } catch (error: any) {
-    console.error('Sequence detail error:', error);
+    console.error('Sequence detail error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch sequence' }, { status: 500 });
   }
 }
@@ -108,7 +108,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ sequence });
   } catch (error: any) {
-    console.error('Sequence update error:', error);
+    console.error('Sequence update error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to update sequence' }, { status: 500 });
   }
 }
@@ -136,7 +136,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Sequence delete error:', error);
+    console.error('Sequence delete error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to delete sequence' }, { status: 500 });
   }
 }

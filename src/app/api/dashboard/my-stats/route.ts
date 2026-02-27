@@ -91,7 +91,7 @@ export async function GET() {
       myRecentSends: myRecentSends || [],
     });
   } catch (error: any) {
-    console.error('My stats error:', error);
+    console.error('My stats error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch my stats' }, { status: 500 });
   }
 }

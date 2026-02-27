@@ -65,7 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ step });
   } catch (error: any) {
-    console.error('Step create error:', error);
+    console.error('Step create error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to create step' }, { status: 500 });
   }
 }

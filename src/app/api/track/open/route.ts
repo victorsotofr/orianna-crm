@@ -2,21 +2,31 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-const TRACKING_SECRET = process.env.TRACKING_SECRET || 'orianna-tracking-secret';
-
 // 1x1 transparent GIF
 const TRANSPARENT_GIF = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
   'base64'
 );
 
+function getTrackingSecret(): string {
+  const secret = process.env.TRACKING_SECRET;
+  if (!secret) {
+    throw new Error('TRACKING_SECRET environment variable is required');
+  }
+  return secret;
+}
+
 function verifyHmac(statId: string, hmac: string): boolean {
   const expected = crypto
-    .createHmac('sha256', TRACKING_SECRET)
+    .createHmac('sha256', getTrackingSecret())
     .update(statId)
     .digest('hex')
     .substring(0, 16);
-  return hmac === expected;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expected));
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(request: Request) {
@@ -55,7 +65,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error('Tracking pixel error:', error);
+    console.error('Tracking pixel error:', error instanceof Error ? error.message : error);
     return new NextResponse(TRANSPARENT_GIF, {
       headers: {
         'Content-Type': 'image/gif',

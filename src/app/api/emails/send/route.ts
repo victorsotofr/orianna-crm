@@ -171,7 +171,7 @@ export async function POST(request: Request) {
     });
 
     if (insertError) {
-      console.error('Error recording email send:', insertError);
+      console.error('Error recording email send:', insertError instanceof Error ? insertError.message : insertError);
     }
 
     // Update campaign sent count if campaign exists
@@ -187,7 +187,7 @@ export async function POST(request: Request) {
       message: 'Email sent successfully',
     });
   } catch (error: any) {
-    console.error('Email send error:', error);
+    console.error('Email send error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to send email', success: false },
       { status: 500 }

@@ -109,7 +109,7 @@ export async function GET() {
       recentSends: recentSends || [],
     });
   } catch (error: any) {
-    console.error('Team stats error:', error);
+    console.error('Team stats error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch team stats' }, { status: 500 });
   }
 }

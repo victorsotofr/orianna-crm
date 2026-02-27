@@ -35,7 +35,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ step });
   } catch (error: any) {
-    console.error('Step update error:', error);
+    console.error('Step update error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to update step' }, { status: 500 });
   }
 }
@@ -90,7 +90,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Step delete error:', error);
+    console.error('Step delete error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to delete step' }, { status: 500 });
   }
 }

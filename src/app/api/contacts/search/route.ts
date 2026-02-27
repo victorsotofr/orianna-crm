@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       totalPages: Math.ceil((count || 0) / limit),
     });
   } catch (error: any) {
-    console.error('Contact search error:', error);
+    console.error('Contact search error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to search contacts' },
       { status: 500 }

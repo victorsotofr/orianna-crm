@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ events: events || [] });
   } catch (error: any) {
-    console.error('Timeline fetch error:', error);
+    console.error('Timeline fetch error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to fetch timeline' }, { status: 500 });
   }
 }

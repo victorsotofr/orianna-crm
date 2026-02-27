@@ -41,8 +41,6 @@ export async function PUT(
       );
     }
 
-    console.log('🔄 Updating template:', id);
-
     // First, check if template exists and is active
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
@@ -50,10 +48,7 @@ export async function PUT(
       .eq('id', id)
       .maybeSingle(); // Use maybeSingle to avoid error if not found
 
-    console.log('🔍 Existing template check:', { existingTemplate, checkError });
-
     if (checkError) {
-      console.error('❌ Check error:', checkError);
       return NextResponse.json(
         { error: 'Erreur lors de la vérification du template' },
         { status: 500 }
@@ -61,7 +56,6 @@ export async function PUT(
     }
 
     if (!existingTemplate) {
-      console.error('❌ Template not found:', id);
       return NextResponse.json(
         { error: 'Template non trouvé' },
         { status: 404 }
@@ -69,8 +63,6 @@ export async function PUT(
     }
 
     // Update the template
-    console.log('📝 Attempting update with data:', { name, subject, industry });
-    
     const { data: template, error } = await supabase
       .from('templates')
       .update({
@@ -83,26 +75,20 @@ export async function PUT(
       .select()
       .maybeSingle(); // Use maybeSingle instead of single
 
-    console.log('🔍 Update result:', { template, error });
-
     if (error) {
-      console.error('❌ Update error:', error);
       throw error;
     }
 
     if (!template) {
-      console.error('❌ No template returned after update - possible RLS issue');
       return NextResponse.json(
         { error: 'Impossible de mettre à jour le template. Vérifiez les permissions.' },
         { status: 500 }
       );
     }
 
-    console.log('✅ Template updated successfully:', template.id);
-
     return NextResponse.json({ template });
   } catch (error: any) {
-    console.error('❌ Template update error:', error);
+    console.error('Template update error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to update template' },
       { status: 500 }
@@ -131,8 +117,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('Deleting template:', id);
-
     // Check if template exists
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
@@ -141,7 +125,6 @@ export async function DELETE(
       .single();
 
     if (checkError || !existingTemplate) {
-      console.error('Template not found:', id);
       return NextResponse.json(
         { error: 'Template non trouvé' },
         { status: 404 }
@@ -161,18 +144,15 @@ export async function DELETE(
       .eq('id', id);
 
     if (error) {
-      console.error('Deletion error:', error);
       throw error;
     }
-
-    console.log('Template deleted:', id);
 
     return NextResponse.json({
       success: true,
       message: 'Template supprimé avec succès'
     });
   } catch (error: any) {
-    console.error('❌ Template deletion error:', error);
+    console.error('Template deletion error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: error.message || 'Failed to delete template' },
       { status: 500 }

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, deleted: contact_ids.length });
   } catch (error: any) {
-    console.error('Bulk delete error:', error);
+    console.error('Bulk delete error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to delete contacts' }, { status: 500 });
   }
 }

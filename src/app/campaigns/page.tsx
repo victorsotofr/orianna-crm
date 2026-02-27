@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SiteHeader } from '@/components/site-header';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
-import { Loader2, Send } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Loader2, Send, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { isAfter, format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
@@ -36,6 +37,7 @@ interface Template {
 type TabValue = 'etape1' | 'etape2' | 'etape3';
 
 export default function CampaignsPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabValue>('etape1');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
@@ -204,6 +206,14 @@ export default function CampaignsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push('/templates/new')}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Template
+              </Button>
               <Button
                 size="sm"
                 onClick={handleSendEmails}

@@ -45,12 +45,8 @@ export async function POST(request: Request) {
     const renderedSubject = renderTemplate(template.subject || '', variables);
     const htmlContent = html_override || renderTemplate(template.html_content || '', variables);
 
-    // Append signature if present
-    const finalHtml = user_settings.signature_html
-      ? `${htmlContent}<br/><br/>${user_settings.signature_html}`
-      : htmlContent;
-
     // Send email via SMTP
+    const finalHtml = htmlContent;
     const result = await sendEmail(
       {
         host: user_settings.smtp_host,

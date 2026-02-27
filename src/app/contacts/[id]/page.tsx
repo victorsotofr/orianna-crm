@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,7 +12,7 @@ import { ContactDetailTimeline } from '@/components/contact-detail-timeline';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Trash2, Mail, Building2, Phone, UserCheck, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { Contact, ContactTimeline, TeamMember } from '@/types/database';
 
 export default function ContactDetailPage() {
@@ -244,183 +243,166 @@ export default function ContactDetailPage() {
   return (
     <>
       <SiteHeader title={`${contact.first_name || ''} ${contact.last_name || ''}`} />
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6 pb-16">
+      <div className="page-container">
+        <div className="page-content">
           {/* Top bar */}
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" onClick={() => router.push('/contacts')}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Retour
-            </Button>
-            <div className="flex gap-2">
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Supprimer
+          <div className="flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => router.push('/contacts')}>
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                Retour
+              </Button>
+              <ContactStatusBadge status={status} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
+                onClick={() => handleReplyAction('hot')}
+              >
+                <ThumbsUp className="mr-1 h-3 w-3" />
+                Chaud
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                onClick={() => handleReplyAction('cold')}
+              >
+                <ThumbsDown className="mr-1 h-3 w-3" />
+                Froid
               </Button>
             </div>
+            <Button variant="destructive" size="sm" onClick={handleDelete}>
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Supprimer
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left: Contact info */}
-            <div className="lg:col-span-2 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Informations</CardTitle>
-                  <div className="flex items-center gap-2 pt-2">
-                    <ContactStatusBadge status={status} />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
-                      onClick={() => handleReplyAction('hot')}
-                    >
-                      <ThumbsUp className="mr-1.5 h-3.5 w-3.5" />
-                      Chaud
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                      onClick={() => handleReplyAction('cold')}
-                    >
-                      <ThumbsDown className="mr-1.5 h-3.5 w-3.5" />
-                      Froid
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Prénom</Label>
-                      <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Nom</Label>
-                      <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <Input value={email} onChange={(e) => setEmail(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Entreprise</Label>
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Poste</Label>
-                      <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Téléphone</Label>
-                      <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground" />
-                        <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Statut</Label>
-                      <Select value={status} onValueChange={setStatus}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="new">Nouveau</SelectItem>
-                          <SelectItem value="contacted">Contacté</SelectItem>
-                          <SelectItem value="replied">Répondu</SelectItem>
-                          <SelectItem value="qualified">Qualifié</SelectItem>
-                          <SelectItem value="unqualified">Non qualifié</SelectItem>
-                          <SelectItem value="do_not_contact">Ne pas contacter</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Ville</Label>
-                      <Input value={location} onChange={(e) => setLocation(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Formation</Label>
-                      <Input value={education} onChange={(e) => setEducation(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-1">
-                        <UserCheck className="h-4 w-4 text-muted-foreground" />
-                        Propriétaire
-                      </Label>
-                      <Select value={assignedTo} onValueChange={setAssignedTo}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Non assigné" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Non assigné</SelectItem>
-                          {teamMembers.map(member => (
-                            <SelectItem key={member.user_id} value={member.user_id}>
-                              {member.display_name || member.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>1er Contact</Label>
-                      <Input type="date" value={firstContact} onChange={(e) => setFirstContact(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>2e Contact</Label>
-                      <Input type="date" value={secondContact} onChange={(e) => setSecondContact(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>3e Contact</Label>
-                      <Input type="date" value={thirdContact} onChange={(e) => setThirdContact(e.target.value)} />
-                    </div>
-                  </div>
-                  {contact.follow_up_1 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-muted-foreground">Relance 1 (auto)</Label>
-                        <Input value={contact.follow_up_1} readOnly disabled className="bg-muted" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-muted-foreground">Relance 2 (auto)</Label>
-                        <Input value={contact.follow_up_2 || ''} readOnly disabled className="bg-muted" />
-                      </div>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label>Notes</Label>
-                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Notes sur ce contact..." />
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Main content: 2 columns */}
+          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4 overflow-auto">
+            {/* Left: Contact form (compact) */}
+            <div className="lg:col-span-2 space-y-3">
+              {/* Row 1: Name + Email */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Prénom</Label>
+                  <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Nom</Label>
+                  <Input value={lastName} onChange={(e) => setLastName(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Email</Label>
+                  <Input value={email} onChange={(e) => setEmail(e.target.value)} className="h-8 text-sm font-mono" />
+                </div>
+              </div>
 
+              {/* Row 2: Company + Job + Phone */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Entreprise</Label>
+                  <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Poste</Label>
+                  <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Téléphone</Label>
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+
+              {/* Row 3: Location + Education + Status */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Ville</Label>
+                  <Input value={location} onChange={(e) => setLocation(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Formation</Label>
+                  <Input value={education} onChange={(e) => setEducation(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Statut</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">Nouveau</SelectItem>
+                      <SelectItem value="contacted">Contacté</SelectItem>
+                      <SelectItem value="replied">Répondu</SelectItem>
+                      <SelectItem value="qualified">Qualifié</SelectItem>
+                      <SelectItem value="unqualified">Non qualifié</SelectItem>
+                      <SelectItem value="do_not_contact">Ne pas contacter</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 4: Owner */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Propriétaire</Label>
+                  <Select value={assignedTo} onValueChange={setAssignedTo}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Non assigné" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Non assigné</SelectItem>
+                      {teamMembers.map(member => (
+                        <SelectItem key={member.user_id} value={member.user_id}>
+                          {member.display_name || member.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 5: Contact dates */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">1er Contact</Label>
+                  <Input type="date" value={firstContact} onChange={(e) => setFirstContact(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">2e Contact</Label>
+                  <Input type="date" value={secondContact} onChange={(e) => setSecondContact(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">3e Contact</Label>
+                  <Input type="date" value={thirdContact} onChange={(e) => setThirdContact(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+
+              {/* Row 6: Follow-up dates (read-only) */}
+              {contact.follow_up_1 && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Relance 1 (auto)</Label>
+                    <Input value={contact.follow_up_1} readOnly disabled className="h-8 text-sm bg-muted" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Relance 2 (auto)</Label>
+                    <Input value={contact.follow_up_2 || ''} readOnly disabled className="h-8 text-sm bg-muted" />
+                  </div>
+                </div>
+              )}
+
+              {/* Row 7: Notes */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Notes</Label>
+                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Notes..." className="text-sm" />
+              </div>
             </div>
 
             {/* Right: Timeline */}
-            <div>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Historique</CardTitle>
-                  <CardDescription>Activité récente</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ContactDetailTimeline events={timeline as any} />
-                </CardContent>
-              </Card>
+            <div className="border rounded-lg bg-card p-3 overflow-auto">
+              <h3 className="text-sm font-medium mb-2">Historique</h3>
+              <ContactDetailTimeline events={timeline as any} />
             </div>
           </div>
         </div>

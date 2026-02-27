@@ -88,7 +88,7 @@ export async function GET() {
       .from('emails_sent')
       .select(`
         id, contact_id, sent_at, status, sent_by_email,
-        contacts (id, email, first_name, last_name, company_name),
+        contacts (id, email, first_name, last_name, company_name, status),
         templates (id, name)
       `)
       .order('sent_at', { ascending: false })

@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -30,16 +31,6 @@ interface MyStats {
   myActiveEnrollments: number;
   myRecentSends: any[];
 }
-
-const emailStatusLabel: Record<string, string> = {
-  sent: 'Envoyé',
-  failed: 'Échec',
-};
-
-const emailStatusVariant: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
-  sent: 'default',
-  failed: 'destructive',
-};
 
 function RecentSendsTable({ data, onClickContact }: { data: any[]; onClickContact: (id: string) => void }) {
   if (data.length === 0) {
@@ -84,9 +75,7 @@ function RecentSendsTable({ data, onClickContact }: { data: any[]; onClickContac
                   {contact?.company_name || '—'}
                 </td>
                 <td className="px-3 py-1.5">
-                  <Badge variant={emailStatusVariant[row.status] || 'outline'} className="text-xs">
-                    {emailStatusLabel[row.status] || row.status}
-                  </Badge>
+                  <ContactStatusBadge status={contact?.status || 'new'} />
                 </td>
                 <td className="px-3 py-1.5 text-xs text-muted-foreground font-mono whitespace-nowrap">
                   {sentDate}

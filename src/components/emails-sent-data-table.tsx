@@ -81,12 +81,6 @@ const getStatusBadgeVariant = (status: string): "default" | "destructive" | "sec
       return 'default'
     case 'failed':
       return 'destructive'
-    case 'delivered':
-      return 'default'
-    case 'opened':
-      return 'secondary'
-    case 'replied':
-      return 'secondary'
     default:
       return 'outline'
   }
@@ -98,12 +92,6 @@ const getStatusColor = (status: string) => {
       return 'bg-green-500'
     case 'failed':
       return 'bg-red-500'
-    case 'delivered':
-      return 'bg-blue-500'
-    case 'opened':
-      return 'bg-yellow-500'
-    case 'replied':
-      return 'bg-purple-500'
     default:
       return 'bg-gray-500'
   }
@@ -115,12 +103,6 @@ const getStatusLabel = (status: string) => {
       return 'Envoyé'
     case 'failed':
       return 'Échec'
-    case 'delivered':
-      return 'Livré'
-    case 'opened':
-      return 'Ouvert'
-    case 'replied':
-      return 'Répondu'
     default:
       return status
   }
@@ -380,18 +362,6 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-green-500" />
                   Envoyé
-                </div>
-              </SelectItem>
-              <SelectItem value="delivered">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-blue-500" />
-                  Livré
-                </div>
-              </SelectItem>
-              <SelectItem value="opened">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-yellow-500" />
-                  Ouvert
                 </div>
               </SelectItem>
               <SelectItem value="failed">

@@ -1,16 +1,16 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SiteHeader } from '@/components/site-header';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
+import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useRouter } from 'next/navigation';
 import { Loader2, Send, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { isAfter, format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
 interface CampaignContact {
@@ -21,11 +21,7 @@ interface CampaignContact {
   company_name: string | null;
   location: string | null;
   status: string;
-  first_contact: string | null;
-  second_contact: string | null;
-  third_contact: string | null;
-  follow_up_1: string | null;
-  follow_up_2: string | null;
+  assigned_to: string | null;
 }
 
 interface Template {
@@ -34,35 +30,47 @@ interface Template {
   subject: string;
 }
 
-type TabValue = 'etape1' | 'etape2' | 'etape3';
+interface TeamMember {
+  user_id: string;
+  display_name: string;
+  email: string;
+}
 
 export default function CampaignsPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabValue>('etape1');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [contacts, setContacts] = useState<CampaignContact[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('new');
+  const [ownerFilter, setOwnerFilter] = useState('all');
 
   const fetchData = useCallback(async () => {
     try {
-      const [contactsRes, templatesRes] = await Promise.all([
+      const [contactsRes, templatesRes, teamRes] = await Promise.all([
         supabase
           .from('contacts')
-          .select('id, first_name, last_name, email, company_name, location, status, first_contact, second_contact, third_contact, follow_up_1, follow_up_2')
+          .select('id, first_name, last_name, email, company_name, location, status, assigned_to')
+          .in('status', ['new', 'contacted'])
           .order('created_at', { ascending: false }),
         supabase
           .from('templates')
           .select('id, name, subject')
           .eq('is_active', true)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('team_members')
+          .select('user_id, display_name, email'),
       ]);
 
       if (contactsRes.data) setContacts(contactsRes.data);
       if (templatesRes.data) setTemplates(templatesRes.data);
+      if (teamRes.data) setTeamMembers(teamRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -74,41 +82,29 @@ export default function CampaignsPage() {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    setSelectedContacts(new Set());
-  }, [activeTab]);
-
   const filteredContacts = useMemo(() => {
-    const now = new Date();
-    if (activeTab === 'etape1') {
-      return contacts.filter(c => !c.first_contact && c.status === 'new');
-    } else if (activeTab === 'etape2') {
-      return contacts.filter(c =>
-        c.first_contact && !c.second_contact
-        && c.follow_up_1 && isAfter(now, new Date(c.follow_up_1))
-      );
-    } else {
-      return contacts.filter(c =>
-        c.second_contact && !c.third_contact
-        && c.follow_up_2 && isAfter(now, new Date(c.follow_up_2))
-      );
-    }
-  }, [contacts, activeTab]);
-
-  const counts = useMemo(() => {
-    const now = new Date();
-    return {
-      etape1: contacts.filter(c => !c.first_contact && c.status === 'new').length,
-      etape2: contacts.filter(c =>
-        c.first_contact && !c.second_contact
-        && c.follow_up_1 && isAfter(now, new Date(c.follow_up_1))
-      ).length,
-      etape3: contacts.filter(c =>
-        c.second_contact && !c.third_contact
-        && c.follow_up_2 && isAfter(now, new Date(c.follow_up_2))
-      ).length,
-    };
-  }, [contacts]);
+    return contacts.filter(c => {
+      if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+      if (ownerFilter !== 'all') {
+        if (ownerFilter === 'unassigned') {
+          if (c.assigned_to) return false;
+        } else {
+          if (c.assigned_to !== ownerFilter) return false;
+        }
+      }
+      if (search) {
+        const q = search.toLowerCase();
+        return (
+          c.email?.toLowerCase().includes(q) ||
+          c.first_name?.toLowerCase().includes(q) ||
+          c.last_name?.toLowerCase().includes(q) ||
+          c.company_name?.toLowerCase().includes(q) ||
+          c.location?.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [contacts, statusFilter, ownerFilter, search]);
 
   const handleSendEmails = async () => {
     if (!selectedTemplate) {
@@ -120,7 +116,6 @@ export default function CampaignsPage() {
       return;
     }
 
-    const stage = activeTab === 'etape1' ? 'first' : activeTab === 'etape2' ? 'second' : 'third';
     const contactIds = Array.from(selectedContacts);
     const total = contactIds.length;
 
@@ -140,7 +135,7 @@ export default function CampaignsPage() {
           body: JSON.stringify({
             contactIds: [contactIds[i]],
             templateId: selectedTemplate,
-            stage,
+            stage: 'first',
           }),
         });
 
@@ -154,7 +149,6 @@ export default function CampaignsPage() {
         errorCount++;
       }
 
-      // Delay between sends to avoid SMTP rate limits
       if (i < contactIds.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
@@ -191,28 +185,53 @@ export default function CampaignsPage() {
     }
   };
 
-  const showFollowUpColumn = activeTab !== 'etape1';
+  const getOwnerName = (assignedTo: string | null) => {
+    if (!assignedTo) return '—';
+    const member = teamMembers.find(m => m.user_id === assignedTo);
+    return member?.display_name || '—';
+  };
 
   return (
     <>
       <SiteHeader title="Campagnes" />
       <div className="page-container">
         <div className="page-content">
-          {/* Toolbar row 1: Tabs + Template + Send */}
+          {/* Toolbar */}
           <div className="flex items-center justify-between gap-3 shrink-0 flex-wrap">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
-              <TabsList>
-                <TabsTrigger value="etape1">
-                  1er Contact ({counts.etape1})
-                </TabsTrigger>
-                <TabsTrigger value="etape2">
-                  Relance 1 ({counts.etape2})
-                </TabsTrigger>
-                <TabsTrigger value="etape3">
-                  Relance 2 ({counts.etape3})
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex items-center gap-2 flex-1">
+              <Input
+                placeholder="Rechercher..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="max-w-[200px] h-8 text-sm"
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="new">Nouveau</SelectItem>
+                  <SelectItem value="contacted">Contacté</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                <SelectTrigger className="w-[160px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les propriétaires</SelectItem>
+                  {teamMembers.map(m => (
+                    <SelectItem key={m.user_id} value={m.user_id}>{m.display_name}</SelectItem>
+                  ))}
+                  <SelectItem value="unassigned">Non assignés</SelectItem>
+                </SelectContent>
+              </Select>
+              <CompactStatsBar stats={[
+                { label: 'Sélectionnés', value: selectedContacts.size },
+                { label: 'Éligibles', value: filteredContacts.length },
+              ]} />
+            </div>
 
             <div className="flex items-center gap-2">
               <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
@@ -253,25 +272,14 @@ export default function CampaignsPage() {
             </div>
           </div>
 
-          {/* Toolbar row 2: Stats + info */}
-          <div className="flex items-center justify-between shrink-0">
-            <CompactStatsBar stats={[
-              { label: 'Sélectionnés', value: selectedContacts.size },
-              { label: 'Total', value: filteredContacts.length },
-            ]} />
-            <span className="text-xs text-muted-foreground">
-              L&apos;envoi met à jour <code className="bg-muted px-1 rounded">{activeTab === 'etape1' ? 'first_contact' : activeTab === 'etape2' ? 'second_contact' : 'third_contact'}</code> = aujourd&apos;hui
-            </span>
-          </div>
-
-          {/* Scrollable table */}
+          {/* Table */}
           {loading ? (
             <div className="flex items-center justify-center flex-1">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : filteredContacts.length === 0 ? (
             <div className="flex-1 flex items-center justify-center rounded-lg border bg-card">
-              <span className="text-sm text-muted-foreground">Aucun contact pour cette étape</span>
+              <span className="text-sm text-muted-foreground">Aucun contact éligible</span>
             </div>
           ) : (
             <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">
@@ -284,13 +292,12 @@ export default function CampaignsPage() {
                         onCheckedChange={toggleAll}
                       />
                     </th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Propriétaire</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Statut</th>
                     <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Nom</th>
                     <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Email</th>
                     <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Agence</th>
                     <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Ville</th>
-                    {showFollowUpColumn && (
-                      <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Relance depuis</th>
-                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -306,10 +313,16 @@ export default function CampaignsPage() {
                           onCheckedChange={() => toggleContact(contact.id)}
                         />
                       </td>
+                      <td className="px-3 py-1.5 text-sm">
+                        {getOwnerName(contact.assigned_to)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <ContactStatusBadge status={contact.status} />
+                      </td>
                       <td className="px-3 py-1.5 font-medium whitespace-nowrap">
                         {contact.first_name} {contact.last_name}
                       </td>
-                      <td className="px-3 py-1.5 text-muted-foreground font-mono">
+                      <td className="px-3 py-1.5 text-muted-foreground font-mono text-xs">
                         {contact.email}
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground">
@@ -318,15 +331,6 @@ export default function CampaignsPage() {
                       <td className="px-3 py-1.5 text-muted-foreground">
                         {contact.location || '\u2014'}
                       </td>
-                      {showFollowUpColumn && (
-                        <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
-                          {activeTab === 'etape2' && contact.follow_up_1
-                            ? format(new Date(contact.follow_up_1), 'dd/MM/yyyy')
-                            : activeTab === 'etape3' && contact.follow_up_2
-                              ? format(new Date(contact.follow_up_2), 'dd/MM/yyyy')
-                              : '\u2014'}
-                        </td>
-                      )}
                     </tr>
                   ))}
                 </tbody>

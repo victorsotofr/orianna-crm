@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
@@ -27,10 +27,14 @@ export default function ContactsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');
+  const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
+  const [sortColumn, setSortColumn] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [totalContacts, setTotalContacts] = useState(0);
 
   const fetchContacts = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: '500', include_team: 'true' });
+      const params = new URLSearchParams({ limit: '10000', include_team: 'true' });
       if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
       if (ownerFilter && ownerFilter !== 'all') params.set('owner', ownerFilter);
 
@@ -40,6 +44,8 @@ export default function ContactsPage() {
         setContacts(data.contacts);
         if (data.teamMembers) setTeamMembers(data.teamMembers);
         if (data.currentUserId) setCurrentUserId(data.currentUserId);
+        if (data.ownerCounts) setServerOwnerCounts(data.ownerCounts);
+        setTotalContacts(data.ownerCounts?.__total || data.total || 0);
       }
     } catch (error) {
       console.error('Error fetching contacts:', error);
@@ -124,23 +130,55 @@ export default function ContactsPage() {
     );
   };
 
-  const filtered = contacts.filter((c) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      c.email?.toLowerCase().includes(q) ||
-      c.first_name?.toLowerCase().includes(q) ||
-      c.last_name?.toLowerCase().includes(q) ||
-      c.company_name?.toLowerCase().includes(q) ||
-      c.location?.toLowerCase().includes(q)
-    );
-  });
+  const getOwnerName = useCallback((assignedTo: string | null) => {
+    if (!assignedTo) return '';
+    const member = teamMembers.find(m => m.user_id === assignedTo);
+    return member?.display_name || member?.email?.split('@')[0] || '';
+  }, [teamMembers]);
 
-  const ownerCounts = contacts.reduce<Record<string, number>>((acc, c) => {
-    const key = c.assigned_to || 'unassigned';
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const filtered = contacts
+    .filter((c) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        c.email?.toLowerCase().includes(q) ||
+        c.first_name?.toLowerCase().includes(q) ||
+        c.last_name?.toLowerCase().includes(q) ||
+        c.company_name?.toLowerCase().includes(q) ||
+        c.location?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      let valA: string | null | undefined;
+      let valB: string | null | undefined;
+
+      if (sortColumn === 'assigned_to') {
+        valA = getOwnerName(a.assigned_to);
+        valB = getOwnerName(b.assigned_to);
+      } else {
+        valA = (a as any)[sortColumn];
+        valB = (b as any)[sortColumn];
+      }
+
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
+
+      return String(valA).localeCompare(String(valB), 'fr', { sensitivity: 'base' }) * dir;
+    });
+
+  // Use server-side counts for the owner filter dropdown
+  const ownerCounts = serverOwnerCounts;
 
   const COLUMNS = [
     { key: 'assigned_to', label: 'Propriétaire', type: 'owner' as const },
@@ -197,7 +235,7 @@ export default function ContactsPage() {
                   <SelectValue placeholder="Propriétaire" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous ({contacts.length})</SelectItem>
+                  <SelectItem value="all">Tous ({ownerCounts['__total'] || totalContacts})</SelectItem>
                   <SelectItem value="me">Mes contacts ({ownerCounts[currentUserId] || 0})</SelectItem>
                   {teamMembers.map(member => (
                     <SelectItem key={member.user_id} value={member.user_id}>
@@ -209,6 +247,7 @@ export default function ContactsPage() {
               </Select>
               <CompactStatsBar stats={[
                 { label: 'Affiché', value: filtered.length },
+                { label: 'Total', value: ownerCounts['__total'] || totalContacts },
               ]} />
             </div>
             <div className="flex gap-2">
@@ -240,8 +279,19 @@ export default function ContactsPage() {
                       />
                     </th>
                     {COLUMNS.map(col => (
-                      <th key={col.key} className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">
-                        {col.label}
+                      <th
+                        key={col.key}
+                        className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
+                        onClick={() => handleSort(col.key)}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {sortColumn === col.key ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
                       </th>
                     ))}
                   </tr>

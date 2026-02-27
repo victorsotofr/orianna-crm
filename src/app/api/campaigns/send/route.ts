@@ -82,11 +82,11 @@ export async function POST(request: Request) {
 
         // Render subject and body
         const renderedSubject = renderTemplate(template.subject || '', variables);
-        let renderedHtml = renderTemplate(template.html_content || '', variables);
+        const renderedHtml = renderTemplate(template.html_content || '', variables);
 
-        // Append signature if present
-        if (userSettings.signature_html) {
-          renderedHtml = `${renderedHtml}<br/><br/>${userSettings.signature_html}`;
+        // Add delay between emails to avoid SMTP rate limits (skip first)
+        if (sentCount > 0) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
         // Send email via SMTP

@@ -8,10 +8,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Users } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AIScoreBadge } from '@/components/ai-score-badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
 
@@ -27,10 +38,13 @@ export default function ContactsPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');
   const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
   const [bulkScoring, setBulkScoring] = useState(false);
+  const [bulkPersonalizing, setBulkPersonalizing] = useState(false);
+  const [previewLine, setPreviewLine] = useState<{ name: string; text: string } | null>(null);
   const [sortColumn, setSortColumn] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [totalContacts, setTotalContacts] = useState(0);
@@ -79,7 +93,6 @@ export default function ContactsPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} contact(s) ? Cette action est irréversible.`)) return;
     setBulkDeleting(true);
     try {
       const response = await fetch('/api/contacts/bulk-delete', {
@@ -156,6 +169,37 @@ export default function ContactsPage() {
     }
   };
 
+  const handleBulkPersonalize = async () => {
+    setBulkPersonalizing(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const res = await fetch('/api/ai/personalize-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactIds: ids }),
+      });
+      if (res.ok) {
+        const { results } = await res.json();
+        const succeeded = results.filter((r: any) => !r.error).length;
+        const failed = results.filter((r: any) => r.error);
+        if (succeeded > 0) {
+          toast.success(`${succeeded} contact(s) personnalisé(s)`);
+        }
+        if (failed.length > 0) {
+          toast.error(`${failed.length} erreur(s) : ${failed[0].error}`);
+        }
+        setSelectedIds(new Set());
+        fetchContacts();
+      } else {
+        toast.error('Erreur lors de la personnalisation');
+      }
+    } catch {
+      toast.error('Erreur lors de la personnalisation IA');
+    } finally {
+      setBulkPersonalizing(false);
+    }
+  };
+
   const handleCellUpdate = (contactId: string, field: string, value: string | null) => {
     setContacts(prev =>
       prev.map(c =>
@@ -224,6 +268,7 @@ export default function ContactsPage() {
   const COLUMNS = [
     { key: 'assigned_to', label: 'Propriétaire', type: 'owner' as const },
     { key: 'ai_score', label: 'Score IA', type: 'ai_score' as const },
+    { key: 'ai_personalized_line', label: 'Personnalisation IA', type: 'ai_personalized' as const },
     { key: 'status', label: 'Statut', type: 'status' as const },
     { key: 'company_name', label: 'Agence', type: 'text' as const },
     { key: 'company_domain', label: 'Site web', type: 'text' as const },
@@ -377,6 +422,21 @@ export default function ContactsPage() {
                                 reasoning={contact.ai_score_reasoning}
                                 compact
                               />
+                            ) : col.type === 'ai_personalized' ? (
+                              contact.ai_personalized_line ? (
+                                <button
+                                  type="button"
+                                  className="text-xs max-w-[200px] truncate block text-left cursor-pointer hover:text-primary transition-colors"
+                                  onClick={() => setPreviewLine({
+                                    name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email,
+                                    text: contact.ai_personalized_line!,
+                                  })}
+                                >
+                                  {contact.ai_personalized_line}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )
                             ) : (
                               <EditableCell
                                 contactId={contact.id}
@@ -452,9 +512,18 @@ export default function ContactsPage() {
             Score IA
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkPersonalize}
+            disabled={bulkPersonalizing}
+          >
+            {bulkPersonalizing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+            Personnaliser
+          </Button>
+          <Button
             variant="destructive"
             size="sm"
-            onClick={handleBulkDelete}
+            onClick={() => setConfirmDeleteOpen(true)}
             disabled={bulkDeleting}
           >
             {bulkDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
@@ -466,6 +535,48 @@ export default function ContactsPage() {
           </Button>
         </div>
       )}
+
+      {/* Personalization preview dialog */}
+      <Dialog open={!!previewLine} onOpenChange={(open) => !open && setPreviewLine(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-purple-600" />
+              Personnalisation — {previewLine?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm leading-relaxed italic">
+            &ldquo;{previewLine?.text}&rdquo;
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            Utilisez <code className="bg-muted px-1 rounded font-mono">{'{{ai_personalized_line}}'}</code> dans vos templates pour insérer cette phrase.
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer {selectedIds.size} contact(s) ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Les contacts sélectionnés seront définitivement supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirmDeleteOpen(false);
+                handleBulkDelete();
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

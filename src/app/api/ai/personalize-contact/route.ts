@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
-import { scoreContact } from '@/lib/ai-scoring';
+import { personalizeContact } from '@/lib/ai-personalization';
 
 export const maxDuration = 300;
 
 async function getAuthenticatedSupabase(request: NextRequest) {
-  // Check for service key (edge function / internal calls)
   const serviceKey = request.headers.get('x-service-key');
   if (serviceKey && serviceKey === process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return { supabase: getServiceSupabase(), userId: 'service' };
   }
 
-  // Cookie-based auth
   const { supabase, error } = await createServerClient();
   if (error || !supabase) return null;
 
@@ -40,13 +38,12 @@ export async function POST(request: NextRequest) {
     const supabase = auth.supabase;
     // Use service role for writes to bypass RLS (user is already authenticated)
     const serviceSupabase = getServiceSupabase();
-    const scores: Array<{ contactId: string; score: number; label: string; reasoning: string; error?: string }> = [];
+    const results: Array<{ contactId: string; line: string; error?: string }> = [];
 
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
 
       try {
-        // Fetch contact
         const { data: contact, error: fetchError } = await supabase
           .from('contacts')
           .select('*')
@@ -54,48 +51,32 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (fetchError || !contact) {
-          scores.push({ contactId: id, score: 0, label: 'COLD', reasoning: '', error: 'Contact non trouvé' });
+          results.push({ contactId: id, line: '', error: 'Contact non trouvé' });
           continue;
         }
 
-        // Score via AI
-        const result = await scoreContact(contact);
+        const result = await personalizeContact(contact);
 
-        // Update contact in DB
         await serviceSupabase
           .from('contacts')
           .update({
-            ai_score: result.score,
-            ai_score_label: result.label,
-            ai_score_reasoning: result.reasoning,
-            ai_scored_at: new Date().toISOString(),
+            ai_personalized_line: result.line,
+            ai_personalized_at: new Date().toISOString(),
           })
           .eq('id', id);
 
-        // Insert timeline event
         await serviceSupabase.from('contact_timeline').insert({
           contact_id: id,
-          event_type: 'ai_scored',
-          title: `Score IA : ${result.score}/100 (${result.label})`,
-          description: result.reasoning,
+          event_type: 'ai_personalized',
+          title: 'Personnalisation IA générée',
+          description: result.line,
           created_by: auth.userId === 'service' ? null : auth.userId,
         });
 
-        scores.push({
-          contactId: id,
-          score: result.score,
-          label: result.label,
-          reasoning: result.reasoning,
-        });
+        results.push({ contactId: id, line: result.line });
       } catch (err: any) {
-        console.error(`AI scoring error for contact ${id}:`, err);
-        scores.push({
-          contactId: id,
-          score: 0,
-          label: 'COLD',
-          reasoning: '',
-          error: err.message || 'Scoring failed',
-        });
+        console.error(`AI personalization error for contact ${id}:`, err);
+        results.push({ contactId: id, line: '', error: err.message || 'Personalization failed' });
       }
 
       // 1s delay between contacts in batch mode
@@ -104,9 +85,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ scores });
+    return NextResponse.json({ results });
   } catch (error: any) {
-    console.error('AI scoring error:', error instanceof Error ? error.message : error);
-    return NextResponse.json({ error: error.message || 'Scoring failed' }, { status: 500 });
+    console.error('AI personalization error:', error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: error.message || 'Personalization failed' }, { status: 500 });
   }
 }

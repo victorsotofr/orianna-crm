@@ -107,13 +107,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Prepare template variables with contact data
-    const variables = {
-      ...templateVariables,
+    // Prepare template variables from all contact fields
+    const variables: Record<string, string> = {
       first_name: contact.first_name || '',
       last_name: contact.last_name || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
       company_name: contact.company_name || '',
-      email: contact.email,
+      company_domain: contact.company_domain || '',
+      job_title: contact.job_title || '',
+      linkedin_url: contact.linkedin_url || '',
+      location: contact.location || '',
+      education: contact.education || '',
+      status: contact.status || '',
+      notes: contact.notes || '',
+      first_contact: contact.first_contact || '',
+      second_contact: contact.second_contact || '',
+      third_contact: contact.third_contact || '',
+      last_contacted_at: contact.last_contacted_at || '',
+      replied_at: contact.replied_at || '',
+      ai_score: contact.ai_score != null ? String(contact.ai_score) : '',
+      ai_score_label: contact.ai_score_label || '',
+      ai_personalized_line: contact.ai_personalized_line || '',
+      ...templateVariables,
     };
 
     // Render email template

@@ -16,6 +16,16 @@ import {
 } from "@/components/ui/sheet"
 import { toast } from "sonner"
 import { Save, Loader2, Trash2, Mail, Building2, Phone, UserCheck, ThumbsUp, ThumbsDown } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { Contact, TeamMember } from "@/types/database"
 
 interface ContactDetailSheetProps {
@@ -37,6 +47,7 @@ export function ContactDetailSheet({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   // Editable fields
   const [firstName, setFirstName] = useState("")
@@ -140,7 +151,7 @@ export function ContactDetailSheet({
   }
 
   const handleDelete = async () => {
-    if (!contactId || !confirm("Supprimer ce contact ?")) return
+    if (!contactId) return
 
     try {
       const response = await fetch(`/api/contacts/${contactId}`, { method: "DELETE" })
@@ -221,7 +232,7 @@ export function ContactDetailSheet({
                 </Button>
               </div>
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive">
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteOpen(true)} className="text-destructive hover:text-destructive">
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <Button size="sm" onClick={handleSave} disabled={saving}>
@@ -365,6 +376,29 @@ export function ContactDetailSheet({
           </div>
         )}
       </SheetContent>
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce contact ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Le contact sera définitivement supprimé.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirmDeleteOpen(false)
+                handleDelete()
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   )
 }

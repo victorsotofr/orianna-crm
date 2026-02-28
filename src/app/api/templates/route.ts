@@ -6,28 +6,13 @@ export async function GET(request: Request) {
     // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
-    // For GET templates, we can allow public access or require auth
-    // If you want to require auth, uncomment below:
-    // if (clientError || !supabase) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
-
     // Use public client if auth fails (for public templates)
     const client = supabase || (await import('@/lib/supabase')).supabase;
 
-    const { searchParams } = new URL(request.url);
-    const industry = searchParams.get('industry');
-
-    let query = client
+    const { data: templates, error } = await client
       .from('templates')
       .select('*')
-      .order('industry', { ascending: true });
-
-    if (industry && industry !== 'all') {
-      query = query.eq('industry', industry);
-    }
-
-    const { data: templates, error } = await query;
+      .order('created_at', { ascending: false });
 
     if (error) {
       throw error;
@@ -59,20 +44,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, subject, industry, html_content } = body;
+    const { name, subject, html_content } = body;
 
     // Validation
-    if (!name || !subject || !industry || !html_content) {
+    if (!name || !subject || !html_content) {
       return NextResponse.json(
         { error: 'Tous les champs sont requis' },
-        { status: 400 }
-      );
-    }
-
-    // Validate industry is not "other" (should be a resolved custom industry name)
-    if (industry === 'other') {
-      return NextResponse.json(
-        { error: 'Veuillez sélectionner ou créer une industrie spécifique' },
         { status: 400 }
       );
     }
@@ -82,7 +59,6 @@ export async function POST(request: Request) {
       .insert({
         name,
         subject,
-        industry,
         html_content,
       })
       .select()
@@ -101,4 +77,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

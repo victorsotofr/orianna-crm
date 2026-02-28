@@ -10,10 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { ContactDetailTimeline } from '@/components/contact-detail-timeline';
 import { AIScoreCard } from '@/components/ai-score-card';
+import { AIPersonalizationCard } from '@/components/ai-personalization-card';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import type { Contact, ContactTimeline, TeamMember } from '@/types/database';
 
 export default function ContactDetailPage() {
@@ -26,6 +37,7 @@ export default function ContactDetailPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   // Editable fields
   const [firstName, setFirstName] = useState('');
@@ -183,8 +195,6 @@ export default function ContactDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce contact ?')) return;
-
     try {
       const response = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
       if (response.ok) {
@@ -273,7 +283,7 @@ export default function ContactDetailPage() {
                 Froid
               </Button>
             </div>
-            <Button variant="destructive" size="sm" onClick={handleDelete}>
+            <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)}>
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
               Supprimer
             </Button>
@@ -410,6 +420,12 @@ export default function ContactDetailPage() {
                 scoredAt={contact.ai_scored_at}
                 onScored={fetchAll}
               />
+              <AIPersonalizationCard
+                contactId={contactId}
+                line={contact.ai_personalized_line}
+                personalizedAt={contact.ai_personalized_at}
+                onUpdated={fetchAll}
+              />
               <div className="border rounded-lg bg-card p-3">
                 <h3 className="text-sm font-medium mb-2">Historique</h3>
                 <ContactDetailTimeline events={timeline as any} />
@@ -425,6 +441,29 @@ export default function ContactDetailPage() {
         hasChanges={hasChanges}
         onDiscard={handleDiscard}
       />
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce contact ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Le contact et toutes ses données associées seront définitivement supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirmDeleteOpen(false);
+                handleDelete();
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

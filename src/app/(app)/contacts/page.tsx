@@ -322,7 +322,7 @@ export default function ContactsPage() {
             </div>
           ) : (
             <div className="table-scroll-wrapper">
-            <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card" onScroll={(e) => {
+            <div className="h-full overflow-auto rounded-lg border bg-card" onScroll={(e) => {
               const el = e.currentTarget;
               const wrapper = el.parentElement;
               if (wrapper) {

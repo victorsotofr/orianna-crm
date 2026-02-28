@@ -15,9 +15,11 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { LanguageProvider, useTranslation } from '@/lib/i18n';
 
-export function LoginForm() {
+function LoginFormContent() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,9 +53,9 @@ export function LoginForm() {
   return (
     <Card className="w-full !gap-0">
       <CardHeader className="pb-4">
-        <CardTitle>Se connecter à votre compte</CardTitle>
+        <CardTitle>{t.login.title}</CardTitle>
         <CardDescription>
-          Entrez votre email ci-dessous pour vous connecter à votre compte
+          {t.login.description}
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleLogin}>
@@ -65,11 +67,11 @@ export function LoginForm() {
           )}
           <div className="flex flex-col gap-6">
             <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t.login.labels.email}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="vous@polytechnique.edu"
+                placeholder={t.login.placeholders.email}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -78,12 +80,12 @@ export function LoginForm() {
             </div>
             <div className="grid gap-2">
               <div className="flex items-center">
-                <Label htmlFor="password">Mot de passe</Label>
+                <Label htmlFor="password">{t.login.labels.password}</Label>
                 <a
                   href="#"
                   className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                 >
-                  Mot de passe oublié?
+                  {t.login.labels.forgotPassword}
                 </a>
               </div>
               <Input
@@ -99,7 +101,7 @@ export function LoginForm() {
         </CardContent>
         <CardFooter className="flex-col gap-2 pt-6 pb-0">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Connexion...' : 'Se connecter'}
+            {loading ? t.login.loading : t.login.button}
           </Button>
         </CardFooter>
       </form>
@@ -107,3 +109,10 @@ export function LoginForm() {
   );
 }
 
+export function LoginForm() {
+  return (
+    <LanguageProvider>
+      <LoginFormContent />
+    </LanguageProvider>
+  );
+}

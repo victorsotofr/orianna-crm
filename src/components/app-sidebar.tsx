@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useState } from "react"
 import {
   Home,
   Users,
@@ -8,47 +9,23 @@ import {
   Send,
   Settings,
   GalleryVerticalEnd,
+  MessageSquarePlus,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { FeedbackModal } from "@/components/feedback-modal"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
   SidebarRail,
 } from "@/components/ui/sidebar"
-
-const data = {
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: Home,
-    },
-    {
-      title: "Contacts",
-      url: "/contacts",
-      icon: Users,
-    },
-    {
-      title: "Campagnes",
-      url: "/campaigns",
-      icon: Send,
-    },
-    {
-      title: "Templates",
-      url: "/templates",
-      icon: FileText,
-    },
-    {
-      title: "Paramètres",
-      url: "/settings",
-      icon: Settings,
-    },
-  ],
-}
+import { useTranslation } from "@/lib/i18n"
 
 export function AppSidebar({
   user,
@@ -60,28 +37,74 @@ export function AppSidebar({
     avatar?: string
   }
 }) {
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const { t } = useTranslation()
+
+  const navMain = [
+    {
+      title: t.sidebar.dashboard,
+      url: "/dashboard",
+      icon: Home,
+    },
+    {
+      title: t.sidebar.contacts,
+      url: "/contacts",
+      icon: Users,
+    },
+    {
+      title: t.sidebar.campaigns,
+      url: "/campaigns",
+      icon: Send,
+    },
+    {
+      title: t.sidebar.templates,
+      url: "/templates",
+      icon: FileText,
+    },
+    {
+      title: t.sidebar.settings,
+      url: "/settings",
+      icon: Settings,
+    },
+  ]
+
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <GalleryVerticalEnd className="size-4" />
+    <>
+      <Sidebar collapsible="icon" {...props}>
+        <SidebarHeader>
+          <div className="flex items-center gap-2 px-2 py-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <GalleryVerticalEnd className="size-4" />
+            </div>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-semibold">Orianna</span>
+              <span className="truncate text-xs text-muted-foreground">
+                CRM
+              </span>
+            </div>
           </div>
-          <div className="grid flex-1 text-left text-sm leading-tight">
-            <span className="truncate font-semibold">Orianna</span>
-            <span className="truncate text-xs text-muted-foreground">
-              CRM
-            </span>
-          </div>
-        </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={data.navMain} />
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={user} />
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+        </SidebarHeader>
+        <SidebarContent>
+          <NavMain items={navMain} />
+        </SidebarContent>
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setFeedbackOpen(true)}
+                tooltip={t.sidebar.feedback}
+                className="bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50"
+              >
+                <MessageSquarePlus className="size-4" />
+                <span>{t.sidebar.feedback}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <NavUser user={user} />
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+      <FeedbackModal open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+    </>
   )
 }

@@ -7,6 +7,7 @@ import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useTranslation } from '@/lib/i18n';
 import type { TeamMember } from '@/types/database';
 
 interface EditableCellProps {
@@ -18,21 +19,22 @@ interface EditableCellProps {
   onUpdate: (contactId: string, field: string, value: string | null) => void;
 }
 
-const STATUS_OPTIONS = [
-  { value: 'new', label: 'Nouveau' },
-  { value: 'contacted', label: 'Contacté' },
-  { value: 'replied', label: 'Répondu' },
-  { value: 'qualified', label: 'Qualifié' },
-  { value: 'unqualified', label: 'Non qualifié' },
-  { value: 'do_not_contact', label: 'Ne pas contacter' },
-];
-
 export function EditableCell({ contactId, field, value, type, teamMembers, onUpdate }: EditableCellProps) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState(value || '');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const STATUS_OPTIONS = [
+    { value: 'new', label: t.statuses.new },
+    { value: 'contacted', label: t.statuses.contacted },
+    { value: 'replied', label: t.statuses.replied },
+    { value: 'qualified', label: t.statuses.qualified },
+    { value: 'unqualified', label: t.statuses.unqualified },
+    { value: 'do_not_contact', label: t.statuses.do_not_contact },
+  ];
 
   useEffect(() => {
     setLocalValue(value || '');
@@ -76,7 +78,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
     } catch {
       // Revert
       setLocalValue(value || '');
-      toast.error('Erreur lors de la sauvegarde');
+      toast.error(t.common.saveError);
     } finally {
       setSaving(false);
     }
@@ -181,7 +183,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="unassigned">Non assigné</SelectItem>
+            <SelectItem value="unassigned">{t.common.unassigned}</SelectItem>
             {members.map(m => (
               <SelectItem key={m.user_id} value={m.user_id}>
                 {m.display_name || m.email.split('@')[0]}
@@ -196,7 +198,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
         {displayName ? (
           <Badge variant="secondary" className="text-xs">{displayName}</Badge>
         ) : (
-          <span className="text-xs text-muted-foreground">Non assigné</span>
+          <span className="text-xs text-muted-foreground">{t.common.unassigned}</span>
         )}
       </div>
     );

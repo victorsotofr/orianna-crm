@@ -7,6 +7,7 @@ import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { Loader2 } from 'lucide-react';
+import { LanguageProvider, type Language } from '@/lib/i18n';
 
 function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
   useKeyboardShortcuts();
@@ -21,6 +22,7 @@ export default function AuthLayout({
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [language, setLanguage] = useState<Language>('fr');
   const supabase = createClient();
 
   useEffect(() => {
@@ -30,6 +32,15 @@ export default function AuthLayout({
         router.push('/login');
       } else {
         setUser(session.user);
+        // Fetch language preference
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('language')
+          .eq('user_id', session.user.id)
+          .single();
+        if (settings?.language) {
+          setLanguage(settings.language as Language);
+        }
       }
       setLoading(false);
     };
@@ -58,24 +69,26 @@ export default function AuthLayout({
   if (!user) return null;
 
   return (
-    <SidebarProvider
-      open={true}
-      onOpenChange={() => {}}
-      style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
-    >
-      <AppSidebar
-        variant="inset"
-        user={{
-          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          email: user.email || '',
-          avatar: user.user_metadata?.avatar_url,
-        }}
-      />
-      <SidebarInset className="min-w-0">
-        <KeyboardShortcutsProvider>
-          {children}
-        </KeyboardShortcutsProvider>
-      </SidebarInset>
-    </SidebarProvider>
+    <LanguageProvider initialLanguage={language}>
+      <SidebarProvider
+        open={true}
+        onOpenChange={() => {}}
+        style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
+      >
+        <AppSidebar
+          variant="inset"
+          user={{
+            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+            email: user.email || '',
+            avatar: user.user_metadata?.avatar_url,
+          }}
+        />
+        <SidebarInset className="min-w-0">
+          <KeyboardShortcutsProvider>
+            {children}
+          </KeyboardShortcutsProvider>
+        </SidebarInset>
+      </SidebarProvider>
+    </LanguageProvider>
   );
 }

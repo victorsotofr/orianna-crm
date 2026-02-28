@@ -20,22 +20,8 @@ import { Loader2, Eye, Code, Type } from "lucide-react"
 import { Template } from "@/types/database"
 import { VariablePicker, AVAILABLE_VARIABLES } from "@/components/variable-picker"
 import { RichTextEditor } from "@/components/rich-text-editor"
+import { useTranslation } from "@/lib/i18n"
 import type { Editor } from "@tiptap/react"
-
-const formSchema = z.object({
-  name: z
-    .string()
-    .min(3, "Le nom doit contenir au moins 3 caractères.")
-    .max(100, "Le nom doit contenir au plus 100 caractères."),
-  subject: z
-    .string()
-    .min(5, "Le sujet doit contenir au moins 5 caractères.")
-    .max(200, "Le sujet doit contenir au plus 200 caractères."),
-  html_content: z
-    .string()
-    .min(20, "Le contenu doit contenir au moins 20 caractères.")
-    .max(10000, "Le contenu doit contenir au plus 10000 caractères."),
-})
 
 interface TemplateFormProps {
   template?: Template
@@ -66,11 +52,27 @@ function renderPreview(html: string): string {
 }
 
 export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
+  const { t } = useTranslation()
   const [submitting, setSubmitting] = React.useState(false)
   const [editorTab, setEditorTab] = React.useState<string>("visual")
   const editorRef = React.useRef<Editor | null>(null)
   const codeRef = React.useRef<HTMLTextAreaElement>(null)
   const isEditing = !!template
+
+  const formSchema = z.object({
+    name: z
+      .string()
+      .min(3, t.templates.form.validation.nameMin)
+      .max(100, t.templates.form.validation.nameMax),
+    subject: z
+      .string()
+      .min(5, t.templates.form.validation.subjectMin)
+      .max(200, t.templates.form.validation.subjectMax),
+    html_content: z
+      .string()
+      .min(20, t.templates.form.validation.contentMin)
+      .max(10000, t.templates.form.validation.contentMax),
+  })
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -113,7 +115,7 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setSubmitting(true)
     const loadingToast = toast.loading(
-      isEditing ? "Mise à jour du template..." : "Création du template..."
+      isEditing ? t.templates.form.toasts.updating : t.templates.form.toasts.creating
     )
 
     try {
@@ -131,19 +133,19 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
 
       if (response.ok) {
         toast.success(
-          isEditing ? "Template mis à jour" : "Template créé",
-          { description: `"${data.name}" ${isEditing ? "mis à jour" : "créé"}`, duration: 3000 }
+          isEditing ? t.templates.form.toasts.updated : t.templates.form.toasts.created,
+          { description: `"${data.name}" ${isEditing ? t.templates.form.toasts.updatedName('').trim() : t.templates.form.toasts.createdName('').trim()}`, duration: 3000 }
         )
         onSuccess?.()
       } else if (response.status === 404 || response.status === 410) {
-        toast.error("Template introuvable ou supprimé")
+        toast.error(t.templates.form.toasts.notFound)
         setTimeout(() => window.location.reload(), 2000)
       } else {
-        toast.error(result.error || "Une erreur est survenue")
+        toast.error(result.error || t.common.networkError)
       }
     } catch (error: any) {
       toast.dismiss(loadingToast)
-      toast.error("Erreur réseau", { description: error.message })
+      toast.error(t.templates.form.toasts.networkError, { description: error.message })
     } finally {
       setSubmitting(false)
     }
@@ -159,12 +161,12 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="template-name" className="text-xs">Nom</FieldLabel>
+              <FieldLabel htmlFor="template-name" className="text-xs">{t.templates.form.name}</FieldLabel>
               <Input
                 {...field}
                 id="template-name"
                 aria-invalid={fieldState.invalid}
-                placeholder="Template Prospection"
+                placeholder={t.templates.form.placeholders.name}
                 autoComplete="off"
                 className="h-8 text-sm"
               />
@@ -178,12 +180,12 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
           control={form.control}
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="template-subject" className="text-xs">Sujet</FieldLabel>
+              <FieldLabel htmlFor="template-subject" className="text-xs">{t.templates.form.subject}</FieldLabel>
               <Input
                 {...field}
                 id="template-subject"
                 aria-invalid={fieldState.invalid}
-                placeholder="Proposition - {{company_name}}"
+                placeholder={t.templates.form.placeholders.subject}
                 autoComplete="off"
                 className="h-8 text-sm"
               />
@@ -201,20 +203,20 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
               <div className="flex items-center justify-between mb-1">
-                <FieldLabel className="text-xs">Contenu</FieldLabel>
+                <FieldLabel className="text-xs">{t.templates.form.content}</FieldLabel>
                 <VariablePicker onInsert={insertVariable} />
               </div>
 
               <Tabs value={editorTab} onValueChange={setEditorTab}>
                 <TabsList className="h-7 mb-2">
                   <TabsTrigger value="visual" className="text-xs h-6 gap-1">
-                    <Type className="h-3 w-3" /> Visuel
+                    <Type className="h-3 w-3" /> {t.templates.form.visual}
                   </TabsTrigger>
                   <TabsTrigger value="code" className="text-xs h-6 gap-1">
-                    <Code className="h-3 w-3" /> HTML
+                    <Code className="h-3 w-3" /> {t.templates.form.html}
                   </TabsTrigger>
                   <TabsTrigger value="preview" className="text-xs h-6 gap-1">
-                    <Eye className="h-3 w-3" /> Aperçu
+                    <Eye className="h-3 w-3" /> {t.templates.form.preview}
                   </TabsTrigger>
                 </TabsList>
 
@@ -224,7 +226,7 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
                     onChange={(html) => {
                       field.onChange(html)
                     }}
-                    placeholder="Bonjour {{first_name}}, ..."
+                    placeholder={t.templates.form.placeholders.contentText}
                     onEditorReady={(editor) => { editorRef.current = editor }}
                   />
                 </TabsContent>
@@ -234,7 +236,7 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
                     ref={codeRef}
                     value={field.value}
                     onChange={(e) => field.onChange(e.target.value)}
-                    placeholder="<p>Bonjour {{first_name}},</p>..."
+                    placeholder={t.templates.form.placeholders.contentHtml}
                     rows={10}
                     className="min-h-[180px] max-h-[300px] resize-y font-mono text-xs"
                   />
@@ -248,14 +250,14 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
                         dangerouslySetInnerHTML={{ __html: renderPreview(htmlContent) }}
                       />
                     ) : (
-                      <p className="text-sm text-muted-foreground">Aucun contenu</p>
+                      <p className="text-sm text-muted-foreground">{t.common.noContent}</p>
                     )}
                   </div>
                 </TabsContent>
               </Tabs>
 
               <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">
-                {htmlContent.length}/10000 caractères
+                {t.common.charactersCount(htmlContent.length, 10000)}
               </p>
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
@@ -265,13 +267,13 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
 
       <Field orientation="horizontal" className="justify-end">
         <Button type="button" variant="outline" size="sm" onClick={() => form.reset()} disabled={submitting}>
-          Réinitialiser
+          {t.common.reset}
         </Button>
         <Button type="submit" size="sm" disabled={submitting}>
           {submitting ? (
-            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> {isEditing ? "Mise à jour..." : "Création..."}</>
+            <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> {isEditing ? t.templates.form.toasts.updating : t.templates.form.creating}</>
           ) : (
-            <>{isEditing ? "Mettre à jour" : "Créer le template"}</>
+            <>{isEditing ? t.templates.form.updateButton : t.templates.form.createButton}</>
           )}
         </Button>
       </Field>

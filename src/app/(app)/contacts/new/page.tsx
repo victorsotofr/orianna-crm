@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n';
 
 export default function NewContactPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
 
   const [email, setEmail] = useState('');
@@ -28,7 +29,7 @@ export default function NewContactPage() {
 
   const handleSave = async () => {
     if (!email.trim()) {
-      toast.error("L'email est obligatoire");
+      toast.error(t.contacts.new.toasts.emailRequired);
       return;
     }
 
@@ -55,15 +56,15 @@ export default function NewContactPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Contact créé');
+        toast.success(t.contacts.new.toasts.created);
         router.push(`/contacts/${data.contact.id}`);
       } else if (response.status === 409) {
-        toast.error('Un contact avec cet email existe déjà');
+        toast.error(t.contacts.new.toasts.duplicateEmail);
       } else {
-        toast.error(data.error || 'Erreur lors de la création');
+        toast.error(data.error || t.contacts.new.toasts.createError);
       }
     } catch {
-      toast.error('Erreur lors de la création du contact');
+      toast.error(t.contacts.new.toasts.createErrorGeneric);
     } finally {
       setSaving(false);
     }
@@ -71,18 +72,18 @@ export default function NewContactPage() {
 
   return (
     <>
-      <SiteHeader title="Nouveau contact" />
+      <SiteHeader title={t.contacts.new.title} />
       <div className="page-container">
         <div className="page-content max-w-3xl">
           {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/contacts')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Retour
+              {t.common.back}
             </Button>
             <Button size="sm" onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
-              Créer le contact
+              {t.contacts.new.createButton}
             </Button>
           </div>
 
@@ -91,54 +92,54 @@ export default function NewContactPage() {
             <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
               {/* Row 1: Email, Prénom, Nom */}
               <div className="space-y-1">
-                <Label className="text-xs">Email *</Label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="contact@example.com" className="h-7 text-xs" required />
+                <Label className="text-xs">{t.contacts.new.labels.email}</Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.contacts.new.placeholders.email} className="h-7 text-xs" required />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Prénom</Label>
-                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jean" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.firstName}</Label>
+                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder={t.contacts.new.placeholders.firstName} className="h-7 text-xs" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Nom</Label>
-                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Dupont" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.lastName}</Label>
+                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder={t.contacts.new.placeholders.lastName} className="h-7 text-xs" />
               </div>
 
               {/* Row 2: Entreprise, Site web, Poste */}
               <div className="space-y-1">
-                <Label className="text-xs">Entreprise</Label>
-                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Entreprise SAS" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.company}</Label>
+                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder={t.contacts.new.placeholders.company} className="h-7 text-xs" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Site web</Label>
-                <Input value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} placeholder="example.com" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.website}</Label>
+                <Input value={companyDomain} onChange={(e) => setCompanyDomain(e.target.value)} placeholder={t.contacts.new.placeholders.website} className="h-7 text-xs" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Poste</Label>
-                <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Directeur Commercial" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.position}</Label>
+                <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder={t.contacts.new.placeholders.position} className="h-7 text-xs" />
               </div>
 
               {/* Row 3: Téléphone, LinkedIn, Ville */}
               <div className="space-y-1">
-                <Label className="text-xs">Téléphone</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+33 6 12 34 56 78" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.phone}</Label>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t.contacts.new.placeholders.phone} className="h-7 text-xs" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">LinkedIn</Label>
-                <Input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="https://linkedin.com/in/..." className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.linkedin}</Label>
+                <Input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder={t.contacts.new.placeholders.linkedin} className="h-7 text-xs" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Ville</Label>
-                <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Paris" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.city}</Label>
+                <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t.contacts.new.placeholders.city} className="h-7 text-xs" />
               </div>
 
               {/* Row 4: Formation + Notes (spanning 2 cols) */}
               <div className="space-y-1">
-                <Label className="text-xs">Formation</Label>
-                <Input value={education} onChange={(e) => setEducation(e.target.value)} placeholder="HEC Paris" className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.education}</Label>
+                <Input value={education} onChange={(e) => setEducation(e.target.value)} placeholder={t.contacts.new.placeholders.education} className="h-7 text-xs" />
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Notes</Label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes sur ce contact..." className="h-7 text-xs" />
+                <Label className="text-xs">{t.contacts.new.labels.notes}</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t.contacts.new.placeholders.notes} className="h-7 text-xs" />
               </div>
             </div>
           </div>

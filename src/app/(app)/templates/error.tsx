@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/lib/i18n';
 
 export default function TemplatesError({
   error,
@@ -10,6 +11,8 @@ export default function TemplatesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const { t } = useTranslation();
+
   useEffect(() => {
     console.error('Templates error:', error.digest || error.message);
   }, [error]);
@@ -18,9 +21,9 @@ export default function TemplatesError({
     <div className="page-container">
       <div className="page-content">
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <h2 className="text-xl font-semibold">Erreur de chargement des templates</h2>
-          <p className="text-muted-foreground">Impossible de charger les templates.</p>
-          <Button onClick={reset}>Réessayer</Button>
+          <h2 className="text-xl font-semibold">{t.errors.templates.title}</h2>
+          <p className="text-muted-foreground">{t.errors.templates.description}</p>
+          <Button onClick={reset}>{t.errors.retry}</Button>
         </div>
       </div>
     </div>

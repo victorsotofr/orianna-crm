@@ -25,9 +25,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
+import { useTranslation } from '@/lib/i18n';
 
 export default function ContactsPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -103,11 +105,11 @@ export default function ContactsPage() {
       if (response.ok) {
         setSelectedIds(new Set());
         fetchContacts();
-        toast.success('Contacts supprimés');
+        toast.success(t.contacts.toasts.deleted);
       }
     } catch (error) {
       console.error('Bulk delete error:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(t.contacts.toasts.deleteError);
     } finally {
       setBulkDeleting(false);
     }
@@ -126,13 +128,13 @@ export default function ContactsPage() {
         })
       );
       await Promise.all(promises);
-      toast.success(`${selectedIds.size} contact(s) assigné(s)`);
+      toast.success(t.contacts.toasts.assigned(selectedIds.size));
       setSelectedIds(new Set());
       setBulkOwner('');
       fetchContacts();
     } catch (error) {
       console.error('Bulk assign error:', error);
-      toast.error("Erreur lors de l'assignation");
+      toast.error(t.contacts.toasts.assignError);
     } finally {
       setBulkAssigning(false);
     }
@@ -152,18 +154,18 @@ export default function ContactsPage() {
         const succeeded = scores.filter((s: any) => !s.error).length;
         const failed = scores.filter((s: any) => s.error);
         if (succeeded > 0) {
-          toast.success(`${succeeded} contact(s) scoré(s)`);
+          toast.success(t.contacts.toasts.scored(succeeded));
         }
         if (failed.length > 0) {
-          toast.error(`${failed.length} erreur(s) : ${failed[0].error}`);
+          toast.error(t.contacts.toasts.scoreErrors(failed.length, failed[0].error));
         }
         setSelectedIds(new Set());
         fetchContacts();
       } else {
-        toast.error('Erreur lors du scoring');
+        toast.error(t.contacts.toasts.scoreError);
       }
     } catch {
-      toast.error('Erreur lors du scoring IA');
+      toast.error(t.contacts.toasts.scoreErrorAi);
     } finally {
       setBulkScoring(false);
     }
@@ -183,18 +185,18 @@ export default function ContactsPage() {
         const succeeded = results.filter((r: any) => !r.error).length;
         const failed = results.filter((r: any) => r.error);
         if (succeeded > 0) {
-          toast.success(`${succeeded} contact(s) personnalisé(s)`);
+          toast.success(t.contacts.toasts.personalized(succeeded));
         }
         if (failed.length > 0) {
-          toast.error(`${failed.length} erreur(s) : ${failed[0].error}`);
+          toast.error(t.contacts.toasts.personalizeErrors(failed.length, failed[0].error));
         }
         setSelectedIds(new Set());
         fetchContacts();
       } else {
-        toast.error('Erreur lors de la personnalisation');
+        toast.error(t.contacts.toasts.personalizeError);
       }
     } catch {
-      toast.error('Erreur lors de la personnalisation IA');
+      toast.error(t.contacts.toasts.personalizeErrorAi);
     } finally {
       setBulkPersonalizing(false);
     }
@@ -266,86 +268,86 @@ export default function ContactsPage() {
   const ownerCounts = serverOwnerCounts;
 
   const COLUMNS = [
-    { key: 'assigned_to', label: 'Propriétaire', type: 'owner' as const },
-    { key: 'ai_score', label: 'Score IA', type: 'ai_score' as const },
-    { key: 'ai_personalized_line', label: 'Personnalisation IA', type: 'ai_personalized' as const },
-    { key: 'status', label: 'Statut', type: 'status' as const },
-    { key: 'company_name', label: 'Agence', type: 'text' as const },
-    { key: 'company_domain', label: 'Site web', type: 'text' as const },
-    { key: 'location', label: 'Ville', type: 'text' as const },
-    { key: 'first_name', label: 'Prénom', type: 'text' as const },
-    { key: 'last_name', label: 'Nom', type: 'text' as const },
-    { key: 'email', label: 'Email', type: 'text' as const },
-    { key: 'linkedin_url', label: 'LinkedIn', type: 'text' as const },
-    { key: 'job_title', label: 'Poste', type: 'text' as const },
-    { key: 'education', label: 'Formation', type: 'text' as const },
-    { key: 'phone', label: 'Téléphone', type: 'text' as const },
-    { key: 'notes', label: 'Notes', type: 'text' as const },
-    { key: 'created_at', label: 'Ajouté', type: 'readonly-date' as const },
-    { key: 'first_contact', label: '1er Contact', type: 'date' as const },
-    { key: 'follow_up_1', label: 'Relance 1', type: 'readonly-date' as const },
-    { key: 'follow_up_2', label: 'Relance 2', type: 'readonly-date' as const },
-    { key: 'second_contact', label: '2e Contact', type: 'date' as const },
-    { key: 'third_contact', label: '3e Contact', type: 'date' as const },
+    { key: 'assigned_to', label: t.contacts.columns.owner, type: 'owner' as const },
+    { key: 'ai_score', label: t.contacts.columns.aiScore, type: 'ai_score' as const },
+    { key: 'ai_personalized_line', label: t.contacts.columns.aiPersonalization, type: 'ai_personalized' as const },
+    { key: 'status', label: t.contacts.columns.status, type: 'status' as const },
+    { key: 'company_name', label: t.contacts.columns.company, type: 'text' as const },
+    { key: 'company_domain', label: t.contacts.columns.website, type: 'text' as const },
+    { key: 'location', label: t.contacts.columns.city, type: 'text' as const },
+    { key: 'first_name', label: t.contacts.columns.firstName, type: 'text' as const },
+    { key: 'last_name', label: t.contacts.columns.lastName, type: 'text' as const },
+    { key: 'email', label: t.contacts.columns.email, type: 'text' as const },
+    { key: 'linkedin_url', label: t.contacts.columns.linkedin, type: 'text' as const },
+    { key: 'job_title', label: t.contacts.columns.position, type: 'text' as const },
+    { key: 'education', label: t.contacts.columns.education, type: 'text' as const },
+    { key: 'phone', label: t.contacts.columns.phone, type: 'text' as const },
+    { key: 'notes', label: t.contacts.columns.notes, type: 'text' as const },
+    { key: 'created_at', label: t.contacts.columns.addedAt, type: 'readonly-date' as const },
+    { key: 'first_contact', label: t.contacts.columns.firstContact, type: 'date' as const },
+    { key: 'follow_up_1', label: t.contacts.columns.followUp1, type: 'readonly-date' as const },
+    { key: 'follow_up_2', label: t.contacts.columns.followUp2, type: 'readonly-date' as const },
+    { key: 'second_contact', label: t.contacts.columns.secondContact, type: 'date' as const },
+    { key: 'third_contact', label: t.contacts.columns.thirdContact, type: 'date' as const },
   ];
 
   return (
     <>
-      <SiteHeader title="Contacts" />
+      <SiteHeader title={t.contacts.title} />
       <div className="page-container">
         <div className="page-content">
           {/* Toolbar — always visible */}
           <div className="flex items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-2 flex-1">
               <Input
-                placeholder="Rechercher..."
+                placeholder={t.contacts.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="max-w-[200px] h-8 text-sm"
               />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[140px] h-8 text-xs">
-                  <SelectValue placeholder="Statut" />
+                  <SelectValue placeholder={t.common.status} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
-                  <SelectItem value="hot_leads">Leads chauds (IA)</SelectItem>
-                  <SelectItem value="new">Nouveau</SelectItem>
-                  <SelectItem value="contacted">Contacté</SelectItem>
-                  <SelectItem value="replied">Répondu</SelectItem>
-                  <SelectItem value="qualified">Qualifié</SelectItem>
-                  <SelectItem value="unqualified">Non qualifié</SelectItem>
-                  <SelectItem value="do_not_contact">Ne pas contacter</SelectItem>
+                  <SelectItem value="all">{t.statuses.allStatuses}</SelectItem>
+                  <SelectItem value="hot_leads">{t.contacts.hotLeads}</SelectItem>
+                  <SelectItem value="new">{t.statuses.new}</SelectItem>
+                  <SelectItem value="contacted">{t.statuses.contacted}</SelectItem>
+                  <SelectItem value="replied">{t.statuses.replied}</SelectItem>
+                  <SelectItem value="qualified">{t.statuses.qualified}</SelectItem>
+                  <SelectItem value="unqualified">{t.statuses.unqualified}</SelectItem>
+                  <SelectItem value="do_not_contact">{t.statuses.do_not_contact}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={ownerFilter} onValueChange={setOwnerFilter}>
                 <SelectTrigger className="w-[180px] h-8 text-xs">
-                  <SelectValue placeholder="Propriétaire" />
+                  <SelectValue placeholder={t.common.owner} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous ({ownerCounts['__total'] || totalContacts})</SelectItem>
-                  <SelectItem value="me">Mes contacts ({ownerCounts[currentUserId] || 0})</SelectItem>
+                  <SelectItem value="all">{t.common.all} ({ownerCounts['__total'] || totalContacts})</SelectItem>
+                  <SelectItem value="me">{t.contacts.myContacts} ({ownerCounts[currentUserId] || 0})</SelectItem>
                   {teamMembers.map(member => (
                     <SelectItem key={member.user_id} value={member.user_id}>
                       {member.display_name || member.email.split('@')[0]} ({ownerCounts[member.user_id] || 0})
                     </SelectItem>
                   ))}
-                  <SelectItem value="unassigned">Non assignés ({ownerCounts['unassigned'] || 0})</SelectItem>
+                  <SelectItem value="unassigned">{t.contacts.unassignedContacts} ({ownerCounts['unassigned'] || 0})</SelectItem>
                 </SelectContent>
               </Select>
               <CompactStatsBar stats={[
-                { label: 'Affiché', value: filtered.length },
-                { label: 'Total', value: ownerCounts['__total'] || totalContacts },
+                { label: t.contacts.displayed, value: filtered.length },
+                { label: t.contacts.total, value: ownerCounts['__total'] || totalContacts },
               ]} />
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => router.push('/contacts/import')}>
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
-                CSV
+                {t.contacts.csv}
               </Button>
               <Button size="sm" onClick={() => router.push('/contacts/new')}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Nouveau
+                {t.contacts.newButton}
               </Button>
             </div>
           </div>
@@ -456,11 +458,11 @@ export default function ContactsPage() {
                       <td colSpan={COLUMNS.length + 1} className="h-48">
                         <div className="flex flex-col items-center justify-center text-center py-8">
                           <Users className="h-10 w-10 text-muted-foreground mb-3" />
-                          <h3 className="text-sm font-medium mb-1">Aucun contact trouvé</h3>
-                          <p className="text-xs text-muted-foreground mb-4">Essayez de modifier vos filtres ou ajoutez un nouveau contact</p>
+                          <h3 className="text-sm font-medium mb-1">{t.contacts.emptyState.title}</h3>
+                          <p className="text-xs text-muted-foreground mb-4">{t.contacts.emptyState.description}</p>
                           <Button size="sm" onClick={() => router.push('/contacts/new')}>
                             <Plus className="mr-1.5 h-3.5 w-3.5" />
-                            Nouveau
+                            {t.contacts.newButton}
                           </Button>
                         </div>
                       </td>
@@ -477,15 +479,15 @@ export default function ContactsPage() {
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-lg px-4 py-2.5">
-          <span className="text-sm font-medium">{selectedIds.size} sélectionné(s)</span>
+          <span className="text-sm font-medium">{t.common.nSelected(selectedIds.size)}</span>
           <div className="flex items-center gap-2 border-l pl-3">
             <UserCheck className="h-3.5 w-3.5 text-muted-foreground" />
             <Select value={bulkOwner} onValueChange={setBulkOwner}>
               <SelectTrigger className="h-7 w-[160px] text-xs">
-                <SelectValue placeholder="Assigner à..." />
+                <SelectValue placeholder={t.contacts.bulkActions.assignTo} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="unassigned">Non assigné</SelectItem>
+                <SelectItem value="unassigned">{t.common.unassigned}</SelectItem>
                 {teamMembers.map(member => (
                   <SelectItem key={member.user_id} value={member.user_id}>
                     {member.display_name || member.email.split('@')[0]}
@@ -499,7 +501,7 @@ export default function ContactsPage() {
               onClick={handleBulkAssign}
               disabled={!bulkOwner || bulkAssigning}
             >
-              {bulkAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Assigner'}
+              {bulkAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t.contacts.bulkActions.assign}
             </Button>
           </div>
           <Button
@@ -509,7 +511,7 @@ export default function ContactsPage() {
             disabled={bulkScoring}
           >
             {bulkScoring ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Brain className="mr-1.5 h-3.5 w-3.5" />}
-            Score IA
+            {t.contacts.bulkActions.aiScore}
           </Button>
           <Button
             variant="outline"
@@ -518,7 +520,7 @@ export default function ContactsPage() {
             disabled={bulkPersonalizing}
           >
             {bulkPersonalizing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-            Personnaliser
+            {t.contacts.bulkActions.personalize}
           </Button>
           <Button
             variant="destructive"
@@ -527,11 +529,11 @@ export default function ContactsPage() {
             disabled={bulkDeleting}
           >
             {bulkDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
-            Supprimer
+            {t.contacts.bulkActions.delete}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
             <X className="mr-1.5 h-3.5 w-3.5" />
-            Désélectionner
+            {t.contacts.bulkActions.deselect}
           </Button>
         </div>
       )}
@@ -542,14 +544,14 @@ export default function ContactsPage() {
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-purple-600" />
-              Personnalisation — {previewLine?.name}
+              {t.contacts.personalizationPreview.title(previewLine?.name ?? '')}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm leading-relaxed italic">
             &ldquo;{previewLine?.text}&rdquo;
           </p>
           <p className="text-[10px] text-muted-foreground">
-            Utilisez <code className="bg-muted px-1 rounded font-mono">{'{{ai_personalized_line}}'}</code> dans vos templates pour insérer cette phrase.
+            {t.contacts.personalizationPreview.hint}
           </p>
         </DialogContent>
       </Dialog>
@@ -558,13 +560,13 @@ export default function ContactsPage() {
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer {selectedIds.size} contact(s) ?</AlertDialogTitle>
+            <AlertDialogTitle>{t.contacts.deleteDialog.title(selectedIds.size)}</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est irréversible. Les contacts sélectionnés seront définitivement supprimés.
+              {t.contacts.deleteDialog.description}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -572,7 +574,7 @@ export default function ContactsPage() {
                 handleBulkDelete();
               }}
             >
-              Supprimer
+              {t.common.delete}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

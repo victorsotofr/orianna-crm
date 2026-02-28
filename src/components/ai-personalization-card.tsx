@@ -5,7 +5,7 @@ import { Sparkles, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { useTranslation } from '@/lib/i18n';
 
 interface AIPersonalizationCardProps {
   contactId: string;
@@ -15,6 +15,7 @@ interface AIPersonalizationCardProps {
 }
 
 export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdated }: AIPersonalizationCardProps) {
+  const { t, dateFnsLocale } = useTranslation();
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -31,14 +32,14 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
         if (results[0]?.error) {
           toast.error(results[0].error);
         } else {
-          toast.success('Personnalisation générée');
+          toast.success(t.ai.personalization.generated);
           onUpdated();
         }
       } else {
-        toast.error('Erreur lors de la personnalisation');
+        toast.error(t.ai.personalization.error);
       }
     } catch {
-      toast.error('Erreur lors de la personnalisation');
+      toast.error(t.ai.personalization.error);
     } finally {
       setGenerating(false);
     }
@@ -53,11 +54,11 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
         body: JSON.stringify({ ai_personalized_line: null, ai_personalized_at: null }),
       });
       if (res.ok) {
-        toast.success('Personnalisation supprimée');
+        toast.success(t.ai.personalization.deleted);
         onUpdated();
       }
     } catch {
-      toast.error('Erreur');
+      toast.error(t.ai.personalization.errorTitle);
     } finally {
       setDeleting(false);
     }
@@ -68,7 +69,7 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-          <span className="text-sm font-medium">Personnalisation IA</span>
+          <span className="text-sm font-medium">{t.ai.personalization.title}</span>
         </div>
         <div className="flex items-center gap-1">
           {line && (
@@ -94,10 +95,10 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
             ) : line ? (
               <>
                 <RefreshCw className="mr-1 h-3 w-3" />
-                Régénérer
+                {t.ai.personalization.regenerate}
               </>
             ) : (
-              'Générer'
+              t.ai.personalization.generate
             )}
           </Button>
         </div>
@@ -110,7 +111,7 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
           </p>
           {personalizedAt && (
             <p className="text-xs text-muted-foreground mt-1.5 opacity-60">
-              Généré {formatDistanceToNow(new Date(personalizedAt), { addSuffix: true, locale: fr })}
+              {t.ai.personalization.generatedAgo(formatDistanceToNow(new Date(personalizedAt), { addSuffix: true, locale: dateFnsLocale }))}
             </p>
           )}
           <p className="text-[10px] text-muted-foreground mt-1">
@@ -119,7 +120,7 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Aucune personnalisation. Cliquez sur &quot;Générer&quot; pour créer une phrase d&apos;accroche personnalisée avec l&apos;IA.
+          {t.ai.personalization.emptyState}
         </p>
       )}
     </div>

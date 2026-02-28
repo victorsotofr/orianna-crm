@@ -1,8 +1,8 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { fr } from "date-fns/locale"
 import { Mail, MessageSquare, UserPlus, ArrowRightLeft, Zap, Clock, CheckCircle, Brain } from "lucide-react"
+import { useTranslation } from "@/lib/i18n"
 import type { ContactTimeline } from "@/types/database"
 
 const eventIcons: Record<string, React.ElementType> = {
@@ -35,10 +35,12 @@ interface TimelineEvent extends ContactTimeline {
 }
 
 export function ContactDetailTimeline({ events }: { events: TimelineEvent[] }) {
+  const { t, dateFnsLocale } = useTranslation()
+
   if (events.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-8">
-        Aucun événement pour le moment
+        {t.timeline.emptyState}
       </p>
     )
   }
@@ -63,7 +65,7 @@ export function ContactDetailTimeline({ events }: { events: TimelineEvent[] }) {
                 {event.team_members?.display_name && (
                   <span className="font-medium">{event.team_members.display_name} &middot; </span>
                 )}
-                {formatDistanceToNow(new Date(event.created_at), { addSuffix: true, locale: fr })}
+                {formatDistanceToNow(new Date(event.created_at), { addSuffix: true, locale: dateFnsLocale })}
               </p>
             </div>
           </div>

@@ -140,7 +140,7 @@
 /* Table scroll hint — right-edge fade when content overflows */
 @layer components {
   .table-scroll-wrapper {
-    @apply relative flex-1 min-h-0;
+    @apply relative flex-1 min-h-0 overflow-hidden rounded-lg;
   }
   .table-scroll-wrapper::after {
     content: '';

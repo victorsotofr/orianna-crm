@@ -16,7 +16,6 @@ export function useKeyboardShortcuts() {
   const shortcuts: Shortcut[] = [
     { key: 'd', meta: true, shift: true, action: () => router.push('/dashboard'), description: 'Aller au dashboard' },
     { key: 'c', meta: true, shift: true, action: () => router.push('/contacts'), description: 'Aller aux contacts' },
-    { key: 's', meta: true, shift: true, action: () => router.push('/sequences'), description: 'Aller aux séquences' },
     { key: 't', meta: true, shift: true, action: () => router.push('/templates'), description: 'Aller aux templates' },
     { key: ',', meta: true, action: () => router.push('/settings'), description: 'Ouvrir les paramètres' },
   ]

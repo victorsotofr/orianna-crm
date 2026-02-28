@@ -11,6 +11,7 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
 import { Plus, Loader2, FileText, Eye, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Template } from '@/types/database';
 import { extractTemplateVariables } from '@/lib/template-renderer';
 
@@ -110,8 +111,10 @@ export default function TemplatesPage() {
 
           {/* Table */}
           {loading ? (
-            <div className="flex items-center justify-center flex-1">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 flex-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-[100px] rounded-lg" />
+              ))}
             </div>
           ) : templates.length === 0 ? (
             <div className="flex flex-col items-center justify-center flex-1 text-center">

@@ -133,6 +133,30 @@
     @apply flex flex-col flex-1 min-h-0 min-w-0 px-4 py-3 lg:px-6 gap-3;
   }
   .table-container {
-    @apply flex-1 min-h-0 overflow-auto rounded-lg border bg-card;
+    @apply flex-1 min-h-0 overflow-auto rounded-lg border bg-card relative;
+  }
+}
+
+/* Table scroll hint — right-edge fade when content overflows */
+@layer components {
+  .table-scroll-wrapper {
+    @apply relative flex-1 min-h-0;
+  }
+  .table-scroll-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 2rem;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--card));
+    border-radius: 0 var(--radius) var(--radius) 0;
+    z-index: 20;
+    opacity: 1;
+    transition: opacity 0.2s;
+  }
+  .table-scroll-wrapper[data-scrolled-right]::after {
+    opacity: 0;
   }
 }

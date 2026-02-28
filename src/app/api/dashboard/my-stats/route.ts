@@ -49,23 +49,6 @@ export async function GET() {
       .eq('assigned_to', user.id)
       .neq('status', 'new');
 
-    // My active enrollments (sequences I created)
-    const { data: mySequences } = await supabase
-      .from('sequences')
-      .select('id')
-      .eq('created_by', user.id);
-
-    let myActiveEnrollments = 0;
-    if (mySequences && mySequences.length > 0) {
-      const seqIds = mySequences.map(s => s.id);
-      const { count } = await supabase
-        .from('sequence_enrollments')
-        .select('*', { count: 'exact', head: true })
-        .in('sequence_id', seqIds)
-        .eq('status', 'active');
-      myActiveEnrollments = count || 0;
-    }
-
     // My recent sends
     const { data: myRecentSends } = await supabase
       .from('emails_sent')
@@ -87,7 +70,6 @@ export async function GET() {
       myEmailsToday: myEmailsToday || 0,
       myTotalEmails: myTotalEmails || 0,
       myReplyRate,
-      myActiveEnrollments,
       myRecentSends: myRecentSends || [],
     });
   } catch (error: any) {

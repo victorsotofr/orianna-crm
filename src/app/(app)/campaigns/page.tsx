@@ -10,6 +10,8 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useRouter } from 'next/navigation';
 import { Loader2, Send, Plus } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
@@ -255,32 +257,39 @@ export default function CampaignsPage() {
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Template
               </Button>
-              <Button
-                size="sm"
-                onClick={handleSendEmails}
-                disabled={selectedContacts.size === 0 || !selectedTemplate || sending}
-              >
-                {sending ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
+              {sending && sendProgress ? (
+                <div className="flex items-center gap-2 min-w-[200px]">
+                  <Progress value={(sendProgress.current / sendProgress.total) * 100} className="h-2 flex-1" />
+                  <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+                    {sendProgress.current}/{sendProgress.total} ({Math.round((sendProgress.current / sendProgress.total) * 100)}%)
+                  </span>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={handleSendEmails}
+                  disabled={selectedContacts.size === 0 || !selectedTemplate || sending}
+                >
                   <Send className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                {sending && sendProgress
-                  ? `${sendProgress.current}/${sendProgress.total}`
-                  : `Envoyer (${selectedContacts.size})`
-                }
-              </Button>
+                  Envoyer ({selectedContacts.size})
+                </Button>
+              )}
             </div>
           </div>
 
           {/* Table */}
           {loading ? (
-            <div className="flex items-center justify-center flex-1">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="flex-1 min-h-0 rounded-lg border bg-card p-3 space-y-3">
+              <Skeleton className="h-8 w-full rounded" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full rounded" />
+              ))}
             </div>
           ) : filteredContacts.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center rounded-lg border bg-card">
-              <span className="text-sm text-muted-foreground">Aucun contact éligible</span>
+            <div className="flex flex-col items-center justify-center flex-1 text-center rounded-lg border bg-card">
+              <Send className="h-10 w-10 text-muted-foreground mb-3" />
+              <h3 className="text-sm font-medium mb-1">Aucun contact éligible</h3>
+              <p className="text-xs text-muted-foreground">Seuls les contacts avec le statut &quot;Nouveau&quot; ou &quot;Contacté&quot; apparaissent ici</p>
             </div>
           ) : (
             <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">

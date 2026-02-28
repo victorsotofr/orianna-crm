@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AIScoreBadge } from '@/components/ai-score-badge';
 import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
 
@@ -28,6 +29,7 @@ export default function ContactsPage() {
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');
   const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
+  const [bulkScoring, setBulkScoring] = useState(false);
   const [sortColumn, setSortColumn] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [totalContacts, setTotalContacts] = useState(0);
@@ -122,6 +124,37 @@ export default function ContactsPage() {
     }
   };
 
+  const handleBulkScore = async () => {
+    setBulkScoring(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const res = await fetch('/api/ai/score-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactIds: ids }),
+      });
+      if (res.ok) {
+        const { scores } = await res.json();
+        const succeeded = scores.filter((s: any) => !s.error).length;
+        const failed = scores.filter((s: any) => s.error);
+        if (succeeded > 0) {
+          toast.success(`${succeeded} contact(s) scoré(s)`);
+        }
+        if (failed.length > 0) {
+          toast.error(`${failed.length} erreur(s) : ${failed[0].error}`);
+        }
+        setSelectedIds(new Set());
+        fetchContacts();
+      } else {
+        toast.error('Erreur lors du scoring');
+      }
+    } catch {
+      toast.error('Erreur lors du scoring IA');
+    } finally {
+      setBulkScoring(false);
+    }
+  };
+
   const handleCellUpdate = (contactId: string, field: string, value: string | null) => {
     setContacts(prev =>
       prev.map(c =>
@@ -159,6 +192,13 @@ export default function ContactsPage() {
     })
     .sort((a, b) => {
       const dir = sortDirection === 'asc' ? 1 : -1;
+
+      if (sortColumn === 'ai_score') {
+        const scoreA = a.ai_score ?? -1;
+        const scoreB = b.ai_score ?? -1;
+        return (scoreA - scoreB) * dir;
+      }
+
       let valA: string | null | undefined;
       let valB: string | null | undefined;
 
@@ -182,6 +222,7 @@ export default function ContactsPage() {
 
   const COLUMNS = [
     { key: 'assigned_to', label: 'Propriétaire', type: 'owner' as const },
+    { key: 'ai_score', label: 'Score IA', type: 'ai_score' as const },
     { key: 'status', label: 'Statut', type: 'status' as const },
     { key: 'company_name', label: 'Agence', type: 'text' as const },
     { key: 'company_domain', label: 'Site web', type: 'text' as const },
@@ -222,6 +263,7 @@ export default function ContactsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="hot_leads">Leads chauds (IA)</SelectItem>
                   <SelectItem value="new">Nouveau</SelectItem>
                   <SelectItem value="contacted">Contacté</SelectItem>
                   <SelectItem value="replied">Répondu</SelectItem>
@@ -308,14 +350,23 @@ export default function ContactsPage() {
                         </td>
                         {COLUMNS.map(col => (
                           <td key={col.key} className="px-3 py-1">
-                            <EditableCell
-                              contactId={contact.id}
-                              field={col.key}
-                              value={(contact as any)[col.key]}
-                              type={col.type}
-                              teamMembers={col.type === 'owner' ? teamMembers : undefined}
-                              onUpdate={handleCellUpdate}
-                            />
+                            {col.type === 'ai_score' ? (
+                              <AIScoreBadge
+                                score={contact.ai_score}
+                                label={contact.ai_score_label}
+                                reasoning={contact.ai_score_reasoning}
+                                compact
+                              />
+                            ) : (
+                              <EditableCell
+                                contactId={contact.id}
+                                field={col.key}
+                                value={(contact as any)[col.key]}
+                                type={col.type}
+                                teamMembers={col.type === 'owner' ? teamMembers : undefined}
+                                onUpdate={handleCellUpdate}
+                              />
+                            )}
                           </td>
                         ))}
                       </tr>
@@ -362,6 +413,15 @@ export default function ContactsPage() {
               {bulkAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Assigner'}
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkScore}
+            disabled={bulkScoring}
+          >
+            {bulkScoring ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Brain className="mr-1.5 h-3.5 w-3.5" />}
+            Score IA
+          </Button>
           <Button
             variant="destructive"
             size="sm"

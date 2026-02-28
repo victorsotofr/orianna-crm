@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { ContactDetailTimeline } from '@/components/contact-detail-timeline';
+import { AIScoreCard } from '@/components/ai-score-card';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
@@ -399,10 +400,20 @@ export default function ContactDetailPage() {
               </div>
             </div>
 
-            {/* Right: Timeline */}
-            <div className="border rounded-lg bg-card p-3 overflow-auto">
-              <h3 className="text-sm font-medium mb-2">Historique</h3>
-              <ContactDetailTimeline events={timeline as any} />
+            {/* Right: AI Score + Timeline */}
+            <div className="space-y-3 overflow-auto">
+              <AIScoreCard
+                contactId={contactId}
+                score={contact.ai_score}
+                label={contact.ai_score_label}
+                reasoning={contact.ai_score_reasoning}
+                scoredAt={contact.ai_scored_at}
+                onScored={fetchAll}
+              />
+              <div className="border rounded-lg bg-card p-3">
+                <h3 className="text-sm font-medium mb-2">Historique</h3>
+                <ContactDetailTimeline events={timeline as any} />
+              </div>
             </div>
           </div>
         </div>

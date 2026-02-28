@@ -23,7 +23,11 @@ export async function GET(request: NextRequest) {
 
     // Build base filter function to apply to any query
     function applyFilters(query: any) {
-      if (status) query = query.eq('status', status);
+      if (status === 'hot_leads') {
+        query = query.eq('ai_score_label', 'HOT');
+      } else if (status) {
+        query = query.eq('status', status);
+      }
       if (assignedTo) query = query.eq('assigned_to', assignedTo);
       if (owner === 'me') {
         query = query.eq('assigned_to', user!.id);

@@ -7,6 +7,7 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
+import { AIScoreBadge } from '@/components/ai-score-badge';
 import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -19,6 +20,8 @@ interface TeamStats {
   totalEmails: number;
   replyRate: number;
   activeEnrollments: number;
+  hotLeadsCount: number;
+  hotLeads: any[];
   perUser: { name: string; email: string; contacts: number; emailsToday: number }[];
   recentSends: any[];
 }
@@ -150,6 +153,7 @@ export default function DashboardPage() {
               {/* Stats bar */}
               <CompactStatsBar stats={[
                 { label: 'Contacts', value: teamStats?.totalContacts || 0 },
+                { label: 'Leads chauds', value: teamStats?.hotLeadsCount || 0 },
                 { label: 'Séquences actives', value: teamStats?.activeSequences || 0 },
                 { label: "Emails aujourd'hui", value: teamStats?.emailsToday || 0 },
                 { label: 'Taux réponse', value: `${teamStats?.replyRate || 0}%` },
@@ -186,6 +190,50 @@ export default function DashboardPage() {
                     </TableBody>
                   </Table>
                 </div>
+              )}
+
+              {/* Hot leads */}
+              {teamStats?.hotLeads && teamStats.hotLeads.length > 0 && (
+                <>
+                  <p className="text-xs font-medium text-muted-foreground shrink-0">Leads chauds (IA)</p>
+                  <div className="rounded-lg border bg-card shrink-0">
+                    <table className="text-sm border-collapse w-full">
+                      <thead className="bg-muted/50">
+                        <tr className="border-b">
+                          <th className="h-9 px-3 text-left text-xs font-medium">Contact</th>
+                          <th className="h-9 px-3 text-left text-xs font-medium">Agence</th>
+                          <th className="h-9 px-3 text-left text-xs font-medium">Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamStats.hotLeads.map((lead: any) => (
+                          <tr
+                            key={lead.id}
+                            className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
+                            onClick={() => handleClickContact(lead.id)}
+                          >
+                            <td className="px-3 py-1.5">
+                              <div className="font-medium text-sm">
+                                {lead.first_name || '—'} {lead.last_name || ''}
+                              </div>
+                              <div className="text-xs text-muted-foreground font-mono">{lead.email}</div>
+                            </td>
+                            <td className="px-3 py-1.5 text-sm text-muted-foreground">
+                              {lead.company_name || '—'}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <AIScoreBadge
+                                score={lead.ai_score}
+                                label={lead.ai_score_label}
+                                reasoning={lead.ai_score_reasoning}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
 
               {/* Recent sends - scrollable table matching contacts page style */}

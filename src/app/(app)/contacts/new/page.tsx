@@ -9,6 +9,7 @@ import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 export default function NewContactPage() {
   const router = useRouter();
@@ -35,7 +36,7 @@ export default function NewContactPage() {
 
     setSaving(true);
     try {
-      const response = await fetch('/api/contacts/create', {
+      const response = await apiFetch('/api/contacts/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

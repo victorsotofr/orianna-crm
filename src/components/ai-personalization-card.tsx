@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 interface AIPersonalizationCardProps {
   contactId: string;
@@ -22,7 +23,7 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const res = await fetch('/api/ai/personalize-contact', {
+      const res = await apiFetch('/api/ai/personalize-contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contactId }),
@@ -48,7 +49,7 @@ export function AIPersonalizationCard({ contactId, line, personalizedAt, onUpdat
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const res = await fetch(`/api/contacts/${contactId}`, {
+      const res = await apiFetch(`/api/contacts/${contactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ai_personalized_line: null, ai_personalized_at: null }),

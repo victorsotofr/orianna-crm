@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        const contactWorkspaceId = contact.workspace_id;
+
         const result = await personalizeContact(contact);
 
         await serviceSupabase
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
           title: 'Personnalisation IA générée',
           description: result.line,
           created_by: auth.userId === 'service' ? null : auth.userId,
+          workspace_id: contactWorkspaceId,
         });
 
         results.push({ contactId: id, line: result.line });

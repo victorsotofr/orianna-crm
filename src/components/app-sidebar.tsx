@@ -10,6 +10,9 @@ import {
   Settings,
   GalleryVerticalEnd,
   MessageSquarePlus,
+  ChevronsUpDown,
+  Plus,
+  Check,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -25,7 +28,15 @@ import {
   SidebarMenuButton,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useTranslation } from "@/lib/i18n"
+import { useWorkspace } from "@/lib/workspace-context"
 
 export function AppSidebar({
   user,
@@ -39,6 +50,7 @@ export function AppSidebar({
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const { t } = useTranslation()
+  const { workspace, workspaces, switchWorkspace } = useWorkspace()
 
   const navMain = [
     {
@@ -68,21 +80,57 @@ export function AppSidebar({
     },
   ]
 
+  const showSwitcher = workspaces.length > 1
+
   return (
     <>
       <Sidebar collapsible="icon" {...props}>
         <SidebarHeader>
-          <div className="flex items-center gap-2 px-2 py-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <GalleryVerticalEnd className="size-4" />
+          {showSwitcher ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 px-2 py-2 w-full rounded-md hover:bg-accent transition-colors">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
+                    <GalleryVerticalEnd className="size-4" />
+                  </div>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{workspace?.name || 'Orianna'}</span>
+                    <span className="truncate text-xs text-muted-foreground">CRM</span>
+                  </div>
+                  <ChevronsUpDown className="size-4 text-muted-foreground shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {workspaces.map((ws) => (
+                  <DropdownMenuItem
+                    key={ws.id}
+                    onClick={() => switchWorkspace(ws.id)}
+                    className="flex items-center justify-between"
+                  >
+                    <span>{ws.name}</span>
+                    {ws.id === workspace?.id && <Check className="size-4" />}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <a href="/create-workspace" className="flex items-center gap-2">
+                    <Plus className="size-4" />
+                    {t.workspace.createNew}
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div className="flex items-center gap-2 px-2 py-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <GalleryVerticalEnd className="size-4" />
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">{workspace?.name || 'Orianna'}</span>
+                <span className="truncate text-xs text-muted-foreground">CRM</span>
+              </div>
             </div>
-            <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-semibold">Orianna</span>
-              <span className="truncate text-xs text-muted-foreground">
-                CRM
-              </span>
-            </div>
-          </div>
+          )}
         </SidebarHeader>
         <SidebarContent>
           <NavMain items={navMain} />

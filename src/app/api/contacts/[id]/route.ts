@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,22 +15,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const { data: contact, error } = await supabase
       .from('contacts')
       .select('*')
       .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId)
       .single();
 
     if (error || !contact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    // Get assigned team member name
+    // Get assigned workspace member name
     let assignedName = null;
     if (contact.assigned_to) {
       const { data: member } = await supabase
-        .from('team_members')
+        .from('workspace_members')
         .select('display_name')
+        .eq('workspace_id', ctx.workspaceId)
         .eq('user_id', contact.assigned_to)
         .single();
       assignedName = member?.display_name || null;
@@ -58,6 +65,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const body = await request.json();
     const updates: Record<string, any> = {};
 
@@ -73,6 +84,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       .from('contacts')
       .update(updates)
       .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId)
       .select()
       .single();
 
@@ -87,6 +99,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         description: `Statut changé en "${body.status}"`,
         metadata: { new_status: body.status },
         created_by: user.id,
+        workspace_id: ctx.workspaceId,
       });
     }
 
@@ -110,10 +123,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const { error } = await supabase
       .from('contacts')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId);
 
     if (error) throw error;
 

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { Template } from '@/types/database';
 import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 import type { Editor } from '@tiptap/react';
 
 const PREVIEW_DATA: Record<string, string> = {
@@ -71,7 +72,7 @@ export default function TemplateDetailPage() {
 
   const fetchTemplate = async () => {
     try {
-      const response = await fetch('/api/templates');
+      const response = await apiFetch('/api/templates');
       if (response.ok) {
         const { templates } = await response.json();
         const found = templates.find((tmpl: Template) => tmpl.id === templateId);
@@ -109,7 +110,7 @@ export default function TemplateDetailPage() {
 
     setSaving(true);
     try {
-      const response = await fetch(`/api/templates/${templateId}`, {
+      const response = await apiFetch(`/api/templates/${templateId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -139,7 +140,7 @@ export default function TemplateDetailPage() {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const response = await fetch(`/api/templates/${templateId}`, { method: 'DELETE' });
+      const response = await apiFetch(`/api/templates/${templateId}`, { method: 'DELETE' });
       if (response.ok) {
         toast.success(t.templates.toasts.deleted);
         router.push('/templates');

@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 export default function ContactsPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function ContactsPage() {
       if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
       if (ownerFilter && ownerFilter !== 'all') params.set('owner', ownerFilter);
 
-      const response = await fetch(`/api/contacts?${params}`);
+      const response = await apiFetch(`/api/contacts?${params}`);
       if (response.ok) {
         const data = await response.json();
         setContacts(data.contacts);
@@ -97,7 +98,7 @@ export default function ContactsPage() {
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
     try {
-      const response = await fetch('/api/contacts/bulk-delete', {
+      const response = await apiFetch('/api/contacts/bulk-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contact_ids: Array.from(selectedIds) }),
@@ -121,7 +122,7 @@ export default function ContactsPage() {
     try {
       const assignValue = bulkOwner === 'unassigned' ? null : bulkOwner;
       const promises = Array.from(selectedIds).map(id =>
-        fetch(`/api/contacts/${id}`, {
+        apiFetch(`/api/contacts/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ assigned_to: assignValue }),
@@ -144,7 +145,7 @@ export default function ContactsPage() {
     setBulkScoring(true);
     try {
       const ids = Array.from(selectedIds);
-      const res = await fetch('/api/ai/score-contact', {
+      const res = await apiFetch('/api/ai/score-contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contactIds: ids }),
@@ -175,7 +176,7 @@ export default function ContactsPage() {
     setBulkPersonalizing(true);
     try {
       const ids = Array.from(selectedIds);
-      const res = await fetch('/api/ai/personalize-contact', {
+      const res = await apiFetch('/api/ai/personalize-contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contactIds: ids }),

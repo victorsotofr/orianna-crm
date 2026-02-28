@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +14,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const body = await request.json();
     const { contact_ids } = body;
 
@@ -23,6 +28,7 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from('contacts')
       .delete()
+      .eq('workspace_id', ctx.workspaceId)
       .in('id', contact_ids);
 
     if (error) throw error;

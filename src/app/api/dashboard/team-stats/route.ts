@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { supabase, error: clientError } = await createServerClient();
     if (clientError || !supabase) {
@@ -12,6 +13,10 @@ export async function GET() {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -46,8 +51,9 @@ export async function GET() {
 
     // Per-user breakdown
     const { data: teamMembers } = await supabase
-      .from('team_members')
-      .select('user_id, display_name, email');
+      .from('workspace_members')
+      .select('user_id, display_name, email')
+      .eq('workspace_id', ctx.workspaceId);
 
     const perUser = await Promise.all(
       (teamMembers || []).map(async (member) => {

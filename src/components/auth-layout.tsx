@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase-browser';
 import { AppSidebar } from '@/components/app-sidebar';
@@ -8,6 +8,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { Loader2 } from 'lucide-react';
 import { LanguageProvider, type Language } from '@/lib/i18n';
+import { WorkspaceProvider } from '@/lib/workspace-context';
 
 function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
   useKeyboardShortcuts();
@@ -58,6 +59,10 @@ export default function AuthLayout({
     return () => subscription.unsubscribe();
   }, [router, supabase]);
 
+  const handleNoWorkspace = useCallback(() => {
+    router.push('/create-workspace');
+  }, [router]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -70,25 +75,27 @@ export default function AuthLayout({
 
   return (
     <LanguageProvider initialLanguage={language}>
-      <SidebarProvider
-        open={true}
-        onOpenChange={() => {}}
-        style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
-      >
-        <AppSidebar
-          variant="inset"
-          user={{
-            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-            email: user.email || '',
-            avatar: user.user_metadata?.avatar_url,
-          }}
-        />
-        <SidebarInset className="min-w-0">
-          <KeyboardShortcutsProvider>
-            {children}
-          </KeyboardShortcutsProvider>
-        </SidebarInset>
-      </SidebarProvider>
+      <WorkspaceProvider userId={user.id} onNoWorkspace={handleNoWorkspace}>
+        <SidebarProvider
+          open={true}
+          onOpenChange={() => {}}
+          style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
+        >
+          <AppSidebar
+            variant="inset"
+            user={{
+              name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+              email: user.email || '',
+              avatar: user.user_metadata?.avatar_url,
+            }}
+          />
+          <SidebarInset className="min-w-0">
+            <KeyboardShortcutsProvider>
+              {children}
+            </KeyboardShortcutsProvider>
+          </SidebarInset>
+        </SidebarProvider>
+      </WorkspaceProvider>
     </LanguageProvider>
   );
 }

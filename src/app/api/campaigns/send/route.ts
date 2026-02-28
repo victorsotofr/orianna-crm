@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export const maxDuration = 30;
 
@@ -16,6 +17,10 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
     const { contactIds, templateId, stage } = await request.json();
 
@@ -134,6 +139,7 @@ export async function POST(request: Request) {
             status: 'failed',
             error_message: result.error || 'Email sending failed',
             follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
+            workspace_id: ctx.workspaceId,
           });
           throw new Error(result.error || 'Email sending failed');
         }
@@ -147,6 +153,7 @@ export async function POST(request: Request) {
           status: 'sent',
           message_id: result.messageId,
           follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
+          workspace_id: ctx.workspaceId,
         });
 
         // Unique constraint violation = already sent by concurrent request
@@ -181,6 +188,7 @@ export async function POST(request: Request) {
             message_id: result.messageId,
           },
           created_by: user.id,
+          workspace_id: ctx.workspaceId,
         });
 
         sentCount++;

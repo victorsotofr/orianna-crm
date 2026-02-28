@@ -16,6 +16,7 @@ import { Template } from '@/types/database';
 import { extractTemplateVariables } from '@/lib/template-renderer';
 import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 export default function TemplatesPage() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function TemplatesPage() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates');
+      const response = await apiFetch('/api/templates');
       if (response.ok) {
         const data = await response.json();
         setTemplates(data.templates);
@@ -48,7 +49,7 @@ export default function TemplatesPage() {
     if (!templateToDelete) return;
     setDeleting(true);
     try {
-      const response = await fetch(`/api/templates/${templateToDelete.id}`, { method: 'DELETE' });
+      const response = await apiFetch(`/api/templates/${templateToDelete.id}`, { method: 'DELETE' });
       if (response.ok) {
         toast.success(t.templates.toasts.deleted);
         fetchTemplates();

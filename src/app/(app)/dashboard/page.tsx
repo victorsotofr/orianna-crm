@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
 import type { Translations } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 interface TeamStats {
   totalContacts: number;
@@ -107,8 +108,8 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       try {
         const [teamRes, myRes] = await Promise.all([
-          fetch('/api/dashboard/team-stats'),
-          fetch('/api/dashboard/my-stats'),
+          apiFetch('/api/dashboard/team-stats'),
+          apiFetch('/api/dashboard/my-stats'),
         ]);
         if (teamRes.ok) setTeamStats(await teamRes.json());
         if (myRes.ok) setMyStats(await myRes.json());
@@ -217,7 +218,7 @@ export default function DashboardPage() {
                         <tr className="border-b">
                           <th className="h-9 px-3 text-left text-xs font-medium">Contact</th>
                           <th className="h-9 px-3 text-left text-xs font-medium">{t.dashboard.tableHeaders.company}</th>
-                          <th className="h-9 px-3 text-left text-xs font-medium">Score</th>
+                          <th className="h-9 px-3 text-left text-xs font-medium">ICP AI Score</th>
                         </tr>
                       </thead>
                       <tbody>

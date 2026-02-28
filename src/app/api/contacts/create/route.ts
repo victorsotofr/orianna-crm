@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +14,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const body = await request.json();
     const { email, first_name, last_name, company_name, company_domain, job_title, linkedin_url, location, education, phone, notes } = body;
 
@@ -20,10 +25,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    // Check uniqueness
+    // Check uniqueness within workspace
     const { data: existing } = await supabase
       .from('contacts')
       .select('id')
+      .eq('workspace_id', ctx.workspaceId)
       .ilike('email', email)
       .single();
 
@@ -50,6 +56,7 @@ export async function POST(request: Request) {
         assigned_to: user.id,
         created_by: user.id,
         created_by_email: user.email,
+        workspace_id: ctx.workspaceId,
       })
       .select()
       .single();
@@ -63,6 +70,7 @@ export async function POST(request: Request) {
       title: 'Contact créé',
       description: `Créé manuellement`,
       created_by: user.id,
+      workspace_id: ctx.workspaceId,
     });
 
     return NextResponse.json({ contact });

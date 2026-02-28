@@ -15,6 +15,7 @@ import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, U
 import { SiteHeader } from '@/components/site-header';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'] as const;
 
@@ -288,7 +289,7 @@ export default function ImportPage() {
 
     setChecking(true);
     try {
-      const response = await fetch('/api/contacts/upload', {
+      const response = await apiFetch('/api/contacts/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -326,7 +327,7 @@ export default function ImportPage() {
 
     setUploading(true);
     try {
-      const response = await fetch('/api/contacts/upload', {
+      const response = await apiFetch('/api/contacts/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -363,7 +364,7 @@ export default function ImportPage() {
     for (let i = 0; i < ids.length; i += batchSize) {
       const batch = ids.slice(i, i + batchSize);
       try {
-        await fetch('/api/ai/score-contact', {
+        await apiFetch('/api/ai/score-contact', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contactIds: batch }),

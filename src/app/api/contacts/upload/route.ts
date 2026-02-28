@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'];
 
@@ -15,6 +16,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const body = await request.json();
     const { contacts, check_duplicates, skip_duplicates } = body;
 
@@ -26,20 +31,22 @@ export async function POST(request: Request) {
       (c.email || '').toLowerCase().trim()
     ).filter(Boolean);
 
-    // Check for existing contacts in database
+    // Check for existing contacts in database (scoped to workspace)
     if (check_duplicates) {
       const { data: existing } = await supabase
         .from('contacts')
         .select('email, assigned_to, created_by_email, first_name, last_name')
+        .eq('workspace_id', ctx.workspaceId)
         .in('email', emails);
 
-      // Fetch team members for display names
-      const { data: teamMembers } = await supabase
-        .from('team_members')
-        .select('user_id, display_name, email');
+      // Fetch workspace members for display names
+      const { data: wsMembers } = await supabase
+        .from('workspace_members')
+        .select('user_id, display_name, email')
+        .eq('workspace_id', ctx.workspaceId);
 
       const duplicates = (existing || []).map((e) => {
-        const owner = teamMembers?.find(m => m.user_id === e.assigned_to);
+        const owner = wsMembers?.find(m => m.user_id === e.assigned_to);
         return {
           email: e.email,
           first_name: e.first_name,
@@ -62,6 +69,7 @@ export async function POST(request: Request) {
       const { data: existing } = await supabase
         .from('contacts')
         .select('email')
+        .eq('workspace_id', ctx.workspaceId)
         .in('email', emails);
 
       const existingEmails = new Set((existing || []).map(e => e.email.toLowerCase()));
@@ -98,14 +106,15 @@ export async function POST(request: Request) {
         raw_data: contact,
         created_by: user.id,
         created_by_email: user.email,
-        assigned_to: user.id, // Auto-assign to importer
+        assigned_to: user.id,
+        workspace_id: ctx.workspaceId,
       };
     });
 
     const { data: insertedContacts, error: insertError } = await supabase
       .from('contacts')
       .upsert(contactsToInsert, {
-        onConflict: 'email',
+        onConflict: 'workspace_id,email',
         ignoreDuplicates: true,
       })
       .select('id');

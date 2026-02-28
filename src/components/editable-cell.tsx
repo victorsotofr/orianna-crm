@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 import type { TeamMember } from '@/types/database';
 
 interface EditableCellProps {
@@ -62,7 +63,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
     setSaving(true);
 
     try {
-      const response = await fetch(`/api/contacts/${contactId}`, {
+      const response = await apiFetch(`/api/contacts/${contactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: finalValue }),

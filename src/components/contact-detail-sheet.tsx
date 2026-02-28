@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { Contact, TeamMember } from "@/types/database"
+import { apiFetch } from "@/lib/api"
 
 interface ContactDetailSheetProps {
   contactId: string | null
@@ -76,8 +77,8 @@ export function ContactDetailSheet({
     if (!contactId) return
     try {
       const [contactRes, teamRes] = await Promise.all([
-        fetch(`/api/contacts/${contactId}`),
-        fetch('/api/contacts?limit=1&include_team=true'),
+        apiFetch(`/api/contacts/${contactId}`),
+        apiFetch('/api/contacts?limit=1&include_team=true'),
       ])
 
       if (contactRes.ok) {
@@ -115,7 +116,7 @@ export function ContactDetailSheet({
     if (!contactId) return
     setSaving(true)
     try {
-      const response = await fetch(`/api/contacts/${contactId}`, {
+      const response = await apiFetch(`/api/contacts/${contactId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -154,7 +155,7 @@ export function ContactDetailSheet({
     if (!contactId) return
 
     try {
-      const response = await fetch(`/api/contacts/${contactId}`, { method: "DELETE" })
+      const response = await apiFetch(`/api/contacts/${contactId}`, { method: "DELETE" })
       if (response.ok) {
         toast.success("Contact supprimé")
         onOpenChange(false)
@@ -171,7 +172,7 @@ export function ContactDetailSheet({
     if (!contactId) return
     const label = type === 'hot' ? 'qualifié' : 'non qualifié'
     try {
-      const response = await fetch(`/api/contacts/${contactId}/reply-action`, {
+      const response = await apiFetch(`/api/contacts/${contactId}/reply-action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type }),

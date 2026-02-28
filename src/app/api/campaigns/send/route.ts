@@ -3,6 +3,8 @@ import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 
+export const maxDuration = 30;
+
 export async function POST(request: Request) {
   try {
     const { supabase, error: clientError } = await createServerClient();
@@ -59,6 +61,18 @@ export async function POST(request: Request) {
       return NextResponse.json({
         error: 'Configuration SMTP manquante. Allez dans Paramètres pour configurer votre email.',
       }, { status: 400 });
+    }
+
+    // Atomic daily send limit check
+    const { data: canSend } = await supabase.rpc('check_daily_send_limit', {
+      p_user_id: user.id,
+      p_limit: userSettings.daily_send_limit || 50,
+    });
+
+    if (!canSend) {
+      return NextResponse.json({
+        error: `Limite d'envoi journalière (${userSettings.daily_send_limit || 50}) atteinte. Réessayez demain.`,
+      }, { status: 429 });
     }
 
     let sentCount = 0;
@@ -124,8 +138,8 @@ export async function POST(request: Request) {
           throw new Error(result.error || 'Email sending failed');
         }
 
-        // Record successful send in emails_sent (for dashboard KPIs)
-        await supabase.from('emails_sent').insert({
+        // Record successful send (DB unique index handles dedup)
+        const { error: insertError } = await supabase.from('emails_sent').insert({
           contact_id: contact.id,
           template_id: templateId,
           sent_by: user.id,
@@ -134,6 +148,12 @@ export async function POST(request: Request) {
           message_id: result.messageId,
           follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
         });
+
+        // Unique constraint violation = already sent by concurrent request
+        if (insertError?.code === '23505') {
+          errors.push(`${contact.email}: déjà envoyé`);
+          continue;
+        }
 
         // Update contact date field
         const dateField = stage === 'first' ? 'first_contact'

@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck, Brain } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 
@@ -183,11 +184,16 @@ export default function ImportPage() {
   const [csvDuplicates, setCsvDuplicates] = useState<number>(0);
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [step, setStep] = useState<'upload' | 'preview' | 'duplicates'>('upload');
+  const [step, setStep] = useState<'upload' | 'preview' | 'duplicates' | 'scoring'>('upload');
 
   // Database duplicate state
   const [dbDuplicates, setDbDuplicates] = useState<DuplicateInfo[]>([]);
   const [newCount, setNewCount] = useState(0);
+
+  // Scoring state
+  const [importedIds, setImportedIds] = useState<string[]>([]);
+  const [scoringProgress, setScoringProgress] = useState(0);
+  const [scoringTotal, setScoringTotal] = useState(0);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -331,7 +337,15 @@ export default function ImportPage() {
 
       if (response.ok) {
         toast.success(`${data.imported} contacts importés${data.skipped > 0 ? `, ${data.skipped} ignoré(s)` : ''}`);
-        router.push('/contacts');
+        if (data.importedIds && data.importedIds.length > 0) {
+          setImportedIds(data.importedIds);
+          setScoringTotal(data.importedIds.length);
+          setScoringProgress(0);
+          setStep('scoring');
+          startScoring(data.importedIds);
+        } else {
+          router.push('/contacts');
+        }
       } else {
         toast.error(data.error || "Erreur lors de l'importation");
       }
@@ -340,6 +354,25 @@ export default function ImportPage() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const startScoring = async (ids: string[]) => {
+    const batchSize = 5;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      try {
+        await fetch('/api/ai/score-contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contactIds: batch }),
+        });
+      } catch {
+        // Continue with next batch even if one fails
+      }
+      setScoringProgress(Math.min(i + batchSize, ids.length));
+    }
+    toast.success('Scoring IA terminé');
+    setTimeout(() => router.push('/contacts'), 1500);
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -526,6 +559,36 @@ export default function ImportPage() {
                 </Button>
               </div>
             </>
+          )}
+
+          {step === 'scoring' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-amber-500" />
+                  Scoring IA en cours
+                </CardTitle>
+                <CardDescription>
+                  Analyse des contacts importés par l&apos;intelligence artificielle
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>{scoringProgress} / {scoringTotal} contacts analysés</span>
+                    <span>{scoringTotal > 0 ? Math.round((scoringProgress / scoringTotal) * 100) : 0}%</span>
+                  </div>
+                  <Progress value={scoringTotal > 0 ? (scoringProgress / scoringTotal) * 100 : 0} />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push('/contacts')}
+                >
+                  Continuer en arrière-plan
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           {step === 'duplicates' && (

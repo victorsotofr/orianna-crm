@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns"
 import { fr } from "date-fns/locale"
-import { Mail, MessageSquare, UserPlus, ArrowRightLeft, Zap, Clock, CheckCircle } from "lucide-react"
+import { Mail, MessageSquare, UserPlus, ArrowRightLeft, Zap, Clock, CheckCircle, Brain } from "lucide-react"
 import type { ContactTimeline } from "@/types/database"
 
 const eventIcons: Record<string, React.ElementType> = {
@@ -13,6 +13,7 @@ const eventIcons: Record<string, React.ElementType> = {
   enrolled: Zap,
   completed: CheckCircle,
   manual_task: Clock,
+  ai_scored: Brain,
 }
 
 const eventColors: Record<string, string> = {
@@ -23,6 +24,7 @@ const eventColors: Record<string, string> = {
   enrolled: "bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300",
   completed: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900 dark:text-emerald-300",
   manual_task: "bg-gray-100 text-gray-600 dark:bg-gray-900 dark:text-gray-300",
+  ai_scored: "bg-amber-100 text-amber-600 dark:bg-amber-900 dark:text-amber-300",
 }
 
 interface TimelineEvent extends ContactTimeline {

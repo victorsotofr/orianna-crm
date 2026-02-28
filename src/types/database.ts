@@ -26,6 +26,11 @@ export interface Contact {
   notes: string | null;
   last_contacted_at: string | null;
   replied_at: string | null;
+  // AI scoring
+  ai_score: number | null;
+  ai_score_label: 'HOT' | 'WARM' | 'COLD' | null;
+  ai_score_reasoning: string | null;
+  ai_scored_at: string | null;
 }
 
 export interface Template {

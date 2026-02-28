@@ -1,0 +1,90 @@
+import 'server-only';
+import { generateText, stepCountIs } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
+import type { Contact } from '@/types/database';
+
+interface ScoringResult {
+  score: number;
+  label: 'HOT' | 'WARM' | 'COLD';
+  reasoning: string;
+}
+
+function buildSearchContext(contact: Contact): string {
+  const parts: string[] = [];
+
+  if (contact.first_name || contact.last_name) {
+    parts.push(`Nom: ${[contact.first_name, contact.last_name].filter(Boolean).join(' ')}`);
+  }
+  if (contact.email) parts.push(`Email: ${contact.email}`);
+  if (contact.company_name) parts.push(`Entreprise: ${contact.company_name}`);
+  if (contact.company_domain) parts.push(`Site web: ${contact.company_domain}`);
+  if (contact.job_title) parts.push(`Poste: ${contact.job_title}`);
+  if (contact.linkedin_url) parts.push(`LinkedIn: ${contact.linkedin_url}`);
+  if (contact.location) parts.push(`Ville: ${contact.location}`);
+  if (contact.education) parts.push(`Formation: ${contact.education}`);
+
+  return parts.join('\n');
+}
+
+function deriveLabel(score: number): 'HOT' | 'WARM' | 'COLD' {
+  if (score >= 70) return 'HOT';
+  if (score >= 40) return 'WARM';
+  return 'COLD';
+}
+
+function parseScoringResponse(text: string): ScoringResult {
+  // Try to extract JSON from the response
+  const jsonMatch = text.match(/\{[\s\S]*?"score"[\s\S]*?\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+      const label = deriveLabel(score);
+      const reasoning = parsed.reasoning || parsed.raisonnement || 'Aucune analyse disponible.';
+      return { score, label, reasoning };
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  // Fallback: try to find a score number
+  const scoreMatch = text.match(/(\d{1,3})\s*\/?\s*100/);
+  if (scoreMatch) {
+    const score = Math.max(0, Math.min(100, parseInt(scoreMatch[1])));
+    return { score, label: deriveLabel(score), reasoning: text.slice(0, 500) };
+  }
+
+  return { score: 0, label: 'COLD', reasoning: 'Impossible d\'analyser ce contact.' };
+}
+
+export async function scoreContact(contact: Contact): Promise<ScoringResult> {
+  const context = buildSearchContext(contact);
+
+  const systemPrompt = `Tu es un expert en lead scoring pour un CRM de prospection B2B.
+Tu analyses les contacts pour déterminer leur potentiel commercial.
+
+Tu dois rechercher sur le web des informations sur le contact et son entreprise, puis scorer le lead.
+
+Évalue sur 4 axes (0-25 points chacun) :
+1. **Séniorité du poste** (0-25) : Décideur (DG, CEO, Directeur) = 20-25, Manager = 10-19, Junior = 0-9
+2. **Pertinence entreprise** (0-25) : Taille, secteur, budget estimé, type d'entreprise
+3. **Signaux de croissance** (0-25) : Recrutements, levées de fonds, nouveaux projets, actualités récentes
+4. **Présence digitale** (0-25) : Activité LinkedIn, site web professionnel, visibilité en ligne
+
+IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :
+{"score": <nombre 0-100>, "reasoning": "<explication concise en français, 2-3 phrases max>"}`;
+
+  const userPrompt = `Analyse ce contact et donne-lui un score de 0 à 100 :\n\n${context}`;
+
+  const { text } = await generateText({
+    model: anthropic('claude-sonnet-4-5-20250929'),
+    stopWhen: stepCountIs(5),
+    tools: {
+      web_search: anthropic.tools.webSearch_20250305(),
+    },
+    system: systemPrompt,
+    prompt: userPrompt,
+  });
+
+  return parseScoringResponse(text);
+}

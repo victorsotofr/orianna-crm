@@ -83,6 +83,19 @@ export async function GET() {
       })
     );
 
+    // Hot leads (AI scored)
+    const { count: hotLeadsCount } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('ai_score_label', 'HOT');
+
+    const { data: hotLeads } = await supabase
+      .from('contacts')
+      .select('id, first_name, last_name, email, company_name, ai_score, ai_score_label, ai_score_reasoning')
+      .eq('ai_score_label', 'HOT')
+      .order('ai_score', { ascending: false })
+      .limit(10);
+
     // Recent sends
     const { data: recentSends } = await supabase
       .from('emails_sent')
@@ -105,6 +118,8 @@ export async function GET() {
       totalEmails: totalEmails || 0,
       replyRate,
       activeEnrollments: activeEnrollments || 0,
+      hotLeadsCount: hotLeadsCount || 0,
+      hotLeads: hotLeads || [],
       perUser,
       recentSends: recentSends || [],
     });

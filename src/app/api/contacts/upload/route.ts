@@ -108,7 +108,7 @@ export async function POST(request: Request) {
         onConflict: 'email',
         ignoreDuplicates: true,
       })
-      .select();
+      .select('id');
 
     if (insertError) throw insertError;
 
@@ -116,6 +116,7 @@ export async function POST(request: Request) {
       success: true,
       imported: insertedContacts?.length || 0,
       skipped: contacts.length - (insertedContacts?.length || 0),
+      importedIds: (insertedContacts || []).map(c => c.id),
       message: `${insertedContacts?.length || 0} contacts importés`,
     });
   } catch (error: any) {

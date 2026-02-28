@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Save, Braces } from 'lucide-react';
 import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 import type { Editor } from '@tiptap/react';
 
 export default function NewTemplatePage() {
@@ -49,7 +50,7 @@ export default function NewTemplatePage() {
 
     setSaving(true);
     try {
-      const response = await fetch('/api/templates', {
+      const response = await apiFetch('/api/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

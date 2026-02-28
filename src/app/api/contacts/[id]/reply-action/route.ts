@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,6 +14,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
     const { type } = await request.json();
     if (type !== 'hot' && type !== 'cold') {
@@ -29,7 +34,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         replied_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId);
 
     if (updateError) throw updateError;
 
@@ -43,6 +49,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         : 'Contact marqué comme non qualifié (réponse froide)',
       metadata: { action_type: type, new_status: newStatus },
       created_by: user.id,
+      workspace_id: ctx.workspaceId,
     });
 
     return NextResponse.json({ success: true, status: newStatus });

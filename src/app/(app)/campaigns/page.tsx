@@ -16,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 interface CampaignContact {
   id: string;
@@ -152,7 +153,7 @@ export default function CampaignsPage() {
       for (let i = 0; i < enrichIds.length; i++) {
         setEnrichProgress({ current: i + 1, total: enrichIds.length });
         try {
-          await fetch('/api/ai/personalize-contact', {
+          await apiFetch('/api/ai/personalize-contact', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contactId: enrichIds[i] }),
@@ -184,7 +185,7 @@ export default function CampaignsPage() {
       setSendProgress({ current: i + 1, total });
 
       try {
-        const response = await fetch('/api/campaigns/send', {
+        const response = await apiFetch('/api/campaigns/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

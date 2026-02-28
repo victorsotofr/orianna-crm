@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        const contactWorkspaceId = contact.workspace_id;
+
         // Score via AI
         const result = await scoreContact(contact);
 
@@ -79,6 +81,7 @@ export async function POST(request: NextRequest) {
           title: `Score IA : ${result.score}/100 (${result.label})`,
           description: result.reasoning,
           created_by: auth.userId === 'service' ? null : auth.userId,
+          workspace_id: contactWorkspaceId,
         });
 
         scores.push({

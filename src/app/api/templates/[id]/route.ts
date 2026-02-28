@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function PUT(
   request: Request,

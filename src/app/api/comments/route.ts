@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const { searchParams } = new URL(request.url);
     const contactId = searchParams.get('contact_id');
 
@@ -22,28 +27,11 @@ export async function GET(request: NextRequest) {
 
     const { data: comments, error } = await supabase
       .from('comments')
-      .select(`
-        *,
-        team_members!comments_created_by_fkey (
-          display_name,
-          email
-        )
-      `)
+      .select('*')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      // Fallback without join
-      const { data: basicComments, error: basicError } = await supabase
-        .from('comments')
-        .select('*')
-        .eq('contact_id', contactId)
-        .order('created_at', { ascending: false });
-
-      if (basicError) throw basicError;
-      return NextResponse.json({ comments: basicComments || [] });
-    }
-
+    if (error) throw error;
     return NextResponse.json({ comments: comments || [] });
   } catch (error: any) {
     console.error('Comments fetch error:', error instanceof Error ? error.message : error);
@@ -62,6 +50,10 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
     const body = await request.json();
     const { contact_id, content } = body;
@@ -89,6 +81,7 @@ export async function POST(request: Request) {
       title: 'Commentaire ajouté',
       description: content.trim().substring(0, 200),
       created_by: user.id,
+      workspace_id: ctx.workspaceId,
     });
 
     return NextResponse.json({ comment });

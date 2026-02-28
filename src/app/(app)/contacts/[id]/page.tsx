@@ -14,6 +14,7 @@ import { AIPersonalizationCard } from '@/components/ai-personalization-card';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 import { SiteHeader } from '@/components/site-header';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import {
@@ -67,9 +68,9 @@ export default function ContactDetailPage() {
   const fetchAll = async () => {
     try {
       const [contactRes, timelineRes, teamRes] = await Promise.all([
-        fetch(`/api/contacts/${contactId}`),
-        fetch(`/api/timeline?contact_id=${contactId}`),
-        fetch('/api/contacts?limit=1&include_team=true'),
+        apiFetch(`/api/contacts/${contactId}`),
+        apiFetch(`/api/timeline?contact_id=${contactId}`),
+        apiFetch('/api/contacts?limit=1&include_team=true'),
       ]);
 
       if (contactRes.ok) {
@@ -161,7 +162,7 @@ export default function ContactDetailPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`/api/contacts/${contactId}`, {
+      const response = await apiFetch(`/api/contacts/${contactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -198,7 +199,7 @@ export default function ContactDetailPage() {
 
   const handleDelete = async () => {
     try {
-      const response = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
+      const response = await apiFetch(`/api/contacts/${contactId}`, { method: 'DELETE' });
       if (response.ok) {
         toast.success(t.contacts.detail.toasts.deleted);
         router.push('/contacts');
@@ -212,7 +213,7 @@ export default function ContactDetailPage() {
 
   const handleReplyAction = async (type: 'hot' | 'cold') => {
     try {
-      const response = await fetch(`/api/contacts/${contactId}/reply-action`, {
+      const response = await apiFetch(`/api/contacts/${contactId}/reply-action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type }),

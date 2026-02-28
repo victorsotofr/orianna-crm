@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export const maxDuration = 30;
 
@@ -19,6 +20,10 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
     const body = await request.json();
     const { contactId, templateId, campaignId, templateVariables } = body;
@@ -149,6 +154,7 @@ export async function POST(request: Request) {
         sent_by_email: user.email,
         status: 'failed',
         error_message: emailResult.error,
+        workspace_id: ctx.workspaceId,
       });
 
       return NextResponse.json(
@@ -166,6 +172,7 @@ export async function POST(request: Request) {
       sent_by_email: user.email,
       status: 'sent',
       message_id: emailResult.messageId,
+      workspace_id: ctx.workspaceId,
     });
 
     if (insertError) {

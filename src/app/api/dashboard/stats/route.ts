@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: Request) {
   try {
@@ -15,6 +16,10 @@ export async function GET(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
     // GLOBAL STATS: Show data across all users (shared workspace)
     

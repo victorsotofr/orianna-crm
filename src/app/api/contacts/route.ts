@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const assignedTo = searchParams.get('assigned_to');
@@ -23,6 +28,7 @@ export async function GET(request: NextRequest) {
 
     // Build base filter function to apply to any query
     function applyFilters(query: any) {
+      query = query.eq('workspace_id', ctx!.workspaceId);
       if (status === 'hot_leads') {
         query = query.eq('ai_score_label', 'HOT');
       } else if (status) {
@@ -74,19 +80,22 @@ export async function GET(request: NextRequest) {
     let ownerCounts: Record<string, number> = {};
     if (includeTeam) {
       const { data: members } = await supabase
-        .from('team_members')
-        .select('user_id, email, display_name, role');
+        .from('workspace_members')
+        .select('user_id, email, display_name, role')
+        .eq('workspace_id', ctx.workspaceId);
       teamMembers = members;
 
       // Compute owner counts using count queries (not affected by row limit)
       const { count: totalContactsCount } = await supabase
         .from('contacts')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId);
       ownerCounts['__total'] = totalContactsCount || 0;
 
       const { count: unassignedCount } = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
         .is('assigned_to', null);
       ownerCounts['unassigned'] = unassignedCount || 0;
 
@@ -97,6 +106,7 @@ export async function GET(request: NextRequest) {
             const { count: memberCount } = await supabase
               .from('contacts')
               .select('*', { count: 'exact', head: true })
+              .eq('workspace_id', ctx!.workspaceId)
               .eq('assigned_to', member.user_id);
             ownerCounts[member.user_id] = memberCount || 0;
           })

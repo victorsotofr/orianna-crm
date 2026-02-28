@@ -1,17 +1,27 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
+    if (clientError || !supabase) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Use public client if auth fails (for public templates)
-    const client = supabase || (await import('@/lib/supabase')).supabase;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const { data: templates, error } = await client
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
+    const { data: templates, error } = await supabase
       .from('templates')
       .select('*')
+      .eq('workspace_id', ctx.workspaceId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -30,23 +40,23 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
-
     if (clientError || !supabase) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const body = await request.json();
     const { name, subject, html_content } = body;
 
-    // Validation
     if (!name || !subject || !html_content) {
       return NextResponse.json(
         { error: 'Tous les champs sont requis' },
@@ -60,6 +70,7 @@ export async function POST(request: Request) {
         name,
         subject,
         html_content,
+        workspace_id: ctx.workspaceId,
       })
       .select()
       .single();

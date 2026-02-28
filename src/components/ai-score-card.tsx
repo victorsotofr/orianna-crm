@@ -5,6 +5,7 @@ import { Brain, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
+import { apiFetch } from '@/lib/api';
 
 interface AIScoreCardProps {
   contactId: string;
@@ -28,7 +29,7 @@ export function AIScoreCard({ contactId, score, label, reasoning, scoredAt, onSc
   const handleScore = async () => {
     setScoring(true);
     try {
-      const res = await fetch('/api/ai/score-contact', {
+      const res = await apiFetch('/api/ai/score-contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contactId }),

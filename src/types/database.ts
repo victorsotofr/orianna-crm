@@ -31,12 +31,14 @@ export interface Contact {
   ai_score_label: 'HOT' | 'WARM' | 'COLD' | null;
   ai_score_reasoning: string | null;
   ai_scored_at: string | null;
+  // AI personalization
+  ai_personalized_line: string | null;
+  ai_personalized_at: string | null;
 }
 
 export interface Template {
   id: string;
   name: string;
-  industry: string;
   subject: string;
   html_content: string;
   variables: string[];
@@ -47,7 +49,6 @@ export interface Template {
 export interface Campaign {
   id: string;
   name: string;
-  industry: string | null;
   template_id: string | null;
   template_variables: Record<string, string> | null;
   user_id: string;

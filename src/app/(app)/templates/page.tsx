@@ -10,21 +10,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { Plus, Loader2, FileText, Eye, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Loader2, FileText, Eye, Pencil, Trash2, MoreHorizontal, Braces } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Template } from '@/types/database';
 import { extractTemplateVariables } from '@/lib/template-renderer';
-
-interface Industry {
-  id: string;
-  name: string;
-  display_name: string;
-}
+import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
 
 export default function TemplatesPage() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [industries, setIndustries] = useState<Industry[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
@@ -32,7 +26,6 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     fetchTemplates();
-    fetchIndustries();
   }, []);
 
   const fetchTemplates = async () => {
@@ -47,30 +40,6 @@ export default function TemplatesPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchIndustries = async () => {
-    try {
-      const response = await fetch('/api/industries');
-      if (response.ok) {
-        const data = await response.json();
-        setIndustries(data.industries || []);
-      }
-    } catch (error) {
-      console.error('Error fetching industries:', error);
-    }
-  };
-
-  const getIndustryLabel = (industry: string) => {
-    const custom = industries.find(ind => ind.name === industry);
-    if (custom) return custom.display_name;
-    const labels: Record<string, string> = {
-      real_estate: 'Immobilier',
-      notary: 'Notaire',
-      hotel: 'Hôtellerie',
-      other: 'Autre',
-    };
-    return labels[industry] || industry;
   };
 
   const handleDelete = async () => {
@@ -133,7 +102,6 @@ export default function TemplatesPage() {
                   <TableRow>
                     <TableHead className="text-xs">Nom</TableHead>
                     <TableHead className="text-xs">Sujet</TableHead>
-                    <TableHead className="text-xs">Industrie</TableHead>
                     <TableHead className="text-xs">Variables</TableHead>
                     <TableHead className="text-xs w-[60px]">Actions</TableHead>
                   </TableRow>
@@ -151,20 +119,33 @@ export default function TemplatesPage() {
                         <TableCell className="py-2 text-sm text-muted-foreground max-w-xs truncate">
                           {template.subject}
                         </TableCell>
-                        <TableCell className="py-2">
-                          <Badge variant="outline" className="text-xs">
-                            {getIndustryLabel(template.industry)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <div className="flex flex-wrap gap-1">
-                            {variables.slice(0, 3).map((v) => (
-                              <Badge key={v} variant="secondary" className="text-xs font-mono">{v}</Badge>
-                            ))}
-                            {variables.length > 3 && (
-                              <Badge variant="secondary" className="text-xs">+{variables.length - 3}</Badge>
-                            )}
-                          </div>
+                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                          {variables.length > 0 ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Badge
+                                  variant="secondary"
+                                  className="cursor-pointer text-xs gap-1 hover:bg-secondary/80"
+                                >
+                                  <Braces className="h-3 w-3" />
+                                  {variables.length} variable{variables.length > 1 ? 's' : ''}
+                                </Badge>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                                {variables.map((v) => {
+                                  const info = AVAILABLE_VARIABLES.find((av) => av.name === v);
+                                  return (
+                                    <DropdownMenuItem key={v} className="flex items-center justify-between">
+                                      <Badge variant="secondary" className="font-mono text-xs">{`{{${v}}}`}</Badge>
+                                      <span className="text-xs text-muted-foreground">{info?.label || v}</span>
+                                    </DropdownMenuItem>
+                                  );
+                                })}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">aucune</span>
+                          )}
                         </TableCell>
                         <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>

@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/field"
 import { Loader2, Eye, Code, Type } from "lucide-react"
 import { Template } from "@/types/database"
-import { IndustrySelector } from "@/components/industry-selector"
 import { VariablePicker, AVAILABLE_VARIABLES } from "@/components/variable-picker"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import type { Editor } from "@tiptap/react"
@@ -32,9 +31,6 @@ const formSchema = z.object({
     .string()
     .min(5, "Le sujet doit contenir au moins 5 caractères.")
     .max(200, "Le sujet doit contenir au plus 200 caractères."),
-  industry: z
-    .string()
-    .min(1, "Veuillez sélectionner ou créer une industrie."),
   html_content: z
     .string()
     .min(20, "Le contenu doit contenir au moins 20 caractères.")
@@ -49,10 +45,15 @@ interface TemplateFormProps {
 const PREVIEW_DATA: Record<string, string> = {
   first_name: "Jean",
   last_name: "Dupont",
-  company_name: "Entreprise Example",
-  job_title: "Directeur Commercial",
   email: "jean@example.com",
-  video_url: "https://example.com/video",
+  phone: "+33 6 12 34 56 78",
+  company_name: "Entreprise Example",
+  company_domain: "example.com",
+  job_title: "Directeur Commercial",
+  linkedin_url: "https://linkedin.com/in/jean-dupont",
+  location: "Paris",
+  education: "HEC Paris",
+  ai_personalized_line: "Votre récente expansion à Lyon montre une belle dynamique de croissance.",
 }
 
 function renderPreview(html: string): string {
@@ -76,7 +77,6 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
     defaultValues: {
       name: template?.name || "",
       subject: template?.subject || "",
-      industry: template?.industry || "",
       html_content: template?.html_content || "",
     },
   })
@@ -117,13 +117,6 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
     )
 
     try {
-      if (!data.industry) {
-        toast.dismiss(loadingToast)
-        toast.error("Veuillez sélectionner une industrie")
-        setSubmitting(false)
-        return
-      }
-
       const url = isEditing ? `/api/templates/${template.id}` : "/api/templates"
       const method = isEditing ? "PUT" : "POST"
 
@@ -161,42 +154,24 @@ export function TemplateForm({ template, onSuccess }: TemplateFormProps) {
   return (
     <form id="template-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
       <FieldGroup>
-        <div className="grid grid-cols-2 gap-3">
-          <Controller
-            name="name"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="template-name" className="text-xs">Nom</FieldLabel>
-                <Input
-                  {...field}
-                  id="template-name"
-                  aria-invalid={fieldState.invalid}
-                  placeholder="Template Prospection"
-                  autoComplete="off"
-                  className="h-8 text-sm"
-                />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
-
-          <Controller
-            name="industry"
-            control={form.control}
-            render={({ field, fieldState }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="template-industry" className="text-xs">Industrie</FieldLabel>
-                <IndustrySelector
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  placeholder="Sélectionnez..."
-                />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
-          />
-        </div>
+        <Controller
+          name="name"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="template-name" className="text-xs">Nom</FieldLabel>
+              <Input
+                {...field}
+                id="template-name"
+                aria-invalid={fieldState.invalid}
+                placeholder="Template Prospection"
+                autoComplete="off"
+                className="h-8 text-sm"
+              />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
 
         <Controller
           name="subject"

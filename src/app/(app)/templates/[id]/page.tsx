@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,21 +8,26 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { SiteHeader } from '@/components/site-header';
 import { RichTextEditor } from '@/components/rich-text-editor';
-import { IndustrySelector } from '@/components/industry-selector';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Eye, Pencil, Trash2, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, Pencil, Trash2, Save, Braces } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { Template } from '@/types/database';
-import { extractTemplateVariables } from '@/lib/template-renderer';
 import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
+import type { Editor } from '@tiptap/react';
 
 const PREVIEW_DATA: Record<string, string> = {
   first_name: 'Jean',
   last_name: 'Dupont',
-  company_name: 'Entreprise Example',
-  job_title: 'Directeur Commercial',
   email: 'jean@example.com',
-  video_url: 'https://example.com/video',
+  phone: '+33 6 12 34 56 78',
+  company_name: 'Entreprise Example',
+  company_domain: 'example.com',
+  job_title: 'Directeur Commercial',
+  linkedin_url: 'https://linkedin.com/in/jean-dupont',
+  location: 'Paris',
+  education: 'HEC Paris',
+  ai_personalized_line: 'Votre récente expansion à Lyon montre une belle dynamique de croissance.',
 };
 
 function renderPreview(html: string): string {
@@ -45,11 +50,11 @@ export default function TemplateDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const editorRef = useRef<Editor | null>(null);
 
   // Edit state
   const [editName, setEditName] = useState('');
   const [editSubject, setEditSubject] = useState('');
-  const [editIndustry, setEditIndustry] = useState('');
   const [editHtmlContent, setEditHtmlContent] = useState('');
 
   useEffect(() => {
@@ -59,7 +64,6 @@ export default function TemplateDetailPage() {
   const initEditState = (t: Template) => {
     setEditName(t.name);
     setEditSubject(t.subject);
-    setEditIndustry(t.industry);
     setEditHtmlContent(t.html_content);
   };
 
@@ -84,8 +88,19 @@ export default function TemplateDetailPage() {
     }
   };
 
+  const insertVariable = (varName: string) => {
+    const variable = `{{${varName}}}`;
+    if (editing && editorRef.current) {
+      editorRef.current.chain().focus().insertContent(variable).run();
+      setEditHtmlContent(editorRef.current.getHTML());
+    } else {
+      navigator.clipboard.writeText(variable);
+      toast.success(`${variable} copié`);
+    }
+  };
+
   const handleSave = async () => {
-    if (!editName.trim() || !editSubject.trim() || !editIndustry || !editHtmlContent.trim()) {
+    if (!editName.trim() || !editSubject.trim() || !editHtmlContent.trim()) {
       toast.error('Tous les champs sont requis');
       return;
     }
@@ -98,7 +113,6 @@ export default function TemplateDetailPage() {
         body: JSON.stringify({
           name: editName.trim(),
           subject: editSubject.trim(),
-          industry: editIndustry,
           html_content: editHtmlContent,
         }),
       });
@@ -159,8 +173,6 @@ export default function TemplateDetailPage() {
   }
 
   if (!template) return null;
-
-  const variables = extractTemplateVariables(editing ? editHtmlContent : template.html_content);
 
   return (
     <>
@@ -230,17 +242,30 @@ export default function TemplateDetailPage() {
                   className="h-7 text-xs w-48"
                 />
               </div>
-              <div className="flex items-center gap-1.5">
-                <Label className="text-muted-foreground shrink-0">Industrie:</Label>
-                <IndustrySelector value={editIndustry} onValueChange={setEditIndustry} />
-              </div>
               <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Variables: </span>
-                {variables.length > 0 ? variables.map((v) => (
-                  <Badge key={v} variant="secondary" className="font-mono text-[10px]">{`{{ ${v} }}`}</Badge>
-                )) : (
-                  <span className="text-muted-foreground">aucune</span>
-                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="cursor-pointer text-[10px] gap-1 hover:bg-secondary/80"
+                    >
+                      <Braces className="h-3 w-3" />
+                      Variables
+                    </Badge>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                    {AVAILABLE_VARIABLES.map((v) => (
+                      <DropdownMenuItem
+                        key={v.name}
+                        onClick={() => insertVariable(v.name)}
+                        className="flex items-center justify-between"
+                      >
+                        <Badge variant="secondary" className="font-mono text-xs">{`{{${v.name}}}`}</Badge>
+                        <span className="text-xs text-muted-foreground">{v.label}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           ) : (
@@ -253,17 +278,30 @@ export default function TemplateDetailPage() {
                 <span className="text-muted-foreground">Sujet: </span>
                 <span className="font-medium">{template.subject}</span>
               </div>
-              <div>
-                <span className="text-muted-foreground">Industrie: </span>
-                <Badge variant="outline" className="text-[10px] ml-0.5">{template.industry}</Badge>
-              </div>
               <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Variables: </span>
-                {variables.length > 0 ? variables.map((v) => (
-                  <Badge key={v} variant="secondary" className="font-mono text-[10px]">{`{{ ${v} }}`}</Badge>
-                )) : (
-                  <span className="text-muted-foreground">aucune</span>
-                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="cursor-pointer text-[10px] gap-1 hover:bg-secondary/80"
+                    >
+                      <Braces className="h-3 w-3" />
+                      Variables
+                    </Badge>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                    {AVAILABLE_VARIABLES.map((v) => (
+                      <DropdownMenuItem
+                        key={v.name}
+                        onClick={() => insertVariable(v.name)}
+                        className="flex items-center justify-between"
+                      >
+                        <Badge variant="secondary" className="font-mono text-xs">{`{{${v.name}}}`}</Badge>
+                        <span className="text-xs text-muted-foreground">{v.label}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <div>
                 <span className="text-muted-foreground">Créé le </span>
@@ -304,6 +342,7 @@ export default function TemplateDetailPage() {
                 <RichTextEditor
                   value={editHtmlContent}
                   onChange={setEditHtmlContent}
+                  onEditorReady={(editor) => { editorRef.current = editor; }}
                   placeholder="Rédigez votre email ici..."
                   className="border-0 rounded-none h-full"
                 />

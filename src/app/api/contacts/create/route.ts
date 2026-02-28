@@ -46,6 +46,7 @@ export async function POST(request: Request) {
         phone: phone || null,
         notes: notes || null,
         status: 'new',
+        user_id: user.id,
         assigned_to: user.id,
         created_by: user.id,
         created_by_email: user.email,

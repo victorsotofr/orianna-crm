@@ -23,20 +23,12 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, subject, industry, html_content } = body;
+    const { name, subject, html_content } = body;
 
     // Validation
-    if (!name || !subject || !industry || !html_content) {
+    if (!name || !subject || !html_content) {
       return NextResponse.json(
         { error: 'Tous les champs sont requis' },
-        { status: 400 }
-      );
-    }
-
-    // Validate industry is not "other" (should be a resolved custom industry name)
-    if (industry === 'other') {
-      return NextResponse.json(
-        { error: 'Veuillez sélectionner ou créer une industrie spécifique' },
         { status: 400 }
       );
     }
@@ -68,7 +60,6 @@ export async function PUT(
       .update({
         name,
         subject,
-        industry,
         html_content,
       })
       .eq('id', id)

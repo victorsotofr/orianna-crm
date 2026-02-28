@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,21 +8,28 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { SiteHeader } from '@/components/site-header';
 import { RichTextEditor } from '@/components/rich-text-editor';
-import { IndustrySelector } from '@/components/industry-selector';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Save } from 'lucide-react';
-import { extractTemplateVariables } from '@/lib/template-renderer';
+import { ArrowLeft, Loader2, Save, Braces } from 'lucide-react';
+import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
+import type { Editor } from '@tiptap/react';
 
 export default function NewTemplatePage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const editorRef = useRef<Editor | null>(null);
 
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
-  const [industry, setIndustry] = useState('');
   const [htmlContent, setHtmlContent] = useState('');
 
-  const variables = extractTemplateVariables(htmlContent + ' ' + subject);
+  const insertVariable = (varName: string) => {
+    const variable = `{{${varName}}}`;
+    if (editorRef.current) {
+      editorRef.current.chain().focus().insertContent(variable).run();
+      setHtmlContent(editorRef.current.getHTML());
+    }
+  };
 
   const handleCreate = async () => {
     if (!name.trim()) {
@@ -31,10 +38,6 @@ export default function NewTemplatePage() {
     }
     if (!subject.trim()) {
       toast.error("Le sujet de l'email est obligatoire");
-      return;
-    }
-    if (!industry) {
-      toast.error("L'industrie est obligatoire");
       return;
     }
     if (!htmlContent.trim() || htmlContent === '<p></p>') {
@@ -50,7 +53,6 @@ export default function NewTemplatePage() {
         body: JSON.stringify({
           name: name.trim(),
           subject: subject.trim(),
-          industry,
           html_content: htmlContent,
         }),
       });
@@ -98,17 +100,30 @@ export default function NewTemplatePage() {
                 className="h-7 text-xs w-52"
               />
             </div>
-            <div className="flex items-center gap-1.5">
-              <Label className="text-muted-foreground shrink-0">Industrie:</Label>
-              <IndustrySelector value={industry} onValueChange={setIndustry} />
-            </div>
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">Variables: </span>
-              {variables.length > 0 ? variables.map((v) => (
-                <Badge key={v} variant="secondary" className="font-mono text-[10px]">{`{{ ${v} }}`}</Badge>
-              )) : (
-                <span className="text-muted-foreground">aucune</span>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Badge
+                    variant="secondary"
+                    className="cursor-pointer text-[10px] gap-1 hover:bg-secondary/80"
+                  >
+                    <Braces className="h-3 w-3" />
+                    Variables
+                  </Badge>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                  {AVAILABLE_VARIABLES.map((v) => (
+                    <DropdownMenuItem
+                      key={v.name}
+                      onClick={() => insertVariable(v.name)}
+                      className="flex items-center justify-between"
+                    >
+                      <Badge variant="secondary" className="font-mono text-xs">{`{{${v.name}}}`}</Badge>
+                      <span className="text-xs text-muted-foreground">{v.label}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -139,6 +154,7 @@ export default function NewTemplatePage() {
               <RichTextEditor
                 value={htmlContent}
                 onChange={setHtmlContent}
+                onEditorReady={(editor) => { editorRef.current = editor; }}
                 placeholder="Rédigez votre email ici... Utilisez {{ first_name }}, {{ company_name }} pour personnaliser."
                 className="border-0 rounded-none h-full"
               />

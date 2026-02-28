@@ -115,43 +115,6 @@ export interface ContactTimeline {
   created_at: string;
 }
 
-export interface Sequence {
-  id: string;
-  name: string;
-  description: string | null;
-  status: 'draft' | 'active' | 'paused' | 'archived';
-  workflow_json: Record<string, unknown> | null;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SequenceStep {
-  id: string;
-  sequence_id: string;
-  step_order: number;
-  step_type: 'email' | 'manual_task' | 'wait';
-  template_id: string | null;
-  template_b_id: string | null;
-  ab_split_pct: number;
-  delay_days: number;
-  instructions: string | null;
-  created_at: string;
-}
-
-export interface SequenceEnrollment {
-  id: string;
-  sequence_id: string;
-  contact_id: string;
-  status: 'active' | 'paused' | 'completed' | 'replied' | 'bounced' | 'unenrolled';
-  current_step_order: number;
-  next_action_at: string | null;
-  enrolled_by: string | null;
-  enrolled_at: string;
-  completed_at: string | null;
-  metadata: Record<string, unknown>;
-}
-
 export interface EmailStat {
   id: string;
   enrollment_id: string | null;
@@ -183,16 +146,6 @@ export interface EmailSentWithContact extends EmailSent {
 
 export interface CampaignWithTemplate extends Campaign {
   templates?: Template;
-}
-
-export interface SequenceWithSteps extends Sequence {
-  sequence_steps?: SequenceStep[];
-  enrollment_count?: number;
-}
-
-export interface EnrollmentWithDetails extends SequenceEnrollment {
-  contacts?: Contact;
-  sequences?: Sequence;
 }
 
 export interface CommentWithAuthor extends Comment {

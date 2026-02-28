@@ -131,12 +131,6 @@ export async function DELETE(
       );
     }
 
-    // Nullify template_id references in sequence_steps before deleting
-    await supabase
-      .from('sequence_steps')
-      .update({ template_id: null })
-      .eq('template_id', id);
-
     // Hard delete the template
     const { error } = await supabase
       .from('templates')

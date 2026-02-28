@@ -33,20 +33,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (updateError) throw updateError;
 
-    // Stop all active sequence enrollments
-    const { error: enrollError } = await supabase
-      .from('sequence_enrollments')
-      .update({
-        status: 'replied',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('contact_id', id)
-      .eq('status', 'active');
-
-    if (enrollError) {
-      console.error('Error stopping enrollments:', enrollError instanceof Error ? enrollError.message : enrollError);
-    }
-
     // Insert timeline entry
     await supabase.from('contact_timeline').insert({
       contact_id: id,

@@ -9,17 +9,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { AIScoreBadge } from '@/components/ai-score-badge';
 import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface TeamStats {
   totalContacts: number;
-  activeSequences: number;
   emailsToday: number;
   totalEmails: number;
   replyRate: number;
-  activeEnrollments: number;
   hotLeadsCount: number;
   hotLeads: any[];
   perUser: { name: string; email: string; contacts: number; emailsToday: number }[];
@@ -31,15 +30,16 @@ interface MyStats {
   myEmailsToday: number;
   myTotalEmails: number;
   myReplyRate: number;
-  myActiveEnrollments: number;
   myRecentSends: any[];
 }
 
 function RecentSendsTable({ data, onClickContact }: { data: any[]; onClickContact: (id: string) => void }) {
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center flex-1 rounded-lg border bg-card">
-        <span className="text-sm text-muted-foreground">Aucun envoi récent</span>
+      <div className="flex flex-col items-center justify-center flex-1 rounded-lg border bg-card py-8">
+        <Mail className="h-10 w-10 text-muted-foreground mb-3" />
+        <h3 className="text-sm font-medium mb-1">Aucun envoi récent</h3>
+        <p className="text-xs text-muted-foreground">Les emails envoyés apparaîtront ici</p>
       </div>
     );
   }
@@ -128,8 +128,22 @@ export default function DashboardPage() {
       <>
         <SiteHeader title="Dashboard" />
         <div className="page-container">
-          <div className="flex items-center justify-center flex-1">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="page-content">
+            <div className="flex gap-3 shrink-0">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 flex-1 rounded-lg" />
+              ))}
+            </div>
+            <Skeleton className="h-[120px] rounded-lg shrink-0" />
+            <Skeleton className="h-4 w-32 rounded shrink-0" />
+            <div className="flex-1 min-h-0 rounded-lg border bg-card overflow-hidden">
+              <div className="p-3 space-y-3">
+                <Skeleton className="h-8 w-full rounded" />
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded" />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </>
@@ -154,7 +168,6 @@ export default function DashboardPage() {
               <CompactStatsBar stats={[
                 { label: 'Contacts', value: teamStats?.totalContacts || 0 },
                 { label: 'Leads chauds', value: teamStats?.hotLeadsCount || 0 },
-                { label: 'Séquences actives', value: teamStats?.activeSequences || 0 },
                 { label: "Emails aujourd'hui", value: teamStats?.emailsToday || 0 },
                 { label: 'Taux réponse', value: `${teamStats?.replyRate || 0}%` },
               ]} />
@@ -250,7 +263,6 @@ export default function DashboardPage() {
               <CompactStatsBar stats={[
                 { label: 'Mes contacts', value: myStats?.myContacts || 0 },
                 { label: "Emails aujourd'hui", value: myStats?.myEmailsToday || 0 },
-                { label: 'Inscriptions actives', value: myStats?.myActiveEnrollments || 0 },
                 { label: 'Taux réponse', value: `${myStats?.myReplyRate || 0}%` },
               ]} />
 

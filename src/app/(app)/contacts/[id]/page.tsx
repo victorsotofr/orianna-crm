@@ -280,7 +280,7 @@ export default function ContactDetailPage() {
           </div>
 
           {/* Main content: 2 columns */}
-          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4 overflow-auto">
+          <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-auto">
             {/* Left: Contact form (compact) */}
             <div className="lg:col-span-2 space-y-3">
               {/* Row 1: Name + Email */}

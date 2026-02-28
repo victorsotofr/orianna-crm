@@ -30,6 +30,8 @@ const STATUS_OPTIONS = [
 export function EditableCell({ contactId, field, value, type, teamMembers, onUpdate }: EditableCellProps) {
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState(value || '');
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
     // Optimistic update
     setLocalValue(newValue);
     setEditing(false);
+    setSaving(true);
 
     try {
       const response = await fetch(`/api/contacts/${contactId}`, {
@@ -68,10 +71,14 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
       }
 
       onUpdate(contactId, field, finalValue);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 600);
     } catch {
       // Revert
       setLocalValue(value || '');
       toast.error('Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -83,6 +90,8 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
       setEditing(false);
     }
   };
+
+  const feedbackClass = saving ? 'opacity-50 animate-pulse' : saveSuccess ? 'bg-green-100 dark:bg-green-900/30 transition-colors duration-300' : 'transition-colors duration-300';
 
   // Read-only date display
   if (type === 'readonly-date') {
@@ -110,7 +119,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
     }
     return (
       <span
-        className="text-xs text-muted-foreground whitespace-nowrap px-1.5 py-1 cursor-pointer hover:bg-muted/50 rounded min-w-[60px] inline-block"
+        className={`text-xs text-muted-foreground whitespace-nowrap px-1.5 py-1 cursor-pointer hover:bg-muted/50 rounded min-w-[60px] inline-block ${feedbackClass}`}
         onClick={() => setEditing(true)}
       >
         {value ? format(new Date(value), 'dd/MM/yyyy') : '\u2014'}
@@ -144,7 +153,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
       );
     }
     return (
-      <div className="cursor-pointer" onClick={() => setEditing(true)}>
+      <div className={`cursor-pointer rounded ${feedbackClass}`} onClick={() => setEditing(true)}>
         <ContactStatusBadge status={value || 'new'} />
       </div>
     );
@@ -183,7 +192,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
       );
     }
     return (
-      <div className="cursor-pointer" onClick={() => setEditing(true)}>
+      <div className={`cursor-pointer rounded ${feedbackClass}`} onClick={() => setEditing(true)}>
         {displayName ? (
           <Badge variant="secondary" className="text-xs">{displayName}</Badge>
         ) : (
@@ -209,7 +218,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
 
   return (
     <span
-      className="text-xs px-1.5 py-1 cursor-pointer hover:bg-muted/50 rounded inline-block min-w-[40px] truncate max-w-[200px]"
+      className={`text-xs px-1.5 py-1 cursor-pointer hover:bg-muted/50 rounded inline-block min-w-[40px] truncate max-w-[200px] ${feedbackClass}`}
       title={value || undefined}
       onClick={() => setEditing(true)}
     >

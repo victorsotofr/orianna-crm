@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Users } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AIScoreBadge } from '@/components/ai-score-badge';
 import { toast } from 'sonner';
@@ -306,11 +307,30 @@ export default function ContactsPage() {
 
           {/* Scrollable table area — fills remaining height, scrolls both axes */}
           {loading ? (
-            <div className="flex items-center justify-center flex-1">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="flex-1 min-h-0 space-y-3">
+              <div className="flex gap-2 shrink-0">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-[140px] rounded" />
+                ))}
+              </div>
+              <div className="flex-1 rounded-lg border bg-card p-3 space-y-3">
+                <Skeleton className="h-8 w-full rounded" />
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full rounded" />
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">
+            <div className="table-scroll-wrapper">
+            <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card" onScroll={(e) => {
+              const el = e.currentTarget;
+              const wrapper = el.parentElement;
+              if (wrapper) {
+                const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10;
+                if (atRight) wrapper.setAttribute('data-scrolled-right', '');
+                else wrapper.removeAttribute('data-scrolled-right');
+              }
+            }}>
               <table className="text-sm border-collapse" style={{ minWidth: '2200px' }}>
                 <thead className="bg-muted/50 sticky top-0 z-10">
                   <tr className="border-b">
@@ -373,13 +393,22 @@ export default function ContactsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={COLUMNS.length + 1} className="h-32 text-center text-sm text-muted-foreground">
-                        Aucun contact trouvé.
+                      <td colSpan={COLUMNS.length + 1} className="h-48">
+                        <div className="flex flex-col items-center justify-center text-center py-8">
+                          <Users className="h-10 w-10 text-muted-foreground mb-3" />
+                          <h3 className="text-sm font-medium mb-1">Aucun contact trouvé</h3>
+                          <p className="text-xs text-muted-foreground mb-4">Essayez de modifier vos filtres ou ajoutez un nouveau contact</p>
+                          <Button size="sm" onClick={() => router.push('/contacts/new')}>
+                            <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            Nouveau
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
         </div>

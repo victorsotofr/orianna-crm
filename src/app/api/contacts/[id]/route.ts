@@ -24,12 +24,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    // Get enrollment count
-    const { count: enrollmentCount } = await supabase
-      .from('sequence_enrollments')
-      .select('*', { count: 'exact', head: true })
-      .eq('contact_id', id);
-
     // Get assigned team member name
     let assignedName = null;
     if (contact.assigned_to) {
@@ -43,7 +37,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({
       contact,
-      enrollmentCount: enrollmentCount || 0,
       assignedName,
     });
   } catch (error: any) {

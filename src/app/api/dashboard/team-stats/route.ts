@@ -21,12 +21,6 @@ export async function GET() {
       .from('contacts')
       .select('*', { count: 'exact', head: true });
 
-    // Active sequences
-    const { count: activeSequences } = await supabase
-      .from('sequences')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active');
-
     // Emails sent today
     const { count: emailsToday } = await supabase
       .from('emails_sent')
@@ -49,12 +43,6 @@ export async function GET() {
       .from('contacts')
       .select('*', { count: 'exact', head: true })
       .neq('status', 'new');
-
-    // Active enrollments
-    const { count: activeEnrollments } = await supabase
-      .from('sequence_enrollments')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active');
 
     // Per-user breakdown
     const { data: teamMembers } = await supabase
@@ -113,11 +101,9 @@ export async function GET() {
 
     return NextResponse.json({
       totalContacts: totalContacts || 0,
-      activeSequences: activeSequences || 0,
       emailsToday: emailsToday || 0,
       totalEmails: totalEmails || 0,
       replyRate,
-      activeEnrollments: activeEnrollments || 0,
       hotLeadsCount: hotLeadsCount || 0,
       hotLeads: hotLeads || [],
       perUser,

@@ -3,6 +3,8 @@ import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 
+export const maxDuration = 30;
+
 export async function POST(request: Request) {
   try {
     // Get authenticated Supabase client
@@ -26,23 +28,6 @@ export async function POST(request: Request) {
         { error: 'Missing required parameters' },
         { status: 400 }
       );
-    }
-
-    // GLOBAL deduplication: Check if ANYONE already sent this contact + template combo
-    // This prevents double-sending across all users
-    const { data: existingSend } = await supabase
-      .from('emails_sent')
-      .select('id, sent_by_email')
-      .eq('contact_id', contactId)
-      .eq('template_id', templateId)
-      .single();
-
-    if (existingSend) {
-      return NextResponse.json({
-        success: false,
-        alreadySent: true,
-        message: `Email already sent to this contact with this template${existingSend.sent_by_email ? ` by ${existingSend.sent_by_email}` : ''}`,
-      });
     }
 
     // Fetch contact
@@ -89,16 +74,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check daily send limit (per user, using sent_by instead of user_id)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const { count: todayCount } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .eq('sent_by', user.id)
-      .gte('sent_at', today.toISOString());
+    // Atomic daily send limit check
+    const { data: canSend } = await supabase.rpc('check_daily_send_limit', {
+      p_user_id: user.id,
+      p_limit: settings.daily_send_limit || 50,
+    });
 
-    if (todayCount && todayCount >= settings.daily_send_limit) {
+    if (!canSend) {
       return NextResponse.json(
         {
           error: `Daily send limit (${settings.daily_send_limit}) reached. Try again tomorrow.`,
@@ -175,7 +157,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Record successful send with audit trail
+    // Record successful send with audit trail (DB unique index handles dedup)
     const { error: insertError } = await supabase.from('emails_sent').insert({
       contact_id: contactId,
       campaign_id: campaignId,
@@ -187,6 +169,14 @@ export async function POST(request: Request) {
     });
 
     if (insertError) {
+      // Unique constraint violation = already sent (concurrent request won the race)
+      if (insertError.code === '23505') {
+        return NextResponse.json({
+          success: false,
+          alreadySent: true,
+          message: 'Email already sent to this contact with this template',
+        });
+      }
       console.error('Error recording email send:', insertError instanceof Error ? insertError.message : insertError);
     }
 

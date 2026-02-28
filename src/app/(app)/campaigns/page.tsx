@@ -9,7 +9,7 @@ import { SiteHeader } from '@/components/site-header';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Plus } from 'lucide-react';
+import { Loader2, Send, Plus, Sparkles } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -24,12 +24,14 @@ interface CampaignContact {
   location: string | null;
   status: string;
   assigned_to: string | null;
+  ai_personalized_line: string | null;
 }
 
 interface Template {
   id: string;
   name: string;
   subject: string;
+  html_content: string;
 }
 
 interface TeamMember {
@@ -46,8 +48,9 @@ export default function CampaignsPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [sendPhase, setSendPhase] = useState<'idle' | 'enriching' | 'sending'>('idle');
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
+  const [enrichProgress, setEnrichProgress] = useState<{ current: number; total: number } | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('new');
   const [ownerFilter, setOwnerFilter] = useState('all');
@@ -57,12 +60,12 @@ export default function CampaignsPage() {
       const [contactsRes, templatesRes, teamRes] = await Promise.all([
         supabase
           .from('contacts')
-          .select('id, first_name, last_name, email, company_name, location, status, assigned_to')
+          .select('id, first_name, last_name, email, company_name, location, status, assigned_to, ai_personalized_line')
           .in('status', ['new', 'contacted'])
           .order('created_at', { ascending: false }),
         supabase
           .from('templates')
-          .select('id, name, subject')
+          .select('id, name, subject, html_content')
           .eq('is_active', true)
           .order('created_at', { ascending: false }),
         supabase
@@ -108,6 +111,23 @@ export default function CampaignsPage() {
     });
   }, [contacts, statusFilter, ownerFilter, search]);
 
+  const templateUsesPersonalization = useMemo(() => {
+    if (!selectedTemplate) return false;
+    const tmpl = templates.find(t => t.id === selectedTemplate);
+    if (!tmpl) return false;
+    return (tmpl.html_content || '').includes('ai_personalized_line') ||
+           (tmpl.subject || '').includes('ai_personalized_line');
+  }, [selectedTemplate, templates]);
+
+  const contactsNeedingEnrichment = useMemo(() => {
+    if (!templateUsesPersonalization) return new Set<string>();
+    return new Set(
+      contacts
+        .filter(c => selectedContacts.has(c.id) && (!c.ai_personalized_line || c.ai_personalized_line.trim() === ''))
+        .map(c => c.id)
+    );
+  }, [selectedContacts, contacts, templateUsesPersonalization]);
+
   const handleSendEmails = async () => {
     if (!selectedTemplate) {
       toast.error('Veuillez sélectionner un template');
@@ -119,9 +139,39 @@ export default function CampaignsPage() {
     }
 
     const contactIds = Array.from(selectedContacts);
-    const total = contactIds.length;
 
-    setSending(true);
+    // Phase 1: Enrich contacts missing AI personalization
+    if (templateUsesPersonalization && contactsNeedingEnrichment.size > 0) {
+      setSendPhase('enriching');
+      const enrichIds = Array.from(contactsNeedingEnrichment);
+      setEnrichProgress({ current: 0, total: enrichIds.length });
+
+      for (let i = 0; i < enrichIds.length; i++) {
+        setEnrichProgress({ current: i + 1, total: enrichIds.length });
+        try {
+          await fetch('/api/ai/personalize-contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contactId: enrichIds[i] }),
+          });
+        } catch (err) {
+          console.error('Enrichment error:', err);
+        }
+      }
+
+      // Re-fetch contacts to pick up new ai_personalized_line values
+      const { data: refreshed } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, email, company_name, location, status, assigned_to, ai_personalized_line')
+        .in('status', ['new', 'contacted'])
+        .order('created_at', { ascending: false });
+      if (refreshed) setContacts(refreshed);
+      setEnrichProgress(null);
+    }
+
+    // Phase 2: Send emails
+    setSendPhase('sending');
+    const total = contactIds.length;
     setSendProgress({ current: 0, total });
 
     let sentCount = 0;
@@ -166,7 +216,7 @@ export default function CampaignsPage() {
 
     setSelectedContacts(new Set());
     setSelectedTemplate('');
-    setSending(false);
+    setSendPhase('idle');
     setSendProgress(null);
     fetchData();
   };
@@ -200,16 +250,15 @@ export default function CampaignsPage() {
       <div className="page-container">
         <div className="page-content">
           {/* Toolbar */}
-          <div className="flex items-center justify-between gap-3 shrink-0 flex-wrap">
-            <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
               <Input
                 placeholder="Rechercher..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="max-w-[200px] h-8 text-sm"
+                className="w-[160px] shrink-0 h-8 text-sm"
               />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectTrigger className="w-[120px] shrink-0 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -219,7 +268,7 @@ export default function CampaignsPage() {
                 </SelectContent>
               </Select>
               <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                <SelectTrigger className="w-[160px] h-8 text-xs">
+                <SelectTrigger className="w-[140px] shrink-0 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -234,11 +283,9 @@ export default function CampaignsPage() {
                 { label: 'Sélectionnés', value: selectedContacts.size },
                 { label: 'Éligibles', value: filteredContacts.length },
               ]} />
-            </div>
-
-            <div className="flex items-center gap-2">
+              <div className="shrink-0 ml-auto" />
               <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
-                <SelectTrigger className="w-[240px] h-8 text-xs">
+                <SelectTrigger className="w-[200px] shrink-0 h-8 text-xs">
                   <SelectValue placeholder="Sélectionner un template..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -252,29 +299,53 @@ export default function CampaignsPage() {
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => router.push('/templates/new')}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Template
               </Button>
-              {sending && sendProgress ? (
-                <div className="flex items-center gap-2 min-w-[200px]">
-                  <Progress value={(sendProgress.current / sendProgress.total) * 100} className="h-2 flex-1" />
+              {sendPhase !== 'idle' ? (
+                <div className="flex items-center gap-2 shrink-0 w-[220px]">
+                  <Progress
+                    value={
+                      sendPhase === 'enriching' && enrichProgress
+                        ? (enrichProgress.current / enrichProgress.total) * 100
+                        : sendProgress
+                          ? (sendProgress.current / sendProgress.total) * 100
+                          : 0
+                    }
+                    className="h-2 flex-1"
+                  />
                   <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
-                    {sendProgress.current}/{sendProgress.total} ({Math.round((sendProgress.current / sendProgress.total) * 100)}%)
+                    {sendPhase === 'enriching' && enrichProgress
+                      ? `Enrichissement ${enrichProgress.current}/${enrichProgress.total}`
+                      : sendProgress
+                        ? `Envoi ${sendProgress.current}/${sendProgress.total}`
+                        : '...'}
                   </span>
                 </div>
+              ) : contactsNeedingEnrichment.size > 0 ? (
+                <Button
+                  size="sm"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={handleSendEmails}
+                  disabled={selectedContacts.size === 0 || !selectedTemplate}
+                >
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  Enrichir & Envoyer ({contactsNeedingEnrichment.size})
+                </Button>
               ) : (
                 <Button
                   size="sm"
+                  className="shrink-0 whitespace-nowrap"
                   onClick={handleSendEmails}
-                  disabled={selectedContacts.size === 0 || !selectedTemplate || sending}
+                  disabled={selectedContacts.size === 0 || !selectedTemplate}
                 >
                   <Send className="mr-1.5 h-3.5 w-3.5" />
                   Envoyer ({selectedContacts.size})
                 </Button>
               )}
-            </div>
           </div>
 
           {/* Table */}

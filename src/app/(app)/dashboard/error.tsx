@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/lib/i18n';
 
 export default function DashboardError({
   error,
@@ -10,6 +11,8 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const { t } = useTranslation();
+
   useEffect(() => {
     console.error('Dashboard error:', error.digest || error.message);
   }, [error]);
@@ -18,9 +21,9 @@ export default function DashboardError({
     <div className="page-container">
       <div className="page-content">
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <h2 className="text-xl font-semibold">Erreur de chargement du tableau de bord</h2>
-          <p className="text-muted-foreground">Impossible de charger les données.</p>
-          <Button onClick={reset}>Réessayer</Button>
+          <h2 className="text-xl font-semibold">{t.errors.dashboard.title}</h2>
+          <p className="text-muted-foreground">{t.errors.dashboard.description}</p>
+          <Button onClick={reset}>{t.errors.retry}</Button>
         </div>
       </div>
     </div>

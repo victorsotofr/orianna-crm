@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck, Brain } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
+import { useTranslation } from '@/lib/i18n';
 
 const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'] as const;
 
@@ -177,6 +178,7 @@ function autoMapRows(rows: string[][]): ParsedContact[] {
 export default function ImportPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
 
   const [file, setFile] = useState<File | null>(null);
   const [validContacts, setValidContacts] = useState<ParsedContact[]>([]);
@@ -223,7 +225,7 @@ export default function ImportPage() {
     if (!selectedFile) return;
 
     if (!selectedFile.name.endsWith('.csv')) {
-      toast.error('Veuillez sélectionner un fichier CSV');
+      toast.error(t.import.validation.selectFile);
       return;
     }
 
@@ -236,7 +238,7 @@ export default function ImportPage() {
       complete: (rawResults) => {
         const rows = rawResults.data as string[][];
         if (rows.length === 0) {
-          toast.error('Fichier vide');
+          toast.error(t.import.validation.emptyFile);
           return;
         }
 
@@ -270,13 +272,13 @@ export default function ImportPage() {
         setStep('preview');
 
         if (valid.length > 0) {
-          toast.success(`${valid.length} contacts valides trouvés${!isHeaderRow ? ' (colonnes auto-détectées)' : ''}`);
+          toast.success(t.import.toasts.validFound(valid.length, !isHeaderRow));
         } else {
-          toast.error('Aucun contact valide trouvé. Vérifiez le format du fichier.');
+          toast.error(t.import.toasts.noValid);
         }
       },
       error: (error) => {
-        toast.error(`Erreur lors de la lecture du fichier: ${error.message}`);
+        toast.error(t.import.toasts.readError(error.message));
       },
     });
   };
@@ -307,10 +309,10 @@ export default function ImportPage() {
           await handleImport(false);
         }
       } else {
-        toast.error(data.error || 'Erreur lors de la vérification');
+        toast.error(data.error || t.common.networkError);
       }
     } catch {
-      toast.error('Erreur lors de la vérification des doublons');
+      toast.error(t.common.networkError);
     } finally {
       setChecking(false);
     }
@@ -318,7 +320,7 @@ export default function ImportPage() {
 
   const handleImport = async (skipDuplicates: boolean) => {
     if (validContacts.length === 0) {
-      toast.error('Aucun contact valide à importer');
+      toast.error(t.import.toasts.noValid);
       return;
     }
 
@@ -336,7 +338,7 @@ export default function ImportPage() {
       const data = await response.json();
 
       if (response.ok) {
-        toast.success(`${data.imported} contacts importés${data.skipped > 0 ? `, ${data.skipped} ignoré(s)` : ''}`);
+        toast.success(t.import.toasts.imported(data.imported, data.skipped));
         if (data.importedIds && data.importedIds.length > 0) {
           setImportedIds(data.importedIds);
           setScoringTotal(data.importedIds.length);
@@ -347,10 +349,10 @@ export default function ImportPage() {
           router.push('/contacts');
         }
       } else {
-        toast.error(data.error || "Erreur lors de l'importation");
+        toast.error(data.error || t.common.networkError);
       }
     } catch {
-      toast.error("Erreur lors de l'importation des contacts");
+      toast.error(t.common.networkError);
     } finally {
       setUploading(false);
     }
@@ -371,7 +373,7 @@ export default function ImportPage() {
       }
       setScoringProgress(Math.min(i + batchSize, ids.length));
     }
-    toast.success('Scoring IA terminé');
+    toast.success(t.import.scoring.done);
     setTimeout(() => router.push('/contacts'), 1500);
   };
 
@@ -388,7 +390,7 @@ export default function ImportPage() {
         handleFileUpload({ target: fileInputRef.current } as any);
       }
     } else {
-      toast.error('Veuillez déposer un fichier CSV');
+      toast.error(t.import.validation.dropCsv);
     }
   };
 
@@ -404,16 +406,16 @@ export default function ImportPage() {
 
   return (
     <>
-      <SiteHeader title="Importer des contacts" />
+      <SiteHeader title={t.import.title} />
       <div className="page-container">
         <div className="page-content">
 
           {step === 'upload' && (
             <Card>
               <CardHeader>
-                <CardTitle>Télécharger un fichier CSV</CardTitle>
+                <CardTitle>{t.import.upload.title}</CardTitle>
                 <CardDescription>
-                  Format auto-détecté: email, firstName/prénom, lastName/nom, companyName/entreprise, status/statut
+                  {t.import.upload.format}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -425,9 +427,9 @@ export default function ImportPage() {
                 >
                   <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                   <p className="text-sm font-medium mb-1">
-                    Glissez-déposez votre fichier CSV ici
+                    {t.import.upload.dropzone}
                   </p>
-                  <p className="text-xs text-muted-foreground mb-3">ou cliquez pour sélectionner</p>
+                  <p className="text-xs text-muted-foreground mb-3">{t.import.upload.orClick}</p>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -437,7 +439,7 @@ export default function ImportPage() {
                   />
                   <Button type="button" variant="outline" size="sm">
                     <FileText className="mr-1.5 h-3.5 w-3.5" />
-                    Sélectionner un fichier
+                    {t.import.upload.selectFile}
                   </Button>
                 </div>
               </CardContent>
@@ -450,7 +452,7 @@ export default function ImportPage() {
                 <Card>
                   <CardContent className="pt-4 pb-3 px-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-muted-foreground">Contacts valides</span>
+                      <span className="text-xs text-muted-foreground">{t.import.preview.validContacts}</span>
                       <CheckCircle className="h-3.5 w-3.5 text-green-500" />
                     </div>
                     <div className="text-xl font-bold text-green-600">{validContacts.length}</div>
@@ -459,7 +461,7 @@ export default function ImportPage() {
                 <Card>
                   <CardContent className="pt-4 pb-3 px-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-muted-foreground">Emails invalides</span>
+                      <span className="text-xs text-muted-foreground">{t.import.preview.invalidEmails}</span>
                       <AlertCircle className="h-3.5 w-3.5 text-red-500" />
                     </div>
                     <div className="text-xl font-bold text-red-600">{invalidEmails.length}</div>
@@ -468,7 +470,7 @@ export default function ImportPage() {
                 <Card>
                   <CardContent className="pt-4 pb-3 px-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-muted-foreground">Doublons CSV</span>
+                      <span className="text-xs text-muted-foreground">{t.import.preview.csvDuplicates}</span>
                       <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
                     </div>
                     <div className="text-xl font-bold text-yellow-600">{csvDuplicates}</div>
@@ -479,18 +481,18 @@ export default function ImportPage() {
               {invalidEmails.length > 0 && (
                 <Alert variant="destructive">
                   <AlertDescription className="text-xs">
-                    {invalidEmails.length} email(s) invalide(s) ignorés
+                    {t.import.preview.invalidIgnored(invalidEmails.length)}
                   </AlertDescription>
                 </Alert>
               )}
 
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm">Aperçu</CardTitle>
+                  <CardTitle className="text-sm">{t.import.preview.title}</CardTitle>
                   <CardDescription className="text-xs">
                     {validContacts.length > 10
-                      ? `10 premiers sur ${validContacts.length}`
-                      : `${validContacts.length} contact(s)`}
+                      ? t.import.preview.firstN(validContacts.length)
+                      : t.import.preview.nContacts(validContacts.length)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3 flex-1 min-h-0 overflow-auto">
@@ -499,9 +501,9 @@ export default function ImportPage() {
                       <TableHeader className="bg-muted/50">
                         <TableRow>
                           <TableHead className="text-xs w-8">#</TableHead>
-                          <TableHead className="text-xs">Contact</TableHead>
-                          <TableHead className="text-xs">Entreprise</TableHead>
-                          <TableHead className="text-xs">Statut</TableHead>
+                          <TableHead className="text-xs">{t.import.preview.contact}</TableHead>
+                          <TableHead className="text-xs">{t.import.preview.company}</TableHead>
+                          <TableHead className="text-xs">{t.import.preview.status}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -537,7 +539,7 @@ export default function ImportPage() {
                   </div>
                   {validContacts.length > 10 && (
                     <p className="text-xs text-muted-foreground mt-1.5 text-center">
-                      ... et {validContacts.length - 10} contact(s) supplémentaire(s)
+                      {t.import.preview.moreContacts(validContacts.length - 10)}
                     </p>
                   )}
                 </CardContent>
@@ -545,16 +547,16 @@ export default function ImportPage() {
 
               <div className="flex justify-between">
                 <Button variant="outline" size="sm" onClick={resetAll}>
-                  Annuler
+                  {t.common.cancel}
                 </Button>
                 <Button size="sm" onClick={handleCheckDuplicates} disabled={checking}>
                   {checking ? (
                     <>
                       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      Vérification...
+                      {t.common.loading}
                     </>
                   ) : (
-                    `Importer ${validContacts.length} contact${validContacts.length > 1 ? 's' : ''}`
+                    t.import.preview.importButton(validContacts.length)
                   )}
                 </Button>
               </div>
@@ -566,16 +568,16 @@ export default function ImportPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Brain className="h-5 w-5 text-amber-500" />
-                  Scoring IA en cours
+                  {t.import.scoring.title}
                 </CardTitle>
                 <CardDescription>
-                  Analyse des contacts importés par l&apos;intelligence artificielle
+                  {t.import.scoring.description}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span>{scoringProgress} / {scoringTotal} contacts analysés</span>
+                    <span>{t.import.scoring.progress(scoringProgress, scoringTotal)}</span>
                     <span>{scoringTotal > 0 ? Math.round((scoringProgress / scoringTotal) * 100) : 0}%</span>
                   </div>
                   <Progress value={scoringTotal > 0 ? (scoringProgress / scoringTotal) * 100 : 0} />
@@ -585,7 +587,7 @@ export default function ImportPage() {
                   size="sm"
                   onClick={() => router.push('/contacts')}
                 >
-                  Continuer en arrière-plan
+                  {t.import.scoring.background}
                 </Button>
               </CardContent>
             </Card>
@@ -596,11 +598,10 @@ export default function ImportPage() {
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  <strong>{dbDuplicates.length} contact(s)</strong> existent déjà dans la base de données.{' '}
-                  <strong>{newCount}</strong> nouveau(x) contact(s) seront importé(s).
+                  {t.import.duplicates.existsMessage(dbDuplicates.length, newCount)}
                   {dbDuplicates.some(d => d.owner_name) && (
                     <span className="block mt-1 text-orange-600 font-medium">
-                      Attention : certains contacts sont déjà assignés à un autre membre de l&apos;équipe. Ils ne seront pas ré-importés pour éviter les doublons d&apos;envoi.
+                      {t.import.duplicates.assignedWarning}
                     </span>
                   )}
                 </AlertDescription>
@@ -608,9 +609,9 @@ export default function ImportPage() {
 
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm">Contacts existants ({dbDuplicates.length})</CardTitle>
+                  <CardTitle className="text-sm">{t.import.duplicates.existingContacts(dbDuplicates.length)}</CardTitle>
                   <CardDescription className="text-xs">
-                    Ces contacts ne seront pas ré-importés
+                    {t.import.duplicates.willNotImport}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="px-4 pb-3 flex-1 min-h-0 overflow-auto">
@@ -618,10 +619,10 @@ export default function ImportPage() {
                     <Table>
                       <TableHeader className="bg-muted/50">
                         <TableRow>
-                          <TableHead className="text-xs">Email</TableHead>
-                          <TableHead className="text-xs">Nom</TableHead>
-                          <TableHead className="text-xs">Propriétaire</TableHead>
-                          <TableHead className="text-xs">Ajouté par</TableHead>
+                          <TableHead className="text-xs">{t.import.duplicates.headers.email}</TableHead>
+                          <TableHead className="text-xs">{t.import.duplicates.headers.name}</TableHead>
+                          <TableHead className="text-xs">{t.import.duplicates.headers.owner}</TableHead>
+                          <TableHead className="text-xs">{t.import.duplicates.headers.addedBy}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -640,7 +641,7 @@ export default function ImportPage() {
                                   {dup.owner_name}
                                 </Badge>
                               ) : (
-                                <span className="text-xs text-muted-foreground">Non assigné</span>
+                                <span className="text-xs text-muted-foreground">{t.common.unassigned}</span>
                               )}
                             </TableCell>
                             <TableCell className="py-1.5 text-xs text-muted-foreground">
@@ -656,7 +657,7 @@ export default function ImportPage() {
 
               <div className="flex justify-between">
                 <Button variant="outline" size="sm" onClick={resetAll}>
-                  Annuler
+                  {t.common.cancel}
                 </Button>
                 <div className="flex gap-2">
                   <Button
@@ -667,10 +668,10 @@ export default function ImportPage() {
                     {uploading ? (
                       <>
                         <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        Importation...
+                        {t.common.loading}
                       </>
                     ) : (
-                      `Ignorer les doublons (importer ${newCount} nouveaux)`
+                      t.import.duplicates.importButton(newCount)
                     )}
                   </Button>
                 </div>

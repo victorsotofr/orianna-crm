@@ -14,6 +14,7 @@ import { ArrowLeft, Loader2, Eye, Pencil, Trash2, Save, Braces } from 'lucide-re
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { Template } from '@/types/database';
 import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
+import { useTranslation } from '@/lib/i18n';
 import type { Editor } from '@tiptap/react';
 
 const PREVIEW_DATA: Record<string, string> = {
@@ -43,6 +44,7 @@ export default function TemplateDetailPage() {
   const router = useRouter();
   const params = useParams();
   const templateId = params.id as string;
+  const { t } = useTranslation();
 
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,10 +63,10 @@ export default function TemplateDetailPage() {
     fetchTemplate();
   }, [templateId]);
 
-  const initEditState = (t: Template) => {
-    setEditName(t.name);
-    setEditSubject(t.subject);
-    setEditHtmlContent(t.html_content);
+  const initEditState = (tmpl: Template) => {
+    setEditName(tmpl.name);
+    setEditSubject(tmpl.subject);
+    setEditHtmlContent(tmpl.html_content);
   };
 
   const fetchTemplate = async () => {
@@ -72,17 +74,17 @@ export default function TemplateDetailPage() {
       const response = await fetch('/api/templates');
       if (response.ok) {
         const { templates } = await response.json();
-        const found = templates.find((t: Template) => t.id === templateId);
+        const found = templates.find((tmpl: Template) => tmpl.id === templateId);
         if (found) {
           setTemplate(found);
           initEditState(found);
         } else {
-          toast.error('Template non trouvé');
+          toast.error(t.templates.form.toasts.notFound);
           router.push('/templates');
         }
       }
     } catch {
-      toast.error('Erreur lors du chargement');
+      toast.error(t.common.networkError);
     } finally {
       setLoading(false);
     }
@@ -101,7 +103,7 @@ export default function TemplateDetailPage() {
 
   const handleSave = async () => {
     if (!editName.trim() || !editSubject.trim() || !editHtmlContent.trim()) {
-      toast.error('Tous les champs sont requis');
+      toast.error(t.templates.editPage.toasts.fieldsRequired);
       return;
     }
 
@@ -121,14 +123,14 @@ export default function TemplateDetailPage() {
         const { template: updated } = await response.json();
         setTemplate(updated);
         initEditState(updated);
-        toast.success('Template mis à jour');
+        toast.success(t.templates.editPage.toasts.updated);
         setEditing(false);
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Erreur lors de la sauvegarde');
+        toast.error(data.error || t.templates.editPage.toasts.saveError);
       }
     } catch {
-      toast.error('Erreur lors de la sauvegarde');
+      toast.error(t.templates.editPage.toasts.saveError);
     } finally {
       setSaving(false);
     }
@@ -139,13 +141,13 @@ export default function TemplateDetailPage() {
     try {
       const response = await fetch(`/api/templates/${templateId}`, { method: 'DELETE' });
       if (response.ok) {
-        toast.success('Template supprimé');
+        toast.success(t.templates.toasts.deleted);
         router.push('/templates');
       } else {
-        toast.error('Erreur lors de la suppression');
+        toast.error(t.templates.editPage.toasts.deleteError);
       }
     } catch {
-      toast.error('Erreur lors de la suppression');
+      toast.error(t.templates.editPage.toasts.deleteError);
     } finally {
       setDeleting(false);
     }
@@ -164,7 +166,7 @@ export default function TemplateDetailPage() {
   if (loading) {
     return (
       <>
-        <SiteHeader title="Template" />
+        <SiteHeader title={t.templates.editPage.title} />
         <div className="flex items-center justify-center min-h-[400px]">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -183,17 +185,17 @@ export default function TemplateDetailPage() {
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/templates')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-              Retour
+              {t.common.back}
             </Button>
             <div className="flex items-center gap-2">
               {editing && (
                 <>
                   <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving}>
-                    Annuler
+                    {t.common.cancel}
                   </Button>
                   <Button size="sm" onClick={handleSave} disabled={saving}>
                     {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
-                    Enregistrer
+                    {t.templates.editPage.save}
                   </Button>
                 </>
               )}
@@ -204,7 +206,7 @@ export default function TemplateDetailPage() {
                 className="text-destructive hover:text-destructive"
               >
                 <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Supprimer
+                {t.common.delete}
               </Button>
             </div>
           </div>
@@ -218,7 +220,7 @@ export default function TemplateDetailPage() {
               onClick={cancelEditing}
             >
               <Eye className="mr-1.5 h-3.5 w-3.5" />
-              Aperçu
+              {t.templates.editPage.preview}
             </Button>
             <Button
               variant={editing ? 'default' : 'ghost'}
@@ -227,7 +229,7 @@ export default function TemplateDetailPage() {
               onClick={startEditing}
             >
               <Pencil className="mr-1.5 h-3.5 w-3.5" />
-              Modifier
+              {t.templates.editPage.edit}
             </Button>
           </div>
 
@@ -235,7 +237,7 @@ export default function TemplateDetailPage() {
           {editing ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs border rounded-lg px-4 py-2.5 bg-muted/30">
               <div className="flex items-center gap-1.5">
-                <Label className="text-muted-foreground shrink-0">Nom:</Label>
+                <Label className="text-muted-foreground shrink-0">{t.templates.editPage.labels.name}</Label>
                 <Input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
@@ -250,7 +252,7 @@ export default function TemplateDetailPage() {
                       className="cursor-pointer text-[10px] gap-1 hover:bg-secondary/80"
                     >
                       <Braces className="h-3 w-3" />
-                      Variables
+                      {t.variables.title}
                     </Badge>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
@@ -271,11 +273,11 @@ export default function TemplateDetailPage() {
           ) : (
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs border rounded-lg px-4 py-2.5 bg-muted/30">
               <div>
-                <span className="text-muted-foreground">Nom: </span>
+                <span className="text-muted-foreground">{t.templates.editPage.labels.name} </span>
                 <span className="font-medium">{template.name}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">Sujet: </span>
+                <span className="text-muted-foreground">{t.templates.editPage.labels.subject} </span>
                 <span className="font-medium">{template.subject}</span>
               </div>
               <div className="flex items-center gap-1">
@@ -286,7 +288,7 @@ export default function TemplateDetailPage() {
                       className="cursor-pointer text-[10px] gap-1 hover:bg-secondary/80"
                     >
                       <Braces className="h-3 w-3" />
-                      Variables
+                      {t.variables.title}
                     </Badge>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
@@ -304,8 +306,9 @@ export default function TemplateDetailPage() {
                 </DropdownMenu>
               </div>
               <div>
-                <span className="text-muted-foreground">Créé le </span>
-                <span>{new Date(template.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                <span className="text-muted-foreground">
+                  {new Date(template.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+                </span>
               </div>
             </div>
           )}
@@ -315,20 +318,20 @@ export default function TemplateDetailPage() {
             {/* Email header */}
             <div className="bg-muted/50 border-b px-5 py-3 space-y-1 shrink-0">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-medium">De:</span>
-                <span>vous@orianna.fr</span>
+                <span className="font-medium">{t.templates.newPage.labels.from}</span>
+                <span>{t.templates.newPage.placeholders.from}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-medium">À:</span>
-                <span>jean.dupont@example.com</span>
+                <span className="font-medium">{t.templates.newPage.labels.to}</span>
+                <span>{t.templates.newPage.placeholders.to}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium text-xs text-muted-foreground shrink-0">Objet:</span>
+                <span className="font-medium text-xs text-muted-foreground shrink-0">{t.templates.newPage.labels.subject}</span>
                 {editing ? (
                   <Input
                     value={editSubject}
                     onChange={(e) => setEditSubject(e.target.value)}
-                    placeholder="Sujet de l'email..."
+                    placeholder={t.templates.newPage.placeholders.subject}
                     className="h-7 text-sm font-medium"
                   />
                 ) : (
@@ -343,7 +346,7 @@ export default function TemplateDetailPage() {
                   value={editHtmlContent}
                   onChange={setEditHtmlContent}
                   onEditorReady={(editor) => { editorRef.current = editor; }}
-                  placeholder="Rédigez votre email ici..."
+                  placeholder={t.templates.newPage.placeholders.content}
                   className="border-0 rounded-none h-full"
                 />
               </div>
@@ -363,16 +366,16 @@ export default function TemplateDetailPage() {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Supprimer le template</DialogTitle>
+            <DialogTitle>{t.templates.deleteDialog.title}</DialogTitle>
             <DialogDescription>
-              Supprimer &quot;{template.name}&quot; ? Cette action est irréversible.
+              {t.templates.deleteDialog.description(template.name)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>Annuler</Button>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>{t.common.cancel}</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              Supprimer
+              {t.common.delete}
             </Button>
           </DialogFooter>
         </DialogContent>

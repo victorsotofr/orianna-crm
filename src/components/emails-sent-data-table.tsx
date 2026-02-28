@@ -55,7 +55,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { format } from 'date-fns'
-import { fr } from 'date-fns/locale'
+import { useTranslation } from '@/lib/i18n'
+import type { Translations } from '@/lib/i18n'
 
 interface EmailSentRow {
   id: string
@@ -97,186 +98,179 @@ const getStatusColor = (status: string) => {
   }
 }
 
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case 'sent':
-      return 'Envoyé'
-    case 'failed':
-      return 'Échec'
-    default:
-      return status
-  }
-}
+function getColumns(t: Translations, dateFnsLocale: import('date-fns').Locale): ColumnDef<EmailSentRow>[] {
+  return [
+    {
+      accessorKey: "contact",
+      header: t.emailsTable.columns.recipient,
+      cell: ({ row }) => {
+        const contact = row.original.contacts
+        if (!contact) return <span className="text-muted-foreground">—</span>
 
-// Create columns definition
-const columns: ColumnDef<EmailSentRow>[] = [
-  {
-    accessorKey: "contact",
-    header: "Destinataire",
-    cell: ({ row }) => {
-      const contact = row.original.contacts
-      if (!contact) return <span className="text-muted-foreground">—</span>
-      
-      return (
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-            <User className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <div className="font-medium">
-              {contact.first_name} {contact.last_name}
+        return (
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+              <User className="h-4 w-4 text-primary" />
             </div>
-            <div className="text-sm text-muted-foreground flex items-center gap-1">
-              <Mail className="h-3 w-3" />
-              {contact.email}
+            <div>
+              <div className="font-medium">
+                {contact.first_name} {contact.last_name}
+              </div>
+              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                <Mail className="h-3 w-3" />
+                {contact.email}
+              </div>
             </div>
           </div>
-        </div>
-      )
+        )
+      },
+      enableHiding: false,
+      filterFn: (row, id, value) => {
+        const contact = row.original.contacts
+        if (!contact) return false
+        const searchLower = value.toLowerCase()
+        return Boolean(
+          contact.email?.toLowerCase().includes(searchLower) ||
+          contact.first_name?.toLowerCase().includes(searchLower) ||
+          contact.last_name?.toLowerCase().includes(searchLower)
+        )
+      },
     },
-    enableHiding: false,
-    filterFn: (row, id, value) => {
-      const contact = row.original.contacts
-      if (!contact) return false
-      const searchLower = value.toLowerCase()
-      return Boolean(
-        contact.email?.toLowerCase().includes(searchLower) ||
-        contact.first_name?.toLowerCase().includes(searchLower) ||
-        contact.last_name?.toLowerCase().includes(searchLower)
-      )
+    {
+      accessorKey: "company",
+      header: t.emailsTable.columns.company,
+      cell: ({ row }) => {
+        const contact = row.original.contacts
+        if (!contact || !contact.company_name) {
+          return <span className="text-muted-foreground text-sm">—</span>
+        }
+
+        return (
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <span>{contact.company_name}</span>
+          </div>
+        )
+      },
+      filterFn: (row, id, value) => {
+        const contact = row.original.contacts
+        if (!contact || !contact.company_name) return false
+        return Boolean(contact.company_name.toLowerCase().includes(value.toLowerCase()))
+      },
     },
-  },
-  {
-    accessorKey: "company",
-    header: "Entreprise",
-    cell: ({ row }) => {
-      const contact = row.original.contacts
-      if (!contact || !contact.company_name) {
-        return <span className="text-muted-foreground text-sm">—</span>
-      }
-      
-      return (
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-muted-foreground" />
-          <span>{contact.company_name}</span>
-        </div>
-      )
+    {
+      accessorKey: "status",
+      header: t.emailsTable.columns.status,
+      cell: ({ row }) => {
+        const status = row.original.status
+        const color = getStatusColor(status)
+        const label = status === 'sent' ? t.emailsTable.statuses.sent : status === 'failed' ? t.emailsTable.statuses.failed : status
+
+        return (
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${color}`} />
+            <Badge variant={getStatusBadgeVariant(status)}>
+              {label}
+            </Badge>
+          </div>
+        )
+      },
+      filterFn: (row, id, value) => {
+        return value === "all" || row.original.status === value
+      },
     },
-    filterFn: (row, id, value) => {
-      const contact = row.original.contacts
-      if (!contact || !contact.company_name) return false
-      return Boolean(contact.company_name.toLowerCase().includes(value.toLowerCase()))
-    },
-  },
-  {
-    accessorKey: "status",
-    header: "Statut",
-    cell: ({ row }) => {
-      const status = row.original.status
-      const color = getStatusColor(status)
-      
-      return (
-        <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${color}`} />
-          <Badge variant={getStatusBadgeVariant(status)}>
-            {getStatusLabel(status)}
-          </Badge>
-        </div>
-      )
-    },
-    filterFn: (row, id, value) => {
-      return value === "all" || row.original.status === value
-    },
-  },
-  {
-    accessorKey: "sent_at",
-    header: "Date d'envoi",
-    cell: ({ row }) => {
-      const date = new Date(row.original.sent_at)
-      const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
-      
-      return (
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <div>
-            <div className="font-medium">
-              {format(date, 'dd MMM yyyy', { locale: fr })}
+    {
+      accessorKey: "sent_at",
+      header: t.emailsTable.columns.sentDate,
+      cell: ({ row }) => {
+        const date = new Date(row.original.sent_at)
+        const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
+
+        return (
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <div className="font-medium">
+                {format(date, 'dd MMM yyyy', { locale: dateFnsLocale })}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {daysAgo === 0 ? t.emailsTable.dates.today : t.emailsTable.dates.daysAgo(daysAgo)}
+              </div>
             </div>
-            <div className="text-sm text-muted-foreground">
-              {daysAgo === 0 ? "Aujourd'hui" : daysAgo === 1 ? "Il y a 1 jour" : `Il y a ${daysAgo} jours`}
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "sent_by_email",
+      header: t.emailsTable.columns.owner,
+      cell: ({ row }) => {
+        const email = row.original.sent_by_email
+        if (!email) {
+          return <span className="text-muted-foreground text-sm">—</span>
+        }
+
+        // Extract name from email (part before @)
+        const name = email.split('@')[0].replace(/[._-]/g, ' ')
+
+        return (
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+              <User className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300" />
+            </div>
+            <div>
+              <div className="text-sm font-medium capitalize">{name}</div>
+              <div className="text-xs text-muted-foreground">{email}</div>
             </div>
           </div>
-        </div>
-      )
+        )
+      },
+      filterFn: (row, id, value) => {
+        const email = row.original.sent_by_email
+        if (!email) return false
+        return Boolean(email.toLowerCase().includes(value.toLowerCase()))
+      },
     },
-  },
-  {
-    accessorKey: "sent_by_email",
-    header: "Propriétaire",
-    cell: ({ row }) => {
-      const email = row.original.sent_by_email
-      if (!email) {
-        return <span className="text-muted-foreground text-sm">—</span>
-      }
-      
-      // Extract name from email (part before @)
-      const name = email.split('@')[0].replace(/[._-]/g, ' ')
-      
-      return (
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
-            <User className="h-3.5 w-3.5 text-blue-600 dark:text-blue-300" />
-          </div>
-          <div>
-            <div className="text-sm font-medium capitalize">{name}</div>
-            <div className="text-xs text-muted-foreground">{email}</div>
-          </div>
-        </div>
-      )
+    {
+      id: "actions",
+      header: t.emailsTable.columns.action,
+      cell: ({ row }) => {
+        const date = new Date(row.original.sent_at)
+        const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
+        const shouldFollowUp = daysAgo >= 15 && row.original.status !== 'replied'
+
+        if (!shouldFollowUp) {
+          return <span className="text-muted-foreground text-xs">—</span>
+        }
+
+        return (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              console.log('Follow up with contact:', row.original.contact_id)
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t.emailsTable.followUp}
+          </Button>
+        )
+      },
+      enableSorting: false,
+      enableHiding: false,
     },
-    filterFn: (row, id, value) => {
-      const email = row.original.sent_by_email
-      if (!email) return false
-      return Boolean(email.toLowerCase().includes(value.toLowerCase()))
-    },
-  },
-  {
-    id: "actions",
-    header: "Action",
-    cell: ({ row }) => {
-      const date = new Date(row.original.sent_at)
-      const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
-      const shouldFollowUp = daysAgo >= 15 && row.original.status !== 'replied'
-      
-      if (!shouldFollowUp) {
-        return <span className="text-muted-foreground text-xs">—</span>
-      }
-      
-      return (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5"
-          onClick={() => {
-            // TODO: Implement follow-up logic
-            console.log('Follow up with contact:', row.original.contact_id)
-          }}
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Relancer
-        </Button>
-      )
-    },
-    enableSorting: false,
-    enableHiding: false,
-  },
-]
+  ]
+}
 
 interface EmailsSentDataTableProps {
   data: EmailSentRow[]
 }
 
 export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
+  const { t, dateFnsLocale } = useTranslation()
+  const columns = React.useMemo(() => getColumns(t, dateFnsLocale), [t, dateFnsLocale])
+
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [sorting, setSorting] = React.useState<SortingState>([
@@ -318,7 +312,7 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
       const contact = row.original.contacts
       const template = row.original.templates
       if (!filterValue) return true
-      
+
       const searchLower = filterValue.toLowerCase()
       return Boolean(
         contact?.email?.toLowerCase().includes(searchLower) ||
@@ -345,7 +339,7 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-2">
           <Input
-            placeholder="Rechercher par nom, email, entreprise..."
+            placeholder={t.emailsTable.searchPlaceholder}
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
             className="max-w-sm"
@@ -354,20 +348,20 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
         <div className="flex items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Tous les statuts" />
+              <SelectValue placeholder={t.emailsTable.allStatuses} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tous les statuts</SelectItem>
+              <SelectItem value="all">{t.emailsTable.allStatuses}</SelectItem>
               <SelectItem value="sent">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-green-500" />
-                  Envoyé
+                  {t.emailsTable.statuses.sent}
                 </div>
               </SelectItem>
               <SelectItem value="failed">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-red-500" />
-                  Échec
+                  {t.emailsTable.statuses.failed}
                 </div>
               </SelectItem>
             </SelectContent>
@@ -376,7 +370,7 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 <Columns3 className="h-4 w-4 mr-2" />
-                <span className="hidden lg:inline">Colonnes</span>
+                <span className="hidden lg:inline">{t.common.columns}</span>
                 <ChevronDown className="h-4 w-4 ml-2" />
               </Button>
             </DropdownMenuTrigger>
@@ -445,7 +439,7 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  Aucun email envoyé pour le moment.
+                  {t.emailsTable.emptyState}
                 </TableCell>
               </TableRow>
             )}
@@ -456,12 +450,12 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
       {/* Pagination */}
       <div className="flex items-center justify-between px-2">
         <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
-          {table.getFilteredRowModel().rows.length} email(s) au total.
+          {t.common.totalRows(table.getFilteredRowModel().rows.length)}
         </div>
         <div className="flex w-full items-center gap-4 lg:w-fit">
           <div className="hidden items-center gap-2 lg:flex">
             <Label htmlFor="rows-per-page" className="text-sm font-medium whitespace-nowrap">
-              Lignes par page
+              {t.common.rowsPerPage}
             </Label>
             <Select
               value={`${table.getState().pagination.pageSize}`}
@@ -484,8 +478,7 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
             </Select>
           </div>
           <div className="flex w-fit items-center justify-center text-sm font-medium whitespace-nowrap">
-            Page {table.getState().pagination.pageIndex + 1} sur{" "}
-            {table.getPageCount()}
+            {t.common.pageOf(table.getState().pagination.pageIndex + 1, table.getPageCount())}
           </div>
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
             <Button
@@ -533,4 +526,3 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
     </div>
   )
 }
-

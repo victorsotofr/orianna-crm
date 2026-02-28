@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useTranslation } from '@/lib/i18n';
 
 interface CampaignContact {
   id: string;
@@ -42,6 +43,7 @@ interface TeamMember {
 
 export default function CampaignsPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [contacts, setContacts] = useState<CampaignContact[]>([]);
@@ -130,11 +132,11 @@ export default function CampaignsPage() {
 
   const handleSendEmails = async () => {
     if (!selectedTemplate) {
-      toast.error('Veuillez sélectionner un template');
+      toast.error(t.campaigns.toasts.selectTemplate);
       return;
     }
     if (selectedContacts.size === 0) {
-      toast.error('Veuillez sélectionner au moins un contact');
+      toast.error(t.campaigns.toasts.selectContacts);
       return;
     }
 
@@ -208,10 +210,10 @@ export default function CampaignsPage() {
     }
 
     if (sentCount > 0) {
-      toast.success(`${sentCount} email(s) envoyé(s) avec succès`);
+      toast.success(t.campaigns.toasts.sent(sentCount));
     }
     if (errorCount > 0) {
-      toast.warning(`${errorCount} erreur(s) rencontrée(s)`);
+      toast.warning(t.campaigns.toasts.errors(errorCount));
     }
 
     setSelectedContacts(new Set());
@@ -246,13 +248,13 @@ export default function CampaignsPage() {
 
   return (
     <>
-      <SiteHeader title="Campagnes" />
+      <SiteHeader title={t.campaigns.title} />
       <div className="page-container">
         <div className="page-content">
           {/* Toolbar */}
           <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
               <Input
-                placeholder="Rechercher..."
+                placeholder={t.campaigns.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-[160px] shrink-0 h-8 text-sm"
@@ -262,9 +264,9 @@ export default function CampaignsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
-                  <SelectItem value="new">Nouveau</SelectItem>
-                  <SelectItem value="contacted">Contacté</SelectItem>
+                  <SelectItem value="all">{t.campaigns.allStatuses}</SelectItem>
+                  <SelectItem value="new">{t.statuses.new}</SelectItem>
+                  <SelectItem value="contacted">{t.statuses.contacted}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={ownerFilter} onValueChange={setOwnerFilter}>
@@ -272,26 +274,26 @@ export default function CampaignsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous les propriétaires</SelectItem>
+                  <SelectItem value="all">{t.campaigns.allOwners}</SelectItem>
                   {teamMembers.map(m => (
                     <SelectItem key={m.user_id} value={m.user_id}>{m.display_name}</SelectItem>
                   ))}
-                  <SelectItem value="unassigned">Non assignés</SelectItem>
+                  <SelectItem value="unassigned">{t.campaigns.unassigned}</SelectItem>
                 </SelectContent>
               </Select>
               <CompactStatsBar stats={[
-                { label: 'Sélectionnés', value: selectedContacts.size },
-                { label: 'Éligibles', value: filteredContacts.length },
+                { label: t.campaigns.stats.selected, value: selectedContacts.size },
+                { label: t.campaigns.stats.eligible, value: filteredContacts.length },
               ]} />
               <div className="shrink-0 ml-auto" />
               <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
                 <SelectTrigger className="w-[200px] shrink-0 h-8 text-xs">
-                  <SelectValue placeholder="Sélectionner un template..." />
+                  <SelectValue placeholder={t.campaigns.selectTemplate} />
                 </SelectTrigger>
                 <SelectContent>
-                  {templates.map(t => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
+                  {templates.map(tmpl => (
+                    <SelectItem key={tmpl.id} value={tmpl.id}>
+                      {tmpl.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -303,7 +305,7 @@ export default function CampaignsPage() {
                 onClick={() => router.push('/templates/new')}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Template
+                {t.campaigns.template}
               </Button>
               {sendPhase !== 'idle' ? (
                 <div className="flex items-center gap-2 shrink-0 w-[220px]">
@@ -319,9 +321,9 @@ export default function CampaignsPage() {
                   />
                   <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
                     {sendPhase === 'enriching' && enrichProgress
-                      ? `Enrichissement ${enrichProgress.current}/${enrichProgress.total}`
+                      ? t.campaigns.progress.enriching(enrichProgress.current, enrichProgress.total)
                       : sendProgress
-                        ? `Envoi ${sendProgress.current}/${sendProgress.total}`
+                        ? t.campaigns.progress.sending(sendProgress.current, sendProgress.total)
                         : '...'}
                   </span>
                 </div>
@@ -333,7 +335,7 @@ export default function CampaignsPage() {
                   disabled={selectedContacts.size === 0 || !selectedTemplate}
                 >
                   <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                  Enrichir & Envoyer ({contactsNeedingEnrichment.size})
+                  {t.campaigns.buttons.enrichAndSend(contactsNeedingEnrichment.size)}
                 </Button>
               ) : (
                 <Button
@@ -343,7 +345,7 @@ export default function CampaignsPage() {
                   disabled={selectedContacts.size === 0 || !selectedTemplate}
                 >
                   <Send className="mr-1.5 h-3.5 w-3.5" />
-                  Envoyer ({selectedContacts.size})
+                  {t.campaigns.buttons.send(selectedContacts.size)}
                 </Button>
               )}
           </div>
@@ -359,8 +361,8 @@ export default function CampaignsPage() {
           ) : filteredContacts.length === 0 ? (
             <div className="flex flex-col items-center justify-center flex-1 text-center rounded-lg border bg-card">
               <Send className="h-10 w-10 text-muted-foreground mb-3" />
-              <h3 className="text-sm font-medium mb-1">Aucun contact éligible</h3>
-              <p className="text-xs text-muted-foreground">Seuls les contacts avec le statut &quot;Nouveau&quot; ou &quot;Contacté&quot; apparaissent ici</p>
+              <h3 className="text-sm font-medium mb-1">{t.campaigns.emptyState.title}</h3>
+              <p className="text-xs text-muted-foreground">{t.campaigns.emptyState.description}</p>
             </div>
           ) : (
             <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">
@@ -373,12 +375,12 @@ export default function CampaignsPage() {
                         onCheckedChange={toggleAll}
                       />
                     </th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Propriétaire</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Statut</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Nom</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Email</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Agence</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">Ville</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.owner}</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.status}</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.name}</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.email}</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.company}</th>
+                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.city}</th>
                   </tr>
                 </thead>
                 <tbody>

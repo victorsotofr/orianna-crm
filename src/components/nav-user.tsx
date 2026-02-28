@@ -1,10 +1,8 @@
 "use client"
 
 import {
-  CreditCard,
   LogOut,
   Settings,
-  User,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -29,6 +27,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useTranslation } from "@/lib/i18n"
 
 export function NavUser({
   user,
@@ -41,6 +40,7 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
+  const { t } = useTranslation()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -106,13 +106,13 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => router.push('/settings')}>
                 <Settings className="h-4 w-4" />
-                Paramètres
+                {t.sidebar.settings}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
-              Déconnexion
+              {t.sidebar.logout}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -120,4 +120,3 @@ export function NavUser({
     </SidebarMenu>
   )
 }
-

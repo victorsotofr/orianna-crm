@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Brain, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { useTranslation } from '@/lib/i18n';
 
 interface AIScoreCardProps {
   contactId: string;
@@ -15,14 +15,15 @@ interface AIScoreCardProps {
   onScored: () => void;
 }
 
-const labelConfig = {
-  HOT: { bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-700 dark:text-red-300', border: 'border-red-200 dark:border-red-800', label: 'Chaud' },
-  WARM: { bg: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200 dark:border-orange-800', label: 'Tiède' },
-  COLD: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', label: 'Froid' },
-};
-
 export function AIScoreCard({ contactId, score, label, reasoning, scoredAt, onScored }: AIScoreCardProps) {
+  const { t, dateFnsLocale } = useTranslation();
   const [scoring, setScoring] = useState(false);
+
+  const labelConfig = {
+    HOT: { bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-700 dark:text-red-300', border: 'border-red-200 dark:border-red-800', label: t.ai.score.hot },
+    WARM: { bg: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200 dark:border-orange-800', label: t.ai.score.warm },
+    COLD: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', label: t.ai.score.cold },
+  };
 
   const handleScore = async () => {
     setScoring(true);
@@ -50,7 +51,7 @@ export function AIScoreCard({ contactId, score, label, reasoning, scoredAt, onSc
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <Brain className={`h-4 w-4 ${config ? config.text : 'text-muted-foreground'}`} />
-          <span className="text-sm font-medium">Score IA</span>
+          <span className="text-sm font-medium">{t.ai.score.title}</span>
         </div>
         <Button
           variant="ghost"
@@ -64,10 +65,10 @@ export function AIScoreCard({ contactId, score, label, reasoning, scoredAt, onSc
           ) : hasScore ? (
             <>
               <RefreshCw className="mr-1 h-3 w-3" />
-              Re-scorer
+              {t.ai.score.rescore}
             </>
           ) : (
-            'Scorer'
+            t.ai.score.score
           )}
         </Button>
       </div>
@@ -83,13 +84,13 @@ export function AIScoreCard({ contactId, score, label, reasoning, scoredAt, onSc
           )}
           {scoredAt && (
             <p className="text-xs text-muted-foreground mt-1.5 opacity-60">
-              Analysé {formatDistanceToNow(new Date(scoredAt), { addSuffix: true, locale: fr })}
+              {t.ai.score.analyzed(formatDistanceToNow(new Date(scoredAt), { addSuffix: true, locale: dateFnsLocale }))}
             </p>
           )}
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Aucun score. Cliquez sur &quot;Scorer&quot; pour analyser ce contact avec l&apos;IA.
+          {t.ai.score.emptyState}
         </p>
       )}
     </div>

@@ -102,10 +102,10 @@ export default function TemplatesPage() {
               <Table>
                 <TableHeader className="bg-muted/50 sticky top-0 z-10">
                   <TableRow>
-                    <TableHead className="text-xs">{t.templates.tableHeaders.name}</TableHead>
-                    <TableHead className="text-xs">{t.templates.tableHeaders.subject}</TableHead>
-                    <TableHead className="text-xs">{t.templates.tableHeaders.variables}</TableHead>
-                    <TableHead className="text-xs w-[60px]">{t.templates.tableHeaders.actions}</TableHead>
+                    <TableHead>{t.templates.tableHeaders.name}</TableHead>
+                    <TableHead>{t.templates.tableHeaders.subject}</TableHead>
+                    <TableHead>{t.templates.tableHeaders.variables}</TableHead>
+                    <TableHead className="w-[60px]">{t.templates.tableHeaders.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -114,14 +114,14 @@ export default function TemplatesPage() {
                     return (
                       <TableRow
                         key={template.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className="cursor-pointer hover:bg-muted/30"
                         onClick={() => router.push(`/templates/${template.id}`)}
                       >
-                        <TableCell className="py-2 text-sm font-medium">{template.name}</TableCell>
-                        <TableCell className="py-2 text-sm text-muted-foreground max-w-xs truncate">
+                        <TableCell className="text-xs font-medium">{template.name}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
                           {template.subject}
                         </TableCell>
-                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           {variables.length > 0 ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -149,7 +149,7 @@ export default function TemplatesPage() {
                             <span className="text-xs text-muted-foreground">{t.templates.noVariables}</span>
                           )}
                         </TableCell>
-                        <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-7 w-7">

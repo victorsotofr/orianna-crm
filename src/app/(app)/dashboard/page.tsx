@@ -69,22 +69,22 @@ function RecentSendsTable({ data, onClickContact, t, dateFnsLocale }: { data: an
                 className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
                 onClick={() => contact?.id && onClickContact(contact.id)}
               >
-                <td className="px-3 py-1.5">
-                  <div className="font-medium text-sm">
+                <td className="px-3 py-1">
+                  <div className="font-medium text-xs">
                     {contact?.first_name || '—'} {contact?.last_name || ''}
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono">{contact?.email || '—'}</div>
+                  <div className="text-xs text-muted-foreground">{contact?.email || '—'}</div>
                 </td>
-                <td className="px-3 py-1.5 text-sm text-muted-foreground">
+                <td className="px-3 py-1 text-xs text-muted-foreground">
                   {contact?.company_name || '—'}
                 </td>
-                <td className="px-3 py-1.5">
+                <td className="px-3 py-1">
                   <ContactStatusBadge status={contact?.status || 'new'} />
                 </td>
-                <td className="px-3 py-1.5 text-xs text-muted-foreground font-mono whitespace-nowrap">
+                <td className="px-3 py-1 text-xs text-muted-foreground whitespace-nowrap">
                   {sentDate}
                 </td>
-                <td className="px-3 py-1.5 text-sm text-muted-foreground capitalize">
+                <td className="px-3 py-1 text-xs text-muted-foreground capitalize">
                   {ownerName}
                 </td>
               </tr>
@@ -188,14 +188,14 @@ export default function DashboardPage() {
                     <TableBody>
                       {teamStats.perUser.map((member, i) => (
                         <TableRow key={i}>
-                          <TableCell className="py-1.5">
+                          <TableCell>
                             <div>
-                              <span className="text-sm font-medium">{member.name}</span>
+                              <span className="text-xs font-medium">{member.name}</span>
                               <span className="text-xs text-muted-foreground ml-2">{member.email}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="py-1.5 font-mono text-sm">{member.contacts}</TableCell>
-                          <TableCell className="py-1.5">
+                          <TableCell className="text-xs">{member.contacts}</TableCell>
+                          <TableCell>
                             <Badge variant={member.emailsToday > 0 ? "default" : "secondary"} className="font-mono text-xs">
                               {member.emailsToday}
                             </Badge>
@@ -227,16 +227,16 @@ export default function DashboardPage() {
                             className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
                             onClick={() => handleClickContact(lead.id)}
                           >
-                            <td className="px-3 py-1.5">
-                              <div className="font-medium text-sm">
+                            <td className="px-3 py-1">
+                              <div className="font-medium text-xs">
                                 {lead.first_name || '—'} {lead.last_name || ''}
                               </div>
-                              <div className="text-xs text-muted-foreground font-mono">{lead.email}</div>
+                              <div className="text-xs text-muted-foreground">{lead.email}</div>
                             </td>
-                            <td className="px-3 py-1.5 text-sm text-muted-foreground">
+                            <td className="px-3 py-1 text-xs text-muted-foreground">
                               {lead.company_name || '—'}
                             </td>
-                            <td className="px-3 py-1.5">
+                            <td className="px-3 py-1">
                               <AIScoreBadge
                                 score={lead.ai_score}
                                 label={lead.ai_score_label}

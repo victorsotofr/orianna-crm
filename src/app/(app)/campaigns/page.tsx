@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SiteHeader } from '@/components/site-header';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
+import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { Loader2, Send, Plus, Sparkles } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -390,28 +391,32 @@ export default function CampaignsPage() {
                       className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={() => toggleContact(contact.id)}
                     >
-                      <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selectedContacts.has(contact.id)}
                           onCheckedChange={() => toggleContact(contact.id)}
                         />
                       </td>
-                      <td className="px-3 py-1.5 text-sm">
-                        {getOwnerName(contact.assigned_to)}
+                      <td className="px-3 py-1">
+                        {contact.assigned_to ? (
+                          <Badge variant="secondary" className="text-xs">{getOwnerName(contact.assigned_to)}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{t.campaigns.unassigned}</span>
+                        )}
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td className="px-3 py-1">
                         <ContactStatusBadge status={contact.status} />
                       </td>
-                      <td className="px-3 py-1.5 font-medium whitespace-nowrap">
+                      <td className="px-3 py-1 font-medium whitespace-nowrap text-xs">
                         {contact.first_name} {contact.last_name}
                       </td>
-                      <td className="px-3 py-1.5 text-muted-foreground font-mono text-xs">
+                      <td className="px-3 py-1 text-muted-foreground text-xs truncate max-w-[200px]">
                         {contact.email}
                       </td>
-                      <td className="px-3 py-1.5 text-muted-foreground">
+                      <td className="px-3 py-1 text-muted-foreground text-xs">
                         {contact.company_name || '\u2014'}
                       </td>
-                      <td className="px-3 py-1.5 text-muted-foreground">
+                      <td className="px-3 py-1 text-muted-foreground text-xs">
                         {contact.location || '\u2014'}
                       </td>
                     </tr>

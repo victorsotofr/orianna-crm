@@ -509,19 +509,19 @@ export default function ImportPage() {
                       <TableBody>
                         {validContacts.slice(0, 10).map((contact, index) => (
                           <TableRow key={index}>
-                            <TableCell className="text-xs text-muted-foreground py-1.5">{index + 1}</TableCell>
-                            <TableCell className="py-1.5">
-                              <div className="text-sm font-medium">
+                            <TableCell className="text-xs text-muted-foreground">{index + 1}</TableCell>
+                            <TableCell>
+                              <div className="text-xs font-medium">
                                 {contact.first_name || '—'} {contact.last_name || ''}
                               </div>
-                              <div className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                              <div className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Mail className="h-3 w-3" />
                                 {contact.email}
                               </div>
                             </TableCell>
-                            <TableCell className="py-1.5">
+                            <TableCell>
                               {contact.company_name ? (
-                                <div className="flex items-center gap-1.5 text-sm">
+                                <div className="flex items-center gap-1.5 text-xs">
                                   <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                                   {contact.company_name}
                                 </div>
@@ -529,7 +529,7 @@ export default function ImportPage() {
                                 <span className="text-muted-foreground text-xs">&mdash;</span>
                               )}
                             </TableCell>
-                            <TableCell className="py-1.5">
+                            <TableCell>
                               <ContactStatusBadge status={contact.status || 'new'} />
                             </TableCell>
                           </TableRow>
@@ -628,13 +628,13 @@ export default function ImportPage() {
                       <TableBody>
                         {dbDuplicates.map((dup, i) => (
                           <TableRow key={i}>
-                            <TableCell className="py-1.5">
-                              <span className="text-xs font-mono">{dup.email}</span>
+                            <TableCell>
+                              <span className="text-xs">{dup.email}</span>
                             </TableCell>
-                            <TableCell className="py-1.5 text-sm">
+                            <TableCell className="text-xs">
                               {dup.first_name || ''} {dup.last_name || ''}
                             </TableCell>
-                            <TableCell className="py-1.5">
+                            <TableCell>
                               {dup.owner_name ? (
                                 <Badge variant="secondary" className="text-xs">
                                   <UserCheck className="h-3 w-3 mr-1" />
@@ -644,7 +644,7 @@ export default function ImportPage() {
                                 <span className="text-xs text-muted-foreground">{t.common.unassigned}</span>
                               )}
                             </TableCell>
-                            <TableCell className="py-1.5 text-xs text-muted-foreground">
+                            <TableCell className="text-xs text-muted-foreground">
                               {dup.created_by || '—'}
                             </TableCell>
                           </TableRow>

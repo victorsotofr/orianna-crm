@@ -87,6 +87,21 @@ export const en: Translations = {
       secondContact: '2nd Contact',
       thirdContact: '3rd Contact',
     },
+    enrich: {
+      button: 'Enrich',
+      started: 'Enrichment started',
+      completed: 'Contact enriched',
+      error: 'Error during enrichment',
+      bulkStarted: (n: number) => `Enrichment started for ${n} contact(s)`,
+      bulkCompleted: (n: number) => `${n} contact(s) enriched`,
+    },
+    emailStatus: {
+      valid: 'Valid',
+      probable: 'Probable',
+      catchAll: 'Catch-all',
+      invalid: 'Invalid',
+      notVerified: 'Not verified',
+    },
     emptyState: {
       title: 'No contacts found',
       description: 'Try adjusting your filters or add a new contact',
@@ -164,7 +179,7 @@ export const en: Translations = {
       title: 'New contact',
       createButton: 'Create contact',
       labels: {
-        email: 'Email *',
+        email: 'Email',
         firstName: 'First name',
         lastName: 'Last name',
         company: 'Company',
@@ -191,6 +206,7 @@ export const en: Translations = {
       },
       toasts: {
         emailRequired: 'Email is required',
+        emailOrIdentityRequired: 'Provide an email or first name + last name + company',
         created: 'Contact created',
         duplicateEmail: 'A contact with this email already exists',
         createError: 'Error creating contact',
@@ -383,6 +399,7 @@ export const en: Translations = {
       email: 'Email',
       preferences: 'Preferences',
       security: 'Security',
+      integrations: 'Integrations',
       workspace: 'Workspace',
       members: 'Members',
     },
@@ -426,6 +443,16 @@ export const en: Translations = {
       tooShort: 'Password must be at least 6 characters',
       changed: 'Password changed successfully',
       changeError: 'Error changing password',
+    },
+    integrations: {
+      title: 'Integrations',
+      description: 'Configure your API keys for enrichment and AI search',
+      fullenrichKey: 'FullEnrich API Key',
+      linkupKey: 'Linkup API Key',
+      configured: 'Configured',
+      credits: 'credits',
+      saved: 'Integrations saved',
+      noChanges: 'No changes to save',
     },
     toasts: {
       smtpRequired: 'Please fill in all required SMTP fields',
@@ -489,6 +516,7 @@ export const en: Translations = {
       background: 'Continue in background',
       done: 'AI Scoring complete',
     },
+    enrichPrompt: 'Enrich imported contacts to find their emails and phone numbers?',
     toasts: {
       validFound: (n: number, autoDetected: boolean) => `${n} valid contacts found${autoDetected ? ' (columns auto-detected)' : ''}`,
       noValid: 'No valid contacts found. Check the file format.',

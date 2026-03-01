@@ -16,7 +16,8 @@ import { SiteHeader } from '@/components/site-header';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown, Search } from 'lucide-react';
+import { EmailVerifiedBadge } from '@/components/email-verified-badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +42,7 @@ export default function ContactDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   // Editable fields
   const [firstName, setFirstName] = useState('');
@@ -211,6 +213,50 @@ export default function ContactDetailPage() {
     }
   };
 
+  const handleEnrich = async () => {
+    setEnriching(true);
+    try {
+      const response = await apiFetch('/api/contacts/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactIds: [contactId] }),
+      });
+
+      if (response.ok) {
+        const { enrichmentId } = await response.json();
+        toast.success(t.contacts.enrich.started);
+        // Poll FullEnrich for results via our backend
+        const pollInterval = setInterval(async () => {
+          try {
+            const res = await apiFetch(`/api/contacts/enrich/${enrichmentId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.finished || data.updated > 0) {
+                clearInterval(pollInterval);
+                setEnriching(false);
+                fetchAll();
+                toast.success(t.contacts.enrich.completed);
+              }
+            }
+          } catch {}
+        }, 10000);
+        // Stop polling after 3 minutes
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          setEnriching(false);
+          fetchAll();
+        }, 180000);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || t.contacts.enrich.error);
+        setEnriching(false);
+      }
+    } catch {
+      toast.error(t.contacts.enrich.error);
+      setEnriching(false);
+    }
+  };
+
   const handleReplyAction = async (type: 'hot' | 'cold') => {
     try {
       const response = await apiFetch(`/api/contacts/${contactId}/reply-action`, {
@@ -284,6 +330,20 @@ export default function ContactDetailPage() {
                 <ThumbsDown className="mr-1 h-3 w-3" />
                 {t.contacts.detail.cold}
               </Button>
+              {contact.enriched_at ? (
+                <EmailVerifiedBadge status={contact.email_verified_status} />
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleEnrich}
+                  disabled={enriching}
+                >
+                  {enriching ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Search className="mr-1 h-3 w-3" />}
+                  {t.contacts.enrich.button}
+                </Button>
+              )}
             </div>
             <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)}>
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
@@ -306,7 +366,10 @@ export default function ContactDetailPage() {
                   <Input value={lastName} onChange={(e) => setLastName(e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.email}</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.email}</Label>
+                    {contact.enriched_at && <EmailVerifiedBadge status={contact.email_verified_status} />}
+                  </div>
                   <Input value={email} onChange={(e) => setEmail(e.target.value)} className="h-8 text-sm font-mono" />
                 </div>
               </div>

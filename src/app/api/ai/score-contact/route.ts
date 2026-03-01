@@ -40,6 +40,27 @@ export async function POST(request: NextRequest) {
     const supabase = auth.supabase;
     // Use service role for writes to bypass RLS (user is already authenticated)
     const serviceSupabase = getServiceSupabase();
+
+    // Fetch Linkup API key from the first contact's workspace
+    let linkupApiKey: string | undefined;
+    const { data: firstContact } = await supabase
+      .from('contacts')
+      .select('workspace_id')
+      .eq('id', ids[0])
+      .single();
+
+    if (firstContact?.workspace_id) {
+      const { data: workspace } = await serviceSupabase
+        .from('workspaces')
+        .select('linkup_api_key_encrypted')
+        .eq('id', firstContact.workspace_id)
+        .single();
+
+      if (workspace?.linkup_api_key_encrypted) {
+        linkupApiKey = workspace.linkup_api_key_encrypted;
+      }
+    }
+
     const scores: Array<{ contactId: string; score: number; label: string; reasoning: string; error?: string }> = [];
 
     for (let i = 0; i < ids.length; i++) {
@@ -60,8 +81,8 @@ export async function POST(request: NextRequest) {
 
         const contactWorkspaceId = contact.workspace_id;
 
-        // Score via AI
-        const result = await scoreContact(contact);
+        // Score via AI (with Linkup if available)
+        const result = await scoreContact(contact, linkupApiKey);
 
         // Update contact in DB
         await serviceSupabase

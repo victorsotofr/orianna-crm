@@ -27,7 +27,7 @@ function PwInput({ value, onChange, show, onToggle, placeholder }: {
   );
 }
 
-type Section = 'email' | 'preferences' | 'security' | 'workspace' | 'members';
+type Section = 'email' | 'integrations' | 'preferences' | 'security' | 'workspace' | 'members';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useTranslation();
@@ -44,6 +44,15 @@ export default function SettingsPage() {
   const [renamingWorkspace, setRenamingWorkspace] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [showImapPassword, setShowImapPassword] = useState(false);
+  // Integrations state
+  const [fullenrichApiKey, setFullenrichApiKey] = useState('');
+  const [linkupApiKey, setLinkupApiKey] = useState('');
+  const [fullenrichConfigured, setFullenrichConfigured] = useState(false);
+  const [linkupConfigured, setLinkupConfigured] = useState(false);
+  const [fullenrichCredits, setFullenrichCredits] = useState<number | null>(null);
+  const [savingIntegrations, setSavingIntegrations] = useState(false);
+  const [showFullenrichKey, setShowFullenrichKey] = useState(false);
+  const [showLinkupKey, setShowLinkupKey] = useState(false);
   const [smtpHost, setSmtpHost] = useState('webmail.polytechnique.fr');
   const [smtpPort, setSmtpPort] = useState('587');
   const [smtpUser, setSmtpUser] = useState('');
@@ -65,7 +74,7 @@ export default function SettingsPage() {
     dailySendLimit: '50',
   });
 
-  useEffect(() => { fetchSettings(); }, []);
+  useEffect(() => { fetchSettings(); fetchIntegrations(); }, []);
   useEffect(() => {
     setHasUnsavedChanges(
       smtpHost !== originalValues.smtpHost || smtpPort !== originalValues.smtpPort ||
@@ -99,6 +108,57 @@ export default function SettingsPage() {
         }
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  const fetchIntegrations = async () => {
+    try {
+      const r = await apiFetch('/api/settings/workspace');
+      if (r.ok) {
+        const data = await r.json();
+        setFullenrichConfigured(data.fullenrichConfigured || false);
+        setLinkupConfigured(data.linkupConfigured || false);
+      }
+      // Fetch credits if FullEnrich is configured
+      const cr = await apiFetch('/api/settings/enrichment-credits');
+      if (cr.ok) {
+        const cData = await cr.json();
+        if (cData.configured) setFullenrichCredits(cData.credits);
+      }
+    } catch {}
+  };
+
+  const handleSaveIntegrations = async () => {
+    setSavingIntegrations(true);
+    try {
+      const body: Record<string, string> = {};
+      if (fullenrichApiKey) body.fullenrichApiKey = fullenrichApiKey;
+      if (linkupApiKey) body.linkupApiKey = linkupApiKey;
+
+      if (Object.keys(body).length === 0) {
+        toast.error(t.settings.integrations.noChanges);
+        return;
+      }
+
+      const r = await apiFetch('/api/settings/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (r.ok) {
+        toast.success(t.settings.integrations.saved);
+        setFullenrichApiKey('');
+        setLinkupApiKey('');
+        fetchIntegrations();
+      } else {
+        const d = await r.json();
+        toast.error(d.error || t.settings.toasts.saveError);
+      }
+    } catch {
+      toast.error(t.settings.toasts.networkError);
+    } finally {
+      setSavingIntegrations(false);
+    }
   };
 
   const handleSave = async () => {
@@ -197,6 +257,7 @@ export default function SettingsPage() {
 
   const navItems: { key: Section; label: string; group: 'personal' | 'team' }[] = [
     { key: 'email', label: t.settings.nav.email, group: 'personal' },
+    { key: 'integrations', label: t.settings.nav.integrations, group: 'personal' },
     { key: 'preferences', label: t.settings.nav.preferences, group: 'personal' },
     { key: 'security', label: t.settings.nav.security, group: 'personal' },
     { key: 'workspace', label: t.settings.nav.workspace, group: 'team' },
@@ -281,6 +342,55 @@ export default function SettingsPage() {
                         {t.settings.smtp.testConnection}
                       </Button>
                     </div>
+                  </div>
+                </>
+              )}
+
+              {/* Integrations */}
+              {section === 'integrations' && (
+                <>
+                  <div>
+                    <h2 className="text-base font-semibold">{t.settings.integrations.title}</h2>
+                    <p className="text-sm text-muted-foreground mt-1">{t.settings.integrations.description}</p>
+                  </div>
+                  <div className="space-y-5">
+                    <div>
+                      <Label className="text-xs">{t.settings.integrations.fullenrichKey}</Label>
+                      <div className="mt-1">
+                        <PwInput
+                          value={fullenrichApiKey}
+                          onChange={setFullenrichApiKey}
+                          show={showFullenrichKey}
+                          onToggle={() => setShowFullenrichKey(!showFullenrichKey)}
+                          placeholder={fullenrichConfigured ? t.settings.integrations.configured : 'sk-...'}
+                        />
+                      </div>
+                      {fullenrichConfigured && (
+                        <p className="text-xs text-green-600 mt-1">
+                          {t.settings.integrations.configured}
+                          {fullenrichCredits !== null && ` — ${fullenrichCredits} ${t.settings.integrations.credits}`}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-xs">{t.settings.integrations.linkupKey}</Label>
+                      <div className="mt-1">
+                        <PwInput
+                          value={linkupApiKey}
+                          onChange={setLinkupApiKey}
+                          show={showLinkupKey}
+                          onToggle={() => setShowLinkupKey(!showLinkupKey)}
+                          placeholder={linkupConfigured ? t.settings.integrations.configured : 'lk-...'}
+                        />
+                      </div>
+                      {linkupConfigured && (
+                        <p className="text-xs text-green-600 mt-1">{t.settings.integrations.configured}</p>
+                      )}
+                    </div>
+                    <Button size="sm" onClick={handleSaveIntegrations} disabled={savingIntegrations || (!fullenrichApiKey && !linkupApiKey)}>
+                      {savingIntegrations && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                      {t.common.save}
+                    </Button>
                   </div>
                 </>
               )}

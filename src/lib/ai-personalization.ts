@@ -2,6 +2,7 @@ import 'server-only';
 import { generateText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import type { Contact } from '@/types/database';
+import { searchCompany, searchContact } from '@/lib/linkup';
 
 interface PersonalizationResult {
   line: string;
@@ -71,28 +72,28 @@ function cleanOutput(raw: string): string {
   return cleaned;
 }
 
-export async function personalizeContact(contact: Contact): Promise<PersonalizationResult> {
+export async function personalizeContact(contact: Contact, linkupApiKey?: string): Promise<PersonalizationResult> {
   const context = buildContext(contact);
 
-  // --- PASS 1: Research the contact via web search ---
-  const researchResult = await generateText({
-    model: anthropic('claude-sonnet-4-5-20250929'),
-    stopWhen: stepCountIs(5),
-    tools: {
-      web_search: anthropic.tools.webSearch_20250305(),
-    },
-    system: `Tu es un assistant de recherche. Recherche des informations sur ce contact professionnel et son entreprise.
-Trouve des éléments concrets et récents : actualités, projets, levées de fonds, recrutements, expansion, nominations.
-Résume en 3-5 bullet points les faits les plus pertinents et récents que tu trouves.
-Réponds UNIQUEMENT avec les bullet points, rien d'autre.`,
-    prompt: context,
-  });
+  let research: string;
 
-  // Extract research from the last step only (avoid intermediate reasoning)
-  const steps = researchResult.steps;
-  const research = steps.length > 0
-    ? steps[steps.length - 1].text.trim()
-    : researchResult.text.trim();
+  if (linkupApiKey) {
+    // Linkup path: standard search for company + contact
+    try {
+      const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
+      const [companyResearch, contactResearch] = await Promise.all([
+        searchCompany(linkupApiKey, contact.company_name || '', contact.company_domain, 'standard'),
+        searchContact(linkupApiKey, contactName, contact.company_name || '', contact.linkedin_url),
+      ]);
+      research = `ENTREPRISE:\n${companyResearch}\n\nCONTACT:\n${contactResearch}`;
+    } catch (err) {
+      console.error('Linkup search failed, falling back to web_search:', err);
+      research = await researchWithWebSearch(context);
+    }
+  } else {
+    // Fallback: web_search
+    research = await researchWithWebSearch(context);
+  }
 
   // --- PASS 2: Generate the personalized sentence (no tools = clean output) ---
   const result = await generateText({
@@ -129,4 +130,24 @@ RÉPONDS UNIQUEMENT AVEC LA PHRASE. RIEN D'AUTRE.`,
   const line = cleanOutput(result.text);
 
   return { line };
+}
+
+async function researchWithWebSearch(context: string): Promise<string> {
+  const researchResult = await generateText({
+    model: anthropic('claude-sonnet-4-5-20250929'),
+    stopWhen: stepCountIs(5),
+    tools: {
+      web_search: anthropic.tools.webSearch_20250305(),
+    },
+    system: `Tu es un assistant de recherche. Recherche des informations sur ce contact professionnel et son entreprise.
+Trouve des éléments concrets et récents : actualités, projets, levées de fonds, recrutements, expansion, nominations.
+Résume en 3-5 bullet points les faits les plus pertinents et récents que tu trouves.
+Réponds UNIQUEMENT avec les bullet points, rien d'autre.`,
+    prompt: context,
+  });
+
+  const steps = researchResult.steps;
+  return steps.length > 0
+    ? steps[steps.length - 1].text.trim()
+    : researchResult.text.trim();
 }

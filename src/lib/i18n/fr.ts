@@ -85,6 +85,21 @@ export const fr = {
       secondContact: '2e Contact',
       thirdContact: '3e Contact',
     },
+    enrich: {
+      button: 'Enrichir',
+      started: 'Enrichissement lancé',
+      completed: 'Contact enrichi',
+      error: 'Erreur lors de l\'enrichissement',
+      bulkStarted: (n: number) => `Enrichissement lancé pour ${n} contact(s)`,
+      bulkCompleted: (n: number) => `${n} contact(s) enrichi(s)`,
+    },
+    emailStatus: {
+      valid: 'Valide',
+      probable: 'Probable',
+      catchAll: 'Catch-all',
+      invalid: 'Invalide',
+      notVerified: 'Non vérifié',
+    },
     emptyState: {
       title: 'Aucun contact trouvé',
       description: 'Essayez de modifier vos filtres ou ajoutez un nouveau contact',
@@ -162,7 +177,7 @@ export const fr = {
       title: 'Nouveau contact',
       createButton: 'Créer le contact',
       labels: {
-        email: 'Email *',
+        email: 'Email',
         firstName: 'Prénom',
         lastName: 'Nom',
         company: 'Entreprise',
@@ -189,6 +204,7 @@ export const fr = {
       },
       toasts: {
         emailRequired: "L'email est obligatoire",
+        emailOrIdentityRequired: 'Renseignez un email ou bien prénom + nom + entreprise',
         created: 'Contact créé',
         duplicateEmail: 'Un contact avec cet email existe déjà',
         createError: 'Erreur lors de la création',
@@ -381,6 +397,7 @@ export const fr = {
       email: 'Email',
       preferences: 'Préférences',
       security: 'Sécurité',
+      integrations: 'Intégrations',
       workspace: 'Espace de travail',
       members: 'Membres',
     },
@@ -424,6 +441,16 @@ export const fr = {
       tooShort: 'Le mot de passe doit contenir au moins 6 caractères',
       changed: 'Mot de passe modifié avec succès',
       changeError: 'Erreur lors de la modification du mot de passe',
+    },
+    integrations: {
+      title: 'Intégrations',
+      description: 'Configurez vos clés API pour l\'enrichissement et la recherche IA',
+      fullenrichKey: 'Clé API FullEnrich',
+      linkupKey: 'Clé API Linkup',
+      configured: 'Configuré',
+      credits: 'crédits',
+      saved: 'Intégrations sauvegardées',
+      noChanges: 'Aucune modification à sauvegarder',
     },
     toasts: {
       smtpRequired: 'Veuillez remplir tous les champs SMTP requis',
@@ -487,6 +514,7 @@ export const fr = {
       background: 'Continuer en arrière-plan',
       done: 'Scoring IA terminé',
     },
+    enrichPrompt: 'Enrichir les contacts importés pour trouver leurs emails et téléphones ?',
     toasts: {
       validFound: (n: number, autoDetected: boolean) => `${n} contacts valides trouvés${autoDetected ? ' (colonnes auto-détectées)' : ''}`,
       noValid: 'Aucun contact valide trouvé. Vérifiez le format du fichier.',

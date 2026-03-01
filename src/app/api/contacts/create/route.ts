@@ -21,26 +21,34 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, first_name, last_name, company_name, company_domain, job_title, linkedin_url, location, education, phone, notes } = body;
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    const hasEmail = !!email?.trim();
+    const hasIdentity = !!(first_name?.trim() && last_name?.trim());
+
+    if (!hasEmail && !hasIdentity) {
+      return NextResponse.json(
+        { error: 'Either email or first name + last name is required' },
+        { status: 400 }
+      );
     }
 
-    // Check uniqueness within workspace
-    const { data: existing } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('workspace_id', ctx.workspaceId)
-      .ilike('email', email)
-      .single();
+    // Check uniqueness within workspace (only if email provided)
+    if (hasEmail) {
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('workspace_id', ctx.workspaceId)
+        .ilike('email', email)
+        .single();
 
-    if (existing) {
-      return NextResponse.json({ error: 'A contact with this email already exists' }, { status: 409 });
+      if (existing) {
+        return NextResponse.json({ error: 'A contact with this email already exists' }, { status: 409 });
+      }
     }
 
     const { data: contact, error } = await supabase
       .from('contacts')
       .insert({
-        email: email.toLowerCase().trim(),
+        email: hasEmail ? email.toLowerCase().trim() : null,
         first_name: first_name || null,
         last_name: last_name || null,
         company_name: company_name || null,

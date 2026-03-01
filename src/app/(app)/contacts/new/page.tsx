@@ -29,8 +29,11 @@ export default function NewContactPage() {
   const [notes, setNotes] = useState('');
 
   const handleSave = async () => {
-    if (!email.trim()) {
-      toast.error(t.contacts.new.toasts.emailRequired);
+    const hasEmail = !!email.trim();
+    const hasIdentity = !!(firstName.trim() && lastName.trim());
+
+    if (!hasEmail && !hasIdentity) {
+      toast.error(t.contacts.new.toasts.emailOrIdentityRequired);
       return;
     }
 
@@ -40,7 +43,7 @@ export default function NewContactPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(),
+          email: email.trim() || null,
           first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
           company_name: companyName.trim() || null,
@@ -94,7 +97,7 @@ export default function NewContactPage() {
               {/* Row 1: Email, Prénom, Nom */}
               <div className="space-y-1">
                 <Label className="text-xs">{t.contacts.new.labels.email}</Label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.contacts.new.placeholders.email} className="h-7 text-xs" required />
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.contacts.new.placeholders.email} className="h-7 text-xs" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{t.contacts.new.labels.firstName}</Label>

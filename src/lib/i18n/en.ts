@@ -209,6 +209,7 @@ export const en: Translations = {
       hotLeads: 'ICP Leads',
       emailsToday: 'Emails today',
       responseRate: 'Response rate',
+      openRate: 'Open rate',
       myContacts: 'My contacts',
     },
     teamTable: {

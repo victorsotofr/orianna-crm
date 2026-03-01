@@ -37,17 +37,17 @@ export async function GET(request: Request) {
       .from('emails_sent')
       .select('*', { count: 'exact', head: true });
 
-    // Reply count (contacts that replied)
-    const { count: totalReplies } = await supabase
-      .from('contacts')
+    // Opened emails count (from emails_sent tracking)
+    const { count: totalOpened } = await supabase
+      .from('emails_sent')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'replied');
+      .not('opened_at', 'is', null);
 
-    // Contacted contacts (any status except 'new' = they received at least one outreach)
-    const { count: contactedContacts } = await supabase
-      .from('contacts')
+    // Replied emails count (from emails_sent tracking)
+    const { count: totalReplied } = await supabase
+      .from('emails_sent')
       .select('*', { count: 'exact', head: true })
-      .neq('status', 'new');
+      .not('replied_at', 'is', null);
 
     // Per-user breakdown
     const { data: teamMembers } = await supabase
@@ -68,11 +68,25 @@ export async function GET(request: Request) {
           .eq('sent_by', member.user_id)
           .gte('sent_at', today.toISOString());
 
+        const { count: opens } = await supabase
+          .from('emails_sent')
+          .select('*', { count: 'exact', head: true })
+          .eq('sent_by', member.user_id)
+          .not('opened_at', 'is', null);
+
+        const { count: replies } = await supabase
+          .from('emails_sent')
+          .select('*', { count: 'exact', head: true })
+          .eq('sent_by', member.user_id)
+          .not('replied_at', 'is', null);
+
         return {
           name: member.display_name,
           email: member.email,
           contacts: contacts || 0,
           emailsToday: emailsSent || 0,
+          opens: opens || 0,
+          replies: replies || 0,
         };
       })
     );
@@ -101,14 +115,18 @@ export async function GET(request: Request) {
       .order('sent_at', { ascending: false })
       .limit(20);
 
-    const replyRate = contactedContacts && contactedContacts > 0
-      ? Math.round(((totalReplies || 0) / contactedContacts) * 100)
+    const openRate = totalEmails && totalEmails > 0
+      ? Math.round(((totalOpened || 0) / totalEmails) * 100)
+      : 0;
+    const replyRate = totalEmails && totalEmails > 0
+      ? Math.round(((totalReplied || 0) / totalEmails) * 100)
       : 0;
 
     return NextResponse.json({
       totalContacts: totalContacts || 0,
       emailsToday: emailsToday || 0,
       totalEmails: totalEmails || 0,
+      openRate,
       replyRate,
       hotLeadsCount: hotLeadsCount || 0,
       hotLeads: hotLeads || [],

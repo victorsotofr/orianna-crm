@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
+import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 
 export const maxDuration = 30;
 
@@ -113,6 +114,37 @@ export async function POST(request: Request) {
         const renderedSubject = renderTemplate(template.subject || '', variables);
         const renderedHtml = renderTemplate(template.html_content || '', variables);
 
+        const followUpStage = stage === 'first' ? 0 : stage === 'second' ? 1 : 2;
+
+        // Insert emails_sent record first to get an ID for tracking pixel
+        const { data: emailRecord, error: insertError } = await supabase
+          .from('emails_sent')
+          .insert({
+            contact_id: contact.id,
+            template_id: templateId,
+            sent_by: user.id,
+            sent_by_email: user.email,
+            status: 'pending',
+            follow_up_stage: followUpStage,
+            workspace_id: ctx.workspaceId,
+          })
+          .select('id')
+          .single();
+
+        // Unique constraint violation = already sent by concurrent request
+        if (insertError?.code === '23505') {
+          errors.push(`${contact.email}: déjà envoyé`);
+          continue;
+        }
+
+        if (insertError || !emailRecord) {
+          throw new Error(insertError?.message || 'Failed to create email record');
+        }
+
+        // Build tracking pixel and append to HTML
+        const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
+        const finalHtml = `${renderedHtml}\n${trackingPixel}`;
+
         // Send email via SMTP
         const result = await sendEmail(
           {
@@ -124,43 +156,25 @@ export async function POST(request: Request) {
           {
             to: contact.email,
             subject: renderedSubject,
-            html: renderedHtml,
+            html: finalHtml,
             from: userSettings.smtp_user,
           }
         );
 
         if (!result.success) {
-          // Record failed send in emails_sent
-          await supabase.from('emails_sent').insert({
-            contact_id: contact.id,
-            template_id: templateId,
-            sent_by: user.id,
-            sent_by_email: user.email,
-            status: 'failed',
-            error_message: result.error || 'Email sending failed',
-            follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
-            workspace_id: ctx.workspaceId,
-          });
+          // Update record to failed
+          await supabase
+            .from('emails_sent')
+            .update({ status: 'failed', error_message: result.error || 'Email sending failed' })
+            .eq('id', emailRecord.id);
           throw new Error(result.error || 'Email sending failed');
         }
 
-        // Record successful send (DB unique index handles dedup)
-        const { error: insertError } = await supabase.from('emails_sent').insert({
-          contact_id: contact.id,
-          template_id: templateId,
-          sent_by: user.id,
-          sent_by_email: user.email,
-          status: 'sent',
-          message_id: result.messageId,
-          follow_up_stage: stage === 'first' ? 0 : stage === 'second' ? 1 : 2,
-          workspace_id: ctx.workspaceId,
-        });
-
-        // Unique constraint violation = already sent by concurrent request
-        if (insertError?.code === '23505') {
-          errors.push(`${contact.email}: déjà envoyé`);
-          continue;
-        }
+        // Update record to sent with message_id
+        await supabase
+          .from('emails_sent')
+          .update({ status: 'sent', message_id: result.messageId })
+          .eq('id', emailRecord.id);
 
         // Update contact date field
         const dateField = stage === 'first' ? 'first_contact'

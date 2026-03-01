@@ -20,10 +20,11 @@ interface TeamStats {
   totalContacts: number;
   emailsToday: number;
   totalEmails: number;
+  openRate: number;
   replyRate: number;
   hotLeadsCount: number;
   hotLeads: any[];
-  perUser: { name: string; email: string; contacts: number; emailsToday: number }[];
+  perUser: { name: string; email: string; contacts: number; emailsToday: number; opens: number; replies: number }[];
   recentSends: any[];
 }
 
@@ -31,6 +32,7 @@ interface MyStats {
   myContacts: number;
   myEmailsToday: number;
   myTotalEmails: number;
+  myOpenRate: number;
   myReplyRate: number;
   myRecentSends: any[];
 }
@@ -133,7 +135,7 @@ export default function DashboardPage() {
         <div className="page-container">
           <div className="page-content">
             <div className="flex gap-3 shrink-0">
-              {Array.from({ length: 4 }).map((_, i) => (
+              {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-10 flex-1 rounded-lg" />
               ))}
             </div>
@@ -172,6 +174,7 @@ export default function DashboardPage() {
                 { label: t.dashboard.stats.contacts, value: teamStats?.totalContacts || 0 },
                 { label: t.dashboard.stats.hotLeads, value: teamStats?.hotLeadsCount || 0 },
                 { label: t.dashboard.stats.emailsToday, value: teamStats?.emailsToday || 0 },
+                { label: t.dashboard.stats.openRate, value: `${teamStats?.openRate || 0}%` },
                 { label: t.dashboard.stats.responseRate, value: `${teamStats?.replyRate || 0}%` },
               ]} />
 
@@ -268,6 +271,7 @@ export default function DashboardPage() {
               <CompactStatsBar stats={[
                 { label: t.dashboard.stats.myContacts, value: myStats?.myContacts || 0 },
                 { label: t.dashboard.stats.emailsToday, value: myStats?.myEmailsToday || 0 },
+                { label: t.dashboard.stats.openRate, value: `${myStats?.myOpenRate || 0}%` },
                 { label: t.dashboard.stats.responseRate, value: `${myStats?.myReplyRate || 0}%` },
               ]} />
 

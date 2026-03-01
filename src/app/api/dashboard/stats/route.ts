@@ -41,6 +41,18 @@ export async function GET(request: Request) {
       .from('emails_sent')
       .select('*', { count: 'exact', head: true });
 
+    // Get opened emails count
+    const { count: totalOpened } = await supabase
+      .from('emails_sent')
+      .select('*', { count: 'exact', head: true })
+      .not('opened_at', 'is', null);
+
+    // Get replied emails count
+    const { count: totalReplied } = await supabase
+      .from('emails_sent')
+      .select('*', { count: 'exact', head: true })
+      .not('replied_at', 'is', null);
+
     // Get recent sends (last 100 from all users for better pagination)
     const { data: recentSends, error: sendsError } = await supabase
       .from('emails_sent')
@@ -89,10 +101,21 @@ export async function GET(request: Request) {
       averageSendingRate = Math.round((totalEmailsSent / daysSinceFirst) * 10) / 10;
     }
 
+    const openRate = totalEmailsSent && totalEmailsSent > 0
+      ? Math.round(((totalOpened || 0) / totalEmailsSent) * 100)
+      : 0;
+    const replyRate = totalEmailsSent && totalEmailsSent > 0
+      ? Math.round(((totalReplied || 0) / totalEmailsSent) * 100)
+      : 0;
+
     return NextResponse.json({
       totalContacts: totalContacts || 0,
       emailsSentToday: emailsSentToday || 0,
       totalEmailsSent: totalEmailsSent || 0,
+      totalOpened: totalOpened || 0,
+      totalReplied: totalReplied || 0,
+      openRate,
+      replyRate,
       averageSendingRate,
       recentSends: recentSends || [],
     });

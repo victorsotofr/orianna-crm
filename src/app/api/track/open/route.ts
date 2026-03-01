@@ -51,11 +51,21 @@ export async function GET(request: Request) {
     if (supabaseUrl && supabaseServiceKey) {
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+      const now = new Date().toISOString();
+
+      // Set opened_at only if not already opened
       await supabase
-        .from('email_stats')
-        .update({ opened_at: new Date().toISOString() })
+        .from('emails_sent')
+        .update({ opened_at: now })
         .eq('id', statId)
         .is('opened_at', null);
+
+      // Update status to 'opened' only if still 'sent' (don't downgrade 'replied')
+      await supabase
+        .from('emails_sent')
+        .update({ status: 'opened' })
+        .eq('id', statId)
+        .eq('status', 'sent');
     }
 
     return new NextResponse(TRANSPARENT_GIF, {

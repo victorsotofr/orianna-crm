@@ -207,6 +207,7 @@ export const fr = {
       hotLeads: 'Leads ICP',
       emailsToday: "Emails aujourd'hui",
       responseRate: 'Taux réponse',
+      openRate: 'Taux ouverture',
       myContacts: 'Mes contacts',
     },
     teamTable: {

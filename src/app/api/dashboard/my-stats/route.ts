@@ -40,19 +40,19 @@ export async function GET(request: Request) {
       .select('*', { count: 'exact', head: true })
       .eq('sent_by', user.id);
 
-    // My replied contacts
-    const { count: myReplies } = await supabase
-      .from('contacts')
+    // My opened emails
+    const { count: myOpened } = await supabase
+      .from('emails_sent')
       .select('*', { count: 'exact', head: true })
-      .eq('assigned_to', user.id)
-      .eq('status', 'replied');
+      .eq('sent_by', user.id)
+      .not('opened_at', 'is', null);
 
-    // My contacted contacts (any status except 'new')
-    const { count: myContactedContacts } = await supabase
-      .from('contacts')
+    // My replied emails
+    const { count: myReplied } = await supabase
+      .from('emails_sent')
       .select('*', { count: 'exact', head: true })
-      .eq('assigned_to', user.id)
-      .neq('status', 'new');
+      .eq('sent_by', user.id)
+      .not('replied_at', 'is', null);
 
     // My recent sends
     const { data: myRecentSends } = await supabase
@@ -66,14 +66,18 @@ export async function GET(request: Request) {
       .order('sent_at', { ascending: false })
       .limit(20);
 
-    const myReplyRate = myContactedContacts && myContactedContacts > 0
-      ? Math.round(((myReplies || 0) / myContactedContacts) * 100)
+    const myOpenRate = myTotalEmails && myTotalEmails > 0
+      ? Math.round(((myOpened || 0) / myTotalEmails) * 100)
+      : 0;
+    const myReplyRate = myTotalEmails && myTotalEmails > 0
+      ? Math.round(((myReplied || 0) / myTotalEmails) * 100)
       : 0;
 
     return NextResponse.json({
       myContacts: myContacts || 0,
       myEmailsToday: myEmailsToday || 0,
       myTotalEmails: myTotalEmails || 0,
+      myOpenRate,
       myReplyRate,
       myRecentSends: myRecentSends || [],
     });

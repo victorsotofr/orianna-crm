@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
 import { startBulkEnrichment, getCreditBalance } from '@/lib/fullenrich';
-import { reportError } from '@/lib/error-alerting';
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Enrich error:', error);
-    reportError('POST /api/contacts/enrich', error.message || 'Enrichment failed', { workspaceId: 'unknown' });
+    Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Enrichment failed' }, { status: 500 });
   }
 }

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { scoreContact } from '@/lib/ai-scoring';
 import { getLinkupCreditBalance } from '@/lib/linkup';
-import { reportError } from '@/lib/error-alerting';
+
 
 export const maxDuration = 300;
 
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ scores });
   } catch (error: any) {
     console.error('AI scoring error:', error instanceof Error ? error.message : error);
-    reportError('POST /api/ai/score-contact', error.message || 'Scoring failed');
+    Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Scoring failed' }, { status: 500 });
   }
 }

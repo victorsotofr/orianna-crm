@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
+import { reportError } from '@/lib/error-alerting';
 
 interface ProspectedContact {
   first_name: string;
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ imported: data?.length || 0 });
   } catch (error: any) {
     console.error('Import prospected contacts error:', error);
+    reportError('POST /api/contacts/import-prospected', error.message || 'Import failed');
     return NextResponse.json({ error: error.message || 'Import failed' }, { status: 500 });
   }
 }

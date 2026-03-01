@@ -3,6 +3,13 @@ import { generateText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import type { Contact } from '@/types/database';
 import { searchCompany, searchContact } from '@/lib/linkup';
+import { DEFAULT_PERSONALIZATION_PROMPT } from '@/lib/ai-defaults';
+
+interface CustomPrompts {
+  personalizationPrompt?: string;
+  linkupCompanyQuery?: string;
+  linkupContactQuery?: string;
+}
 
 interface PersonalizationResult {
   line: string;
@@ -72,7 +79,11 @@ function cleanOutput(raw: string): string {
   return cleaned;
 }
 
-export async function personalizeContact(contact: Contact, linkupApiKey?: string): Promise<PersonalizationResult> {
+export async function personalizeContact(
+  contact: Contact,
+  linkupApiKey?: string,
+  customPrompts?: CustomPrompts
+): Promise<PersonalizationResult> {
   const context = buildContext(contact);
 
   let research: string;
@@ -82,8 +93,8 @@ export async function personalizeContact(contact: Contact, linkupApiKey?: string
     try {
       const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
       const [companyResearch, contactResearch] = await Promise.all([
-        searchCompany(linkupApiKey, contact.company_name || '', contact.company_domain, 'standard'),
-        searchContact(linkupApiKey, contactName, contact.company_name || '', contact.linkedin_url),
+        searchCompany(linkupApiKey, contact.company_name || '', contact.company_domain, 'standard', customPrompts?.linkupCompanyQuery),
+        searchContact(linkupApiKey, contactName, contact.company_name || '', contact.linkedin_url, customPrompts?.linkupContactQuery),
       ]);
       research = `ENTREPRISE:\n${companyResearch}\n\nCONTACT:\n${contactResearch}`;
     } catch (err) {
@@ -95,35 +106,12 @@ export async function personalizeContact(contact: Contact, linkupApiKey?: string
     research = await researchWithWebSearch(context);
   }
 
+  const systemPrompt = customPrompts?.personalizationPrompt || DEFAULT_PERSONALIZATION_PROMPT;
+
   // --- PASS 2: Generate the personalized sentence (no tools = clean output) ---
   const result = await generateText({
     model: anthropic('claude-sonnet-4-5-20250929'),
-    system: `Tu es un copywriter expert en cold email B2B.
-
-MISSION : Écrire UNE SEULE phrase de transition personnalisée (max 20 mots).
-
-CONTEXTE D'INSERTION : Cette phrase sera insérée dans un email de prospection juste après :
-"Nous cherchons des directeurs d'agences expérimentés pour développer l'outil avec nous et nous faire des retours terrains."
-
-La phrase doit faire le PONT entre le paragraphe précédent et la proposition de call qui suit.
-
-RÈGLES STRICTES :
-- UNE seule phrase, maximum 20 mots
-- Vouvoiement obligatoire
-- Doit mentionner un fait CONCRET et VÉRIFIÉ sur le contact (pas d'invention)
-- Doit créer un lien naturel avec le sujet de l'email (IA, immobilier, proptech, gestion d'agence)
-- Ton : professionnel, naturel, pas flatteur ni forcé
-- NE PAS commencer par "Je"
-- NE PAS utiliser de formule générique ("J'ai vu votre profil", "Votre parcours impressionnant")
-- NE PAS expliquer ton raisonnement
-- NE PAS mettre de guillemets
-
-EXEMPLES DE BON RÉSULTAT :
-- "Votre expertise chez [Entreprise] dans la gestion de [X] agences serait particulièrement précieuse."
-- "Avec [X] ans d'expérience en transaction à [Ville], votre retour nous serait très utile."
-- "La croissance récente de [Entreprise] sur [Ville] montre une dynamique qui colle parfaitement à notre approche."
-
-RÉPONDS UNIQUEMENT AVEC LA PHRASE. RIEN D'AUTRE.`,
+    system: systemPrompt,
     prompt: `CONTACT :\n${context}\n\nRECHERCHE :\n${research}\n\nÉcris la phrase :`,
   });
 

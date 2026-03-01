@@ -73,11 +73,6 @@ export function AppSidebar({
       url: "/templates",
       icon: FileText,
     },
-    {
-      title: t.sidebar.settings,
-      url: "/settings",
-      icon: Settings,
-    },
   ]
 
   const showSwitcher = workspaces.length > 1
@@ -145,6 +140,14 @@ export function AppSidebar({
               >
                 <MessageSquarePlus className="size-4" />
                 <span>{t.sidebar.feedback}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip={t.sidebar.settings}>
+                <a href="/settings">
+                  <Settings className="size-4" />
+                  <span>{t.sidebar.settings}</span>
+                </a>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -4,9 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, Eye, EyeOff, UserPlus, Trash2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DEFAULT_PERSONALIZATION_PROMPT, DEFAULT_SCORING_PROMPT, DEFAULT_LINKUP_COMPANY_QUERY, DEFAULT_LINKUP_CONTACT_QUERY, DEFAULT_LINKUP_PROSPECTING_QUERY } from '@/lib/ai-defaults';
 import { SiteHeader } from '@/components/site-header';
 import { StickySaveBar } from '@/components/sticky-save-bar';
 import { useTranslation, type Language } from '@/lib/i18n';
@@ -50,9 +53,21 @@ export default function SettingsPage() {
   const [fullenrichConfigured, setFullenrichConfigured] = useState(false);
   const [linkupConfigured, setLinkupConfigured] = useState(false);
   const [fullenrichCredits, setFullenrichCredits] = useState<number | null>(null);
+  const [linkupCredits, setLinkupCredits] = useState<number | null>(null);
+  const [loadingCredits, setLoadingCredits] = useState(false);
   const [savingIntegrations, setSavingIntegrations] = useState(false);
   const [showFullenrichKey, setShowFullenrichKey] = useState(false);
   const [showLinkupKey, setShowLinkupKey] = useState(false);
+  // AI Prompts state
+  const [aiPersonalizationPrompt, setAiPersonalizationPrompt] = useState('');
+  const [aiScoringPrompt, setAiScoringPrompt] = useState('');
+  const [linkupCompanyQuery, setLinkupCompanyQuery] = useState('');
+  const [linkupContactQuery, setLinkupContactQuery] = useState('');
+  const [linkupProspectingQuery, setLinkupProspectingQuery] = useState('');
+  const [promptsDialogOpen, setPromptsDialogOpen] = useState(false);
+  const [promptSection, setPromptSection] = useState('perso-claude');
+  const [savingPrompts, setSavingPrompts] = useState(false);
+  const [enhancingPrompt, setEnhancingPrompt] = useState<string | null>(null);
   const [smtpHost, setSmtpHost] = useState('webmail.polytechnique.fr');
   const [smtpPort, setSmtpPort] = useState('587');
   const [smtpUser, setSmtpUser] = useState('');
@@ -117,14 +132,21 @@ export default function SettingsPage() {
         const data = await r.json();
         setFullenrichConfigured(data.fullenrichConfigured || false);
         setLinkupConfigured(data.linkupConfigured || false);
+        setAiPersonalizationPrompt(data.aiPersonalizationPrompt || DEFAULT_PERSONALIZATION_PROMPT);
+        setAiScoringPrompt(data.aiScoringPrompt || DEFAULT_SCORING_PROMPT);
+        setLinkupCompanyQuery(data.linkupCompanyQuery || DEFAULT_LINKUP_COMPANY_QUERY);
+        setLinkupContactQuery(data.linkupContactQuery || DEFAULT_LINKUP_CONTACT_QUERY);
+        setLinkupProspectingQuery(data.linkupProspectingQuery || DEFAULT_LINKUP_PROSPECTING_QUERY);
       }
-      // Fetch credits if FullEnrich is configured
+      // Fetch credits for both services
+      setLoadingCredits(true);
       const cr = await apiFetch('/api/settings/enrichment-credits');
       if (cr.ok) {
         const cData = await cr.json();
-        if (cData.configured) setFullenrichCredits(cData.credits);
+        if (cData.fullenrich?.configured) setFullenrichCredits(cData.fullenrich.credits);
+        if (cData.linkup?.configured) setLinkupCredits(cData.linkup.credits);
       }
-    } catch {}
+    } catch {} finally { setLoadingCredits(false); }
   };
 
   const handleSaveIntegrations = async () => {
@@ -158,6 +180,59 @@ export default function SettingsPage() {
       toast.error(t.settings.toasts.networkError);
     } finally {
       setSavingIntegrations(false);
+    }
+  };
+
+  const handleSavePrompts = async () => {
+    setSavingPrompts(true);
+    try {
+      // Send empty string when value matches default — backend stores null (= use default fallback)
+      const normalize = (val: string, def: string) => val.trim() === def.trim() ? '' : val;
+      const r = await apiFetch('/api/settings/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aiPersonalizationPrompt: normalize(aiPersonalizationPrompt, DEFAULT_PERSONALIZATION_PROMPT),
+          aiScoringPrompt: normalize(aiScoringPrompt, DEFAULT_SCORING_PROMPT),
+          linkupCompanyQuery: normalize(linkupCompanyQuery, DEFAULT_LINKUP_COMPANY_QUERY),
+          linkupContactQuery: normalize(linkupContactQuery, DEFAULT_LINKUP_CONTACT_QUERY),
+          linkupProspectingQuery: normalize(linkupProspectingQuery, DEFAULT_LINKUP_PROSPECTING_QUERY),
+        }),
+      });
+      if (r.ok) {
+        toast.success(t.settings.aiPrompts.saved);
+      } else {
+        const d = await r.json();
+        toast.error(d.error || t.settings.toasts.saveError);
+      }
+    } catch {
+      toast.error(t.settings.toasts.networkError);
+    } finally {
+      setSavingPrompts(false);
+    }
+  };
+
+  const handleEnhancePrompt = async (type: string, value: string, setter: (v: string) => void) => {
+    if (!value.trim()) return;
+    setEnhancingPrompt(type);
+    try {
+      const r = await apiFetch('/api/ai/enhance-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: value, type }),
+      });
+      if (r.ok) {
+        const { enhanced } = await r.json();
+        setter(enhanced);
+        toast.success(t.settings.aiPrompts.enhanced);
+      } else {
+        const d = await r.json();
+        toast.error(d.error || t.settings.toasts.saveError);
+      }
+    } catch {
+      toast.error(t.settings.toasts.networkError);
+    } finally {
+      setEnhancingPrompt(null);
     }
   };
 
@@ -257,11 +332,11 @@ export default function SettingsPage() {
 
   const navItems: { key: Section; label: string; group: 'personal' | 'team' }[] = [
     { key: 'email', label: t.settings.nav.email, group: 'personal' },
-    { key: 'integrations', label: t.settings.nav.integrations, group: 'personal' },
     { key: 'preferences', label: t.settings.nav.preferences, group: 'personal' },
     { key: 'security', label: t.settings.nav.security, group: 'personal' },
     { key: 'workspace', label: t.settings.nav.workspace, group: 'team' },
     { key: 'members', label: t.settings.nav.members, group: 'team' },
+    { key: 'integrations', label: t.settings.nav.integrations, group: 'team' },
   ];
 
   return (
@@ -273,7 +348,7 @@ export default function SettingsPage() {
           {/* ── Left nav ── */}
           <nav className="w-[160px] shrink-0 border-r py-4 px-4 lg:px-6 space-y-4">
             <div>
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">{t.settings.tabs.personal}</p>
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">{t.settings.tabs.personal}</p>
               {navItems.filter(n => n.group === 'personal').map(n => (
                 <button
                   key={n.key}
@@ -287,7 +362,7 @@ export default function SettingsPage() {
               ))}
             </div>
             <div>
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">{t.settings.tabs.team}</p>
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">{t.settings.tabs.team}</p>
               {navItems.filter(n => n.group === 'team').map(n => (
                 <button
                   key={n.key}
@@ -354,8 +429,64 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground mt-1">{t.settings.integrations.description}</p>
                   </div>
                   <div className="space-y-5">
+                    {/* Credit balance cards */}
+                    {(fullenrichConfigured || linkupConfigured) && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {fullenrichConfigured && (
+                          <div className={`rounded-lg border p-3 ${fullenrichCredits !== null && fullenrichCredits <= 0 ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30' : 'border-border bg-muted/30'}`}>
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <img src="/fullenrich-logo.jpeg" alt="FullEnrich" className="h-4 w-4 rounded" />
+                              <span className="text-xs font-medium">FullEnrich</span>
+                            </div>
+                            {loadingCredits ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            ) : fullenrichCredits !== null ? (
+                              <>
+                                <p className={`text-xl font-bold ${fullenrichCredits <= 0 ? 'text-red-600' : fullenrichCredits < 10 ? 'text-amber-600' : ''}`}>
+                                  {fullenrichCredits}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{t.settings.integrations.creditsRemaining}</p>
+                                {fullenrichCredits <= 0 && (
+                                  <p className="text-xs text-red-600 mt-1">{t.settings.integrations.noCredits}</p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">{t.settings.integrations.creditsFetchError}</p>
+                            )}
+                          </div>
+                        )}
+                        {linkupConfigured && (
+                          <div className={`rounded-lg border p-3 ${linkupCredits !== null && linkupCredits <= 0 ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30' : 'border-border bg-muted/30'}`}>
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <img src="/linkup-logo.jpeg" alt="Linkup" className="h-4 w-4 rounded" />
+                              <span className="text-xs font-medium">Linkup</span>
+                            </div>
+                            {loadingCredits ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            ) : linkupCredits !== null ? (
+                              <>
+                                <p className={`text-xl font-bold ${linkupCredits <= 0 ? 'text-red-600' : linkupCredits < 1 ? 'text-amber-600' : ''}`}>
+                                  {linkupCredits}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{t.settings.integrations.creditsRemaining}</p>
+                                {linkupCredits <= 0 && (
+                                  <p className="text-xs text-red-600 mt-1">{t.settings.integrations.noCredits}</p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">{t.settings.integrations.creditsFetchError}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* API key inputs */}
                     <div>
-                      <Label className="text-xs">{t.settings.integrations.fullenrichKey}</Label>
+                      <Label className="text-xs flex items-center gap-1.5">
+                        <img src="/fullenrich-logo.jpeg" alt="FullEnrich" className="h-4 w-4 rounded" />
+                        {t.settings.integrations.fullenrichKey}
+                      </Label>
                       <div className="mt-1">
                         <PwInput
                           value={fullenrichApiKey}
@@ -366,14 +497,14 @@ export default function SettingsPage() {
                         />
                       </div>
                       {fullenrichConfigured && (
-                        <p className="text-xs text-green-600 mt-1">
-                          {t.settings.integrations.configured}
-                          {fullenrichCredits !== null && ` — ${fullenrichCredits} ${t.settings.integrations.credits}`}
-                        </p>
+                        <p className="text-xs text-green-600 mt-1">{t.settings.integrations.configured}</p>
                       )}
                     </div>
                     <div>
-                      <Label className="text-xs">{t.settings.integrations.linkupKey}</Label>
+                      <Label className="text-xs flex items-center gap-1.5">
+                        <img src="/linkup-logo.jpeg" alt="Linkup" className="h-4 w-4 rounded" />
+                        {t.settings.integrations.linkupKey}
+                      </Label>
                       <div className="mt-1">
                         <PwInput
                           value={linkupApiKey}
@@ -391,6 +522,20 @@ export default function SettingsPage() {
                       {savingIntegrations && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                       {t.common.save}
                     </Button>
+
+                    {/* AI Prompts — open dialog */}
+                    <div className="border-t pt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{t.settings.aiPrompts.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{t.settings.aiPrompts.description}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => setPromptsDialogOpen(true)}>
+                          <BrainCircuit className="mr-1.5 h-3.5 w-3.5" />
+                          {t.settings.aiPrompts.configure}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </>
               )}
@@ -531,6 +676,237 @@ export default function SettingsPage() {
       </div>
 
       <StickySaveBar onSave={handleSave} saving={saving} hasChanges={hasUnsavedChanges} onDiscard={handleDiscard} />
+
+      {/* AI Prompts Dialog */}
+      <Dialog open={promptsDialogOpen} onOpenChange={setPromptsDialogOpen}>
+        <DialogContent className="w-[calc(100vw-80px)] max-w-none sm:max-w-none h-[calc(100vh-80px)] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BrainCircuit className="h-5 w-5" />
+              {t.settings.aiPrompts.title}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">{t.settings.aiPrompts.modelInfo}</p>
+          </DialogHeader>
+
+          <div className="flex flex-1 min-h-0 border rounded-lg overflow-hidden">
+            {/* Sidebar nav */}
+            <nav className="w-[180px] shrink-0 border-r py-3 px-3 space-y-3 bg-muted/30 overflow-y-auto">
+              <div>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.personalizationTab}</p>
+                {([
+                  { id: 'perso-claude', label: t.settings.aiPrompts.navClaude },
+                  { id: 'perso-company', label: t.settings.aiPrompts.navCompanySearch },
+                  { id: 'perso-contact', label: t.settings.aiPrompts.navContactSearch },
+                ] as const).map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setPromptSection(item.id)}
+                    className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
+                      promptSection === item.id ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.scoringTab}</p>
+                {([
+                  { id: 'score-claude', label: t.settings.aiPrompts.navClaude },
+                  { id: 'score-company', label: t.settings.aiPrompts.navCompanySearch },
+                ] as const).map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setPromptSection(item.id)}
+                    className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
+                      promptSection === item.id ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.prospectingTab}</p>
+                <button
+                  onClick={() => setPromptSection('prospecting')}
+                  className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
+                    promptSection === 'prospecting' ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                  }`}
+                >
+                  {t.settings.aiPrompts.navProspectingQuery}
+                </button>
+              </div>
+            </nav>
+
+            {/* Content — single textarea */}
+            <div className="flex-1 flex flex-col p-4 min-h-0">
+              {promptSection === 'perso-claude' && (
+                <>
+                  <div className="flex items-center justify-between shrink-0 mb-2">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.claudePrompt}</Label>
+                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.claudePromptHintPersonalization}</p>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={aiPersonalizationPrompt}
+                    onChange={(e) => setAiPersonalizationPrompt(e.target.value)}
+                    className="text-sm font-mono flex-1 resize-none"
+                  />
+                  <div className="flex gap-1.5 mt-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('personalization_prompt', aiPersonalizationPrompt, setAiPersonalizationPrompt)} disabled={enhancingPrompt !== null || !aiPersonalizationPrompt.trim()}>
+                      {enhancingPrompt === 'personalization_prompt' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                      {enhancingPrompt === 'personalization_prompt' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setAiPersonalizationPrompt(DEFAULT_PERSONALIZATION_PROMPT)} disabled={aiPersonalizationPrompt === DEFAULT_PERSONALIZATION_PROMPT}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      {t.settings.aiPrompts.resetToDefault}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {promptSection === 'perso-company' && (
+                <>
+                  <div className="flex items-center justify-between shrink-0 mb-2">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
+                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.linkupCompanyHint}</p>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={linkupCompanyQuery}
+                    onChange={(e) => setLinkupCompanyQuery(e.target.value)}
+                    className="text-sm font-mono flex-1 resize-none"
+                  />
+                  <div className="flex gap-1.5 mt-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('personalization_linkup_company', linkupCompanyQuery, setLinkupCompanyQuery)} disabled={enhancingPrompt !== null || !linkupCompanyQuery.trim()}>
+                      {enhancingPrompt === 'personalization_linkup_company' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                      {enhancingPrompt === 'personalization_linkup_company' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setLinkupCompanyQuery(DEFAULT_LINKUP_COMPANY_QUERY)} disabled={linkupCompanyQuery === DEFAULT_LINKUP_COMPANY_QUERY}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      {t.settings.aiPrompts.resetToDefault}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {promptSection === 'perso-contact' && (
+                <>
+                  <div className="flex items-center justify-between shrink-0 mb-2">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
+                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.linkupContactHint}</p>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={linkupContactQuery}
+                    onChange={(e) => setLinkupContactQuery(e.target.value)}
+                    className="text-sm font-mono flex-1 resize-none"
+                  />
+                  <div className="flex gap-1.5 mt-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('personalization_linkup_contact', linkupContactQuery, setLinkupContactQuery)} disabled={enhancingPrompt !== null || !linkupContactQuery.trim()}>
+                      {enhancingPrompt === 'personalization_linkup_contact' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                      {enhancingPrompt === 'personalization_linkup_contact' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setLinkupContactQuery(DEFAULT_LINKUP_CONTACT_QUERY)} disabled={linkupContactQuery === DEFAULT_LINKUP_CONTACT_QUERY}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      {t.settings.aiPrompts.resetToDefault}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {promptSection === 'score-claude' && (
+                <>
+                  <div className="flex items-center justify-between shrink-0 mb-2">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.claudePrompt}</Label>
+                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.claudePromptHintScoring}</p>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={aiScoringPrompt}
+                    onChange={(e) => setAiScoringPrompt(e.target.value)}
+                    className="text-sm font-mono flex-1 resize-none"
+                  />
+                  <div className="flex gap-1.5 mt-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('scoring_prompt', aiScoringPrompt, setAiScoringPrompt)} disabled={enhancingPrompt !== null || !aiScoringPrompt.trim()}>
+                      {enhancingPrompt === 'scoring_prompt' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                      {enhancingPrompt === 'scoring_prompt' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setAiScoringPrompt(DEFAULT_SCORING_PROMPT)} disabled={aiScoringPrompt === DEFAULT_SCORING_PROMPT}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      {t.settings.aiPrompts.resetToDefault}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {promptSection === 'score-company' && (
+                <>
+                  <div className="flex items-center justify-between shrink-0 mb-2">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
+                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.linkupCompanyHint}</p>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={linkupCompanyQuery}
+                    onChange={(e) => setLinkupCompanyQuery(e.target.value)}
+                    className="text-sm font-mono flex-1 resize-none"
+                  />
+                  <div className="flex gap-1.5 mt-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('scoring_linkup_company', linkupCompanyQuery, setLinkupCompanyQuery)} disabled={enhancingPrompt !== null || !linkupCompanyQuery.trim()}>
+                      {enhancingPrompt === 'scoring_linkup_company' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                      {enhancingPrompt === 'scoring_linkup_company' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setLinkupCompanyQuery(DEFAULT_LINKUP_COMPANY_QUERY)} disabled={linkupCompanyQuery === DEFAULT_LINKUP_COMPANY_QUERY}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      {t.settings.aiPrompts.resetToDefault}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {promptSection === 'prospecting' && (
+                <>
+                  <div className="flex items-center justify-between shrink-0 mb-2">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
+                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.prospectingQueryHint}</p>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={linkupProspectingQuery}
+                    onChange={(e) => setLinkupProspectingQuery(e.target.value)}
+                    className="text-sm font-mono flex-1 resize-none"
+                  />
+                  <div className="flex gap-1.5 mt-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('prospecting', linkupProspectingQuery, setLinkupProspectingQuery)} disabled={enhancingPrompt !== null || !linkupProspectingQuery.trim()}>
+                      {enhancingPrompt === 'prospecting' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                      {enhancingPrompt === 'prospecting' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setLinkupProspectingQuery(DEFAULT_LINKUP_PROSPECTING_QUERY)} disabled={linkupProspectingQuery === DEFAULT_LINKUP_PROSPECTING_QUERY}>
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      {t.settings.aiPrompts.resetToDefault}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-3 border-t">
+            <Button size="sm" onClick={async () => { await handleSavePrompts(); setPromptsDialogOpen(false); }} disabled={savingPrompts}>
+              {savingPrompts && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              {t.common.save}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

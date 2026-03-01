@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search, ArrowLeft } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AIScoreBadge } from '@/components/ai-score-badge';
@@ -27,6 +28,218 @@ import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
+
+function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void }) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState('');
+  const [step, setStep] = useState<'query' | 'results'>('query');
+  const [results, setResults] = useState<any[]>([]);
+  const [existingEmails, setExistingEmails] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [importing, setImporting] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const r = await apiFetch('/api/ai/search-contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim() }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setResults(data.contacts || []);
+        setExistingEmails(data.existingEmails || []);
+        setSelected(new Set(
+          (data.contacts || [])
+            .map((_: any, i: number) => i)
+            .filter((i: number) => {
+              const c = data.contacts[i];
+              return !c.email || !data.existingEmails.includes(c.email.toLowerCase());
+            })
+        ));
+        setStep('results');
+      } else {
+        const d = await r.json();
+        toast.error(d.error === 'Linkup API key not configured' ? t.contacts.aiSearch.linkupRequired : (d.error || 'Search failed'));
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEnhance = async () => {
+    if (!query.trim()) return;
+    setEnhancing(true);
+    try {
+      const r = await apiFetch('/api/ai/enhance-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: query, type: 'prospecting' }),
+      });
+      if (r.ok) {
+        const { enhanced } = await r.json();
+        setQuery(enhanced);
+      }
+    } catch {}
+    finally { setEnhancing(false); }
+  };
+
+  const handleImport = async () => {
+    const toImport = Array.from(selected).map(i => results[i]).filter(Boolean);
+    if (toImport.length === 0) return;
+    setImporting(true);
+    try {
+      const r = await apiFetch('/api/contacts/import-prospected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contacts: toImport }),
+      });
+      if (r.ok) {
+        const { imported } = await r.json();
+        toast.success(t.contacts.aiSearch.imported(imported));
+        onOpenChange(false);
+        setStep('query');
+        setQuery('');
+        setResults([]);
+        setSelected(new Set());
+        onImported();
+      } else {
+        const d = await r.json();
+        toast.error(d.error || t.contacts.aiSearch.importError);
+      }
+    } catch {
+      toast.error(t.contacts.aiSearch.importError);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setStep('query'); }}>
+      <DialogContent className="sm:max-w-4xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <Search className="h-4 w-4" />
+            {t.contacts.aiSearch.title}
+          </DialogTitle>
+        </DialogHeader>
+
+        {step === 'query' && !loading && (
+          <div className="flex flex-col gap-3 flex-1">
+            <p className="text-xs text-muted-foreground">{t.contacts.aiSearch.hint}</p>
+            <Textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t.contacts.aiSearch.placeholder}
+              className="text-sm resize-none min-h-[120px] max-h-[40vh]"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={handleEnhance} disabled={enhancing || !query.trim()}>
+                {enhancing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                {enhancing ? t.contacts.aiSearch.enhancing : t.contacts.aiSearch.enhance}
+              </Button>
+              <Button size="sm" onClick={handleSearch} disabled={!query.trim()}>
+                <Search className="mr-1.5 h-3.5 w-3.5" />
+                {t.contacts.aiSearch.search}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'query' && loading && (
+          <div className="flex flex-col items-center justify-center gap-4 py-12 flex-1">
+            <div className="relative">
+              <div className="h-10 w-10 rounded-full border-2 border-muted" />
+              <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-t-primary animate-spin" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-medium">{t.contacts.aiSearch.searching}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t.contacts.aiSearch.searchingHint}</p>
+            </div>
+          </div>
+        )}
+
+        {step === 'results' && (
+          <div className="flex flex-col gap-3 flex-1 min-h-0">
+            <div className="flex items-center justify-between">
+              <button onClick={() => setStep('query')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                <ArrowLeft className="h-3 w-3" />
+                {t.contacts.aiSearch.back}
+              </button>
+              <p className="text-xs text-muted-foreground">{t.contacts.aiSearch.resultsTitle(results.length)}</p>
+            </div>
+
+            {results.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">{t.contacts.aiSearch.noResults}</p>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 sticky top-0">
+                    <tr className="text-left">
+                      <th className="p-2 w-8"></th>
+                      <th className="p-2 font-medium text-xs">{t.contacts.columns.firstName}</th>
+                      <th className="p-2 font-medium text-xs">{t.contacts.columns.lastName}</th>
+                      <th className="p-2 font-medium text-xs">{t.contacts.columns.company}</th>
+                      <th className="p-2 font-medium text-xs">{t.contacts.columns.position}</th>
+                      <th className="p-2 font-medium text-xs">{t.contacts.columns.email}</th>
+                      <th className="p-2 font-medium text-xs">{t.contacts.columns.city}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((c, i) => {
+                      const isExisting = c.email && existingEmails.includes(c.email.toLowerCase());
+                      return (
+                        <tr key={i} className={`border-t ${isExisting ? 'opacity-50' : 'hover:bg-muted/30'}`}>
+                          <td className="p-2">
+                            {isExisting ? (
+                              <span className="text-[10px] text-muted-foreground">{t.contacts.aiSearch.alreadyExists}</span>
+                            ) : (
+                              <Checkbox
+                                checked={selected.has(i)}
+                                onCheckedChange={(checked) => {
+                                  setSelected(prev => {
+                                    const next = new Set(prev);
+                                    if (checked) next.add(i); else next.delete(i);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            )}
+                          </td>
+                          <td className="p-2">{c.first_name}</td>
+                          <td className="p-2">{c.last_name}</td>
+                          <td className="p-2">{c.company_name}</td>
+                          <td className="p-2">{c.job_title}</td>
+                          <td className="p-2 text-xs">{c.email || '—'}</td>
+                          <td className="p-2 text-xs">{c.location || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {results.length > 0 && (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleImport} disabled={importing || selected.size === 0}>
+                  {importing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  {t.contacts.aiSearch.importSelected(selected.size)}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function ContactsPage() {
   const router = useRouter();
@@ -52,6 +265,8 @@ export default function ContactsPage() {
   const [sortColumn, setSortColumn] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [totalContacts, setTotalContacts] = useState(0);
+
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -184,7 +399,7 @@ export default function ContactsPage() {
       });
       if (res.ok) {
         const { enrichmentId, contactCount } = await res.json();
-        toast.success(t.contacts.enrich.bulkStarted(contactCount));
+        toast.success(t.contacts.enrich.bulkStarted(contactCount), { duration: 6000 });
         setSelectedIds(new Set());
         // Poll FullEnrich for results via our backend
         const pollInterval = setInterval(async () => {
@@ -389,6 +604,10 @@ export default function ContactsPage() {
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 {t.contacts.csv}
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setSearchDialogOpen(true)}>
+                <Search className="mr-1.5 h-3.5 w-3.5" />
+                {t.contacts.aiSearch.button}
+              </Button>
               <Button size="sm" onClick={() => router.push('/contacts/new')}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 {t.contacts.newButton}
@@ -522,7 +741,7 @@ export default function ContactsPage() {
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-lg px-4 py-2.5">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-lg px-6 py-3">
           <span className="text-sm font-medium">{t.common.nSelected(selectedIds.size)}</span>
           <div className="flex items-center gap-2 border-l pl-3">
             <UserCheck className="h-3.5 w-3.5 text-muted-foreground" />
@@ -608,6 +827,8 @@ export default function ContactsPage() {
           </p>
         </DialogContent>
       </Dialog>
+
+      <AiSearchDialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen} onImported={fetchContacts} />
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>

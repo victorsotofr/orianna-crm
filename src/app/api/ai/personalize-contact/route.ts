@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { personalizeContact } from '@/lib/ai-personalization';
+import { getLinkupCreditBalance } from '@/lib/linkup';
 
 export const maxDuration = 300;
 
@@ -39,8 +40,9 @@ export async function POST(request: NextRequest) {
     // Use service role for writes to bypass RLS (user is already authenticated)
     const serviceSupabase = getServiceSupabase();
 
-    // Fetch Linkup API key from the first contact's workspace
+    // Fetch Linkup API key + custom prompts from the first contact's workspace
     let linkupApiKey: string | undefined;
+    let customPrompts: { personalizationPrompt?: string; linkupCompanyQuery?: string; linkupContactQuery?: string } | undefined;
     const { data: firstContact } = await supabase
       .from('contacts')
       .select('workspace_id')
@@ -50,12 +52,33 @@ export async function POST(request: NextRequest) {
     if (firstContact?.workspace_id) {
       const { data: workspace } = await serviceSupabase
         .from('workspaces')
-        .select('linkup_api_key_encrypted')
+        .select('linkup_api_key_encrypted, ai_personalization_prompt, linkup_company_query, linkup_contact_query')
         .eq('id', firstContact.workspace_id)
         .single();
 
-      if (workspace?.linkup_api_key_encrypted) {
-        linkupApiKey = workspace.linkup_api_key_encrypted;
+      if (workspace) {
+        if (workspace.ai_personalization_prompt || workspace.linkup_company_query || workspace.linkup_contact_query) {
+          customPrompts = {
+            personalizationPrompt: workspace.ai_personalization_prompt || undefined,
+            linkupCompanyQuery: workspace.linkup_company_query || undefined,
+            linkupContactQuery: workspace.linkup_contact_query || undefined,
+          };
+        }
+
+        if (workspace.linkup_api_key_encrypted) {
+          // Verify Linkup credits before using it
+          try {
+            const credits = await getLinkupCreditBalance(workspace.linkup_api_key_encrypted);
+            if (credits <= 0) {
+              console.warn(`[Linkup] No credits remaining for workspace ${firstContact.workspace_id}. Falling back to web_search.`);
+            } else {
+              linkupApiKey = workspace.linkup_api_key_encrypted;
+              console.log(`[Linkup] Credits available: ${credits} for workspace ${firstContact.workspace_id}`);
+            }
+          } catch (creditErr: any) {
+            console.warn(`[Linkup] Could not verify credits for workspace ${firstContact.workspace_id}:`, creditErr.message, '— falling back to web_search');
+          }
+        }
       }
     }
 
@@ -78,7 +101,7 @@ export async function POST(request: NextRequest) {
 
         const contactWorkspaceId = contact.workspace_id;
 
-        const result = await personalizeContact(contact, linkupApiKey);
+        const result = await personalizeContact(contact, linkupApiKey, customPrompts);
 
         await serviceSupabase
           .from('contacts')

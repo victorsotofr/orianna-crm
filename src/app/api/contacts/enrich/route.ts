@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
-import { startBulkEnrichment } from '@/lib/fullenrich';
+import { startBulkEnrichment, getCreditBalance } from '@/lib/fullenrich';
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +45,22 @@ export async function POST(request: NextRequest) {
         { error: 'FullEnrich API key not configured. Go to Settings > Integrations.' },
         { status: 400 }
       );
+    }
+
+    // Check credit balance before starting enrichment
+    try {
+      const credits = await getCreditBalance(workspace.fullenrich_api_key_encrypted);
+      if (credits <= 0) {
+        console.warn(`[FullEnrich] No credits remaining for workspace ${ctx.workspaceId}. Enrichment blocked.`);
+        return NextResponse.json(
+          { error: 'No FullEnrich credits remaining. Please top up your account at fullenrich.com.' },
+          { status: 402 }
+        );
+      }
+      console.log(`[FullEnrich] Credits available: ${credits} for workspace ${ctx.workspaceId}`);
+    } catch (creditErr: any) {
+      console.warn(`[FullEnrich] Could not verify credits for workspace ${ctx.workspaceId}:`, creditErr.message);
+      // Continue anyway — the enrichment call itself will fail if no credits
     }
 
     // Fetch contacts

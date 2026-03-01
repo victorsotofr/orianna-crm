@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
-import { getCreditBalance } from '@/lib/fullenrich';
+import { getCreditBalance as getFullenrichCredits } from '@/lib/fullenrich';
+import { getLinkupCreditBalance } from '@/lib/linkup';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,19 +26,44 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = getServiceSupabase();
     const { data: workspace } = await serviceSupabase
       .from('workspaces')
-      .select('fullenrich_api_key_encrypted')
+      .select('fullenrich_api_key_encrypted, linkup_api_key_encrypted')
       .eq('id', ctx.workspaceId)
       .single();
 
-    if (!workspace?.fullenrich_api_key_encrypted) {
-      return NextResponse.json({ credits: null, configured: false });
+    const result: {
+      fullenrich: { configured: boolean; credits: number | null };
+      linkup: { configured: boolean; credits: number | null };
+    } = {
+      fullenrich: { configured: false, credits: null },
+      linkup: { configured: false, credits: null },
+    };
+
+    // Fetch both credit balances in parallel
+    const promises: Promise<void>[] = [];
+
+    if (workspace?.fullenrich_api_key_encrypted) {
+      result.fullenrich.configured = true;
+      promises.push(
+        getFullenrichCredits(workspace.fullenrich_api_key_encrypted)
+          .then((credits) => { result.fullenrich.credits = credits; })
+          .catch((err) => { console.error('FullEnrich credits fetch error:', err.message); })
+      );
     }
 
-    const credits = await getCreditBalance(workspace.fullenrich_api_key_encrypted);
+    if (workspace?.linkup_api_key_encrypted) {
+      result.linkup.configured = true;
+      promises.push(
+        getLinkupCreditBalance(workspace.linkup_api_key_encrypted)
+          .then((credits) => { result.linkup.credits = credits; })
+          .catch((err) => { console.error('Linkup credits fetch error:', err.message); })
+      );
+    }
 
-    return NextResponse.json({ credits, configured: true });
+    await Promise.all(promises);
+
+    return NextResponse.json(result);
   } catch (error: any) {
-    console.error('Enrichment credits error:', error);
+    console.error('Credits fetch error:', error);
     return NextResponse.json({ error: error.message || 'Failed to fetch credits' }, { status: 500 });
   }
 }

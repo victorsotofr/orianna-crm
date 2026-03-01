@@ -25,13 +25,18 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = getServiceSupabase();
     const { data: workspace } = await serviceSupabase
       .from('workspaces')
-      .select('fullenrich_api_key_encrypted, linkup_api_key_encrypted')
+      .select('fullenrich_api_key_encrypted, linkup_api_key_encrypted, ai_personalization_prompt, ai_scoring_prompt, linkup_company_query, linkup_contact_query, linkup_prospecting_query')
       .eq('id', ctx.workspaceId)
       .single();
 
     return NextResponse.json({
       fullenrichConfigured: !!workspace?.fullenrich_api_key_encrypted,
       linkupConfigured: !!workspace?.linkup_api_key_encrypted,
+      aiPersonalizationPrompt: workspace?.ai_personalization_prompt || null,
+      aiScoringPrompt: workspace?.ai_scoring_prompt || null,
+      linkupCompanyQuery: workspace?.linkup_company_query || null,
+      linkupContactQuery: workspace?.linkup_contact_query || null,
+      linkupProspectingQuery: workspace?.linkup_prospecting_query || null,
     });
   } catch (error: any) {
     console.error('Workspace settings GET error:', error);
@@ -57,7 +62,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace' }, { status: 403 });
     }
 
-    const { fullenrichApiKey, linkupApiKey } = await request.json();
+    const {
+      fullenrichApiKey, linkupApiKey,
+      aiPersonalizationPrompt, aiScoringPrompt, linkupCompanyQuery, linkupContactQuery, linkupProspectingQuery,
+    } = await request.json();
 
     const serviceSupabase = getServiceSupabase();
     const update: Record<string, string | null> = {};
@@ -68,6 +76,23 @@ export async function POST(request: NextRequest) {
 
     if (linkupApiKey !== undefined) {
       update.linkup_api_key_encrypted = linkupApiKey ? encrypt(linkupApiKey) : null;
+    }
+
+    // AI prompt fields — empty string resets to default (null)
+    if (aiPersonalizationPrompt !== undefined) {
+      update.ai_personalization_prompt = aiPersonalizationPrompt?.trim() || null;
+    }
+    if (aiScoringPrompt !== undefined) {
+      update.ai_scoring_prompt = aiScoringPrompt?.trim() || null;
+    }
+    if (linkupCompanyQuery !== undefined) {
+      update.linkup_company_query = linkupCompanyQuery?.trim() || null;
+    }
+    if (linkupContactQuery !== undefined) {
+      update.linkup_contact_query = linkupContactQuery?.trim() || null;
+    }
+    if (linkupProspectingQuery !== undefined) {
+      update.linkup_prospecting_query = linkupProspectingQuery?.trim() || null;
     }
 
     if (Object.keys(update).length === 0) {

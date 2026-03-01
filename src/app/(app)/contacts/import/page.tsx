@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck, Brain } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck, Brain, Search } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useTranslation } from '@/lib/i18n';
@@ -197,6 +197,7 @@ export default function ImportPage() {
   const [importedIds, setImportedIds] = useState<string[]>([]);
   const [scoringProgress, setScoringProgress] = useState(0);
   const [scoringTotal, setScoringTotal] = useState(0);
+  const [enrichingImported, setEnrichingImported] = useState(false);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -356,6 +357,26 @@ export default function ImportPage() {
       toast.error(t.common.networkError);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleEnrichImported = async (ids: string[]) => {
+    setEnrichingImported(true);
+    try {
+      // Enrich in batches of 100
+      for (let i = 0; i < ids.length; i += 100) {
+        const batch = ids.slice(i, i + 100);
+        await apiFetch('/api/contacts/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contactIds: batch }),
+        });
+      }
+      toast.success(t.contacts.enrich.bulkStarted(ids.length));
+    } catch {
+      toast.error(t.contacts.enrich.error);
+    } finally {
+      setEnrichingImported(false);
     }
   };
 
@@ -583,6 +604,21 @@ export default function ImportPage() {
                   </div>
                   <Progress value={scoringTotal > 0 ? (scoringProgress / scoringTotal) * 100 : 0} />
                 </div>
+                {importedIds.length > 0 && (
+                  <div className="flex items-center gap-2 pt-2 border-t">
+                    <Search className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm">{t.import.enrichPrompt}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEnrichImported(importedIds)}
+                      disabled={enrichingImported}
+                    >
+                      {enrichingImported ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                      {t.contacts.enrich.button}
+                    </Button>
+                  </div>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

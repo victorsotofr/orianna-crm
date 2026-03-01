@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AIScoreBadge } from '@/components/ai-score-badge';
@@ -47,6 +47,7 @@ export default function ContactsPage() {
   const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
   const [bulkScoring, setBulkScoring] = useState(false);
   const [bulkPersonalizing, setBulkPersonalizing] = useState(false);
+  const [bulkEnriching, setBulkEnriching] = useState(false);
   const [previewLine, setPreviewLine] = useState<{ name: string; text: string } | null>(null);
   const [sortColumn, setSortColumn] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -169,6 +170,48 @@ export default function ContactsPage() {
       toast.error(t.contacts.toasts.scoreErrorAi);
     } finally {
       setBulkScoring(false);
+    }
+  };
+
+  const handleBulkEnrich = async () => {
+    setBulkEnriching(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const res = await apiFetch('/api/contacts/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactIds: ids }),
+      });
+      if (res.ok) {
+        const { enrichmentId, contactCount } = await res.json();
+        toast.success(t.contacts.enrich.bulkStarted(contactCount));
+        setSelectedIds(new Set());
+        // Poll FullEnrich for results via our backend
+        const pollInterval = setInterval(async () => {
+          try {
+            const pollRes = await apiFetch(`/api/contacts/enrich/${enrichmentId}`);
+            if (pollRes.ok) {
+              const data = await pollRes.json();
+              if (data.finished) {
+                clearInterval(pollInterval);
+                fetchContacts();
+                if (data.updated > 0) toast.success(t.contacts.enrich.bulkCompleted(data.updated));
+              }
+            }
+          } catch {}
+        }, 10000);
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          fetchContacts();
+        }, 180000);
+      } else {
+        const data = await res.json();
+        toast.error(data.error || t.contacts.enrich.error);
+      }
+    } catch {
+      toast.error(t.contacts.enrich.error);
+    } finally {
+      setBulkEnriching(false);
     }
   };
 
@@ -431,7 +474,7 @@ export default function ContactsPage() {
                                   type="button"
                                   className="text-xs max-w-[200px] truncate block text-left cursor-pointer hover:text-primary transition-colors"
                                   onClick={() => setPreviewLine({
-                                    name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email,
+                                    name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email || '',
                                     text: contact.ai_personalized_line!,
                                   })}
                                 >
@@ -505,6 +548,15 @@ export default function ContactsPage() {
               {bulkAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t.contacts.bulkActions.assign}
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkEnrich}
+            disabled={bulkEnriching}
+          >
+            {bulkEnriching ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
+            {t.contacts.enrich.button}
+          </Button>
           <Button
             variant="outline"
             size="sm"

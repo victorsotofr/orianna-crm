@@ -1,7 +1,7 @@
 // Database types for Supabase tables
 export interface Contact {
   id: string;
-  email: string;
+  email: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
@@ -34,6 +34,10 @@ export interface Contact {
   // AI personalization
   ai_personalized_line: string | null;
   ai_personalized_at: string | null;
+  // Enrichment
+  email_verified_status: 'DELIVERABLE' | 'HIGH_PROBABILITY' | 'CATCH_ALL' | 'INVALID' | null;
+  enriched_at: string | null;
+  enrichment_source: string | null;
 }
 
 export interface Template {
@@ -114,21 +118,6 @@ export interface ContactTimeline {
   metadata: Record<string, any>;
   created_by: string | null;
   created_at: string;
-}
-
-export interface EmailStat {
-  id: string;
-  enrollment_id: string | null;
-  step_id: string | null;
-  contact_id: string;
-  template_id: string | null;
-  variant: 'A' | 'B';
-  sent_at: string;
-  opened_at: string | null;
-  replied_at: string | null;
-  bounced_at: string | null;
-  message_id: string | null;
-  metadata: Record<string, unknown>;
 }
 
 export interface Comment {

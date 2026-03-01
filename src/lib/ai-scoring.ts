@@ -2,6 +2,7 @@ import 'server-only';
 import { generateText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import type { Contact } from '@/types/database';
+import { searchCompany } from '@/lib/linkup';
 
 interface ScoringResult {
   score: number;
@@ -57,13 +58,11 @@ function parseScoringResponse(text: string): ScoringResult {
   return { score: 0, label: 'COLD', reasoning: 'Impossible d\'analyser ce contact.' };
 }
 
-export async function scoreContact(contact: Contact): Promise<ScoringResult> {
+export async function scoreContact(contact: Contact, linkupApiKey?: string): Promise<ScoringResult> {
   const context = buildSearchContext(contact);
 
   const systemPrompt = `Tu es un expert en lead scoring pour un CRM de prospection B2B.
 Tu analyses les contacts pour déterminer leur potentiel commercial.
-
-Tu dois rechercher sur le web des informations sur le contact et son entreprise, puis scorer le lead.
 
 Évalue sur 4 axes (0-25 points chacun) :
 1. **Séniorité du poste** (0-25) : Décideur (DG, CEO, Directeur) = 20-25, Manager = 10-19, Junior = 0-9
@@ -74,6 +73,42 @@ Tu dois rechercher sur le web des informations sur le contact et son entreprise,
 IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :
 {"score": <nombre 0-100>, "reasoning": "<explication concise en français, 2-3 phrases max>"}`;
 
+  if (linkupApiKey) {
+    // Linkup path: deep search then Claude scoring (no tools)
+    let linkupResearch = '';
+    try {
+      linkupResearch = await searchCompany(
+        linkupApiKey,
+        contact.company_name || '',
+        contact.company_domain,
+        'deep'
+      );
+    } catch (err) {
+      console.error('Linkup search failed, falling back to web_search:', err);
+      // Fall through to web_search path
+      return scoreWithWebSearch(context, systemPrompt);
+    }
+
+    const userPrompt = `Analyse ce contact et donne-lui un score de 0 à 100 :\n\n${context}\n\nRECHERCHE ENTREPRISE:\n${linkupResearch}`;
+
+    const { text } = await generateText({
+      model: anthropic('claude-sonnet-4-5-20250929'),
+      system: systemPrompt,
+      prompt: userPrompt,
+    });
+
+    return parseScoringResponse(text);
+  }
+
+  // Fallback: web_search behavior
+  return scoreWithWebSearch(context, systemPrompt);
+}
+
+async function scoreWithWebSearch(context: string, systemPrompt: string): Promise<ScoringResult> {
+  const webSearchSystemPrompt = systemPrompt.replace(
+    'Tu analyses les contacts pour déterminer leur potentiel commercial.',
+    'Tu analyses les contacts pour déterminer leur potentiel commercial.\n\nTu dois rechercher sur le web des informations sur le contact et son entreprise, puis scorer le lead.'
+  );
   const userPrompt = `Analyse ce contact et donne-lui un score de 0 à 100 :\n\n${context}`;
 
   const { text } = await generateText({
@@ -82,7 +117,7 @@ IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni text
     tools: {
       web_search: anthropic.tools.webSearch_20250305(),
     },
-    system: systemPrompt,
+    system: webSearchSystemPrompt,
     prompt: userPrompt,
   });
 

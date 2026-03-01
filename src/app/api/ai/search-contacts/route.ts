@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
 import { searchProspecting } from '@/lib/linkup';
 import { generateText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
-import { reportError } from '@/lib/error-alerting';
+
 
 export const maxDuration = 300;
 
@@ -119,7 +120,7 @@ Rules:
     return NextResponse.json({ contacts, existingEmails });
   } catch (error: any) {
     console.error('Search contacts error:', error);
-    reportError('POST /api/ai/search-contacts', error.message || 'Search failed');
+    Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Search failed' }, { status: 500 });
   }
 }

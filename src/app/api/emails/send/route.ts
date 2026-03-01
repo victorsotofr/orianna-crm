@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
+import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 
 export const maxDuration = 30;
 
@@ -123,10 +124,40 @@ export async function POST(request: Request) {
     const renderedHtml = renderTemplate(template.html_content, variables);
     const renderedSubject = renderTemplate(template.subject, variables);
 
-    // Append signature (always present as it's required)
-    // Note: Templates should NOT include a signature at the end
-    // The signature from settings will be automatically appended
-    const finalHtml = `${renderedHtml}\n\n${settings.signature_html}`;
+    // Insert emails_sent record first to get an ID for tracking pixel
+    const { data: emailRecord, error: insertError } = await supabase
+      .from('emails_sent')
+      .insert({
+        contact_id: contactId,
+        campaign_id: campaignId,
+        template_id: templateId,
+        sent_by: user.id,
+        sent_by_email: user.email,
+        status: 'pending',
+        workspace_id: ctx.workspaceId,
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      // Unique constraint violation = already sent (concurrent request won the race)
+      if (insertError.code === '23505') {
+        return NextResponse.json({
+          success: false,
+          alreadySent: true,
+          message: 'Email already sent to this contact with this template',
+        });
+      }
+      console.error('Error recording email send:', insertError instanceof Error ? insertError.message : insertError);
+      return NextResponse.json(
+        { error: 'Failed to create email record', success: false },
+        { status: 500 }
+      );
+    }
+
+    // Build tracking pixel and append after signature
+    const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
+    const finalHtml = `${renderedHtml}\n\n${settings.signature_html}\n${trackingPixel}`;
 
     // Send email
     const emailResult = await sendEmail(
@@ -145,17 +176,11 @@ export async function POST(request: Request) {
     );
 
     if (!emailResult.success) {
-      // Record failed send with audit trail
-      await supabase.from('emails_sent').insert({
-        contact_id: contactId,
-        campaign_id: campaignId,
-        template_id: templateId,
-        sent_by: user.id,
-        sent_by_email: user.email,
-        status: 'failed',
-        error_message: emailResult.error,
-        workspace_id: ctx.workspaceId,
-      });
+      // Update record to failed
+      await supabase
+        .from('emails_sent')
+        .update({ status: 'failed', error_message: emailResult.error })
+        .eq('id', emailRecord.id);
 
       return NextResponse.json(
         { error: emailResult.error, success: false },
@@ -163,29 +188,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Record successful send with audit trail (DB unique index handles dedup)
-    const { error: insertError } = await supabase.from('emails_sent').insert({
-      contact_id: contactId,
-      campaign_id: campaignId,
-      template_id: templateId,
-      sent_by: user.id,
-      sent_by_email: user.email,
-      status: 'sent',
-      message_id: emailResult.messageId,
-      workspace_id: ctx.workspaceId,
-    });
-
-    if (insertError) {
-      // Unique constraint violation = already sent (concurrent request won the race)
-      if (insertError.code === '23505') {
-        return NextResponse.json({
-          success: false,
-          alreadySent: true,
-          message: 'Email already sent to this contact with this template',
-        });
-      }
-      console.error('Error recording email send:', insertError instanceof Error ? insertError.message : insertError);
-    }
+    // Update record to sent with message_id
+    await supabase
+      .from('emails_sent')
+      .update({ status: 'sent', message_id: emailResult.messageId })
+      .eq('id', emailRecord.id);
 
     // Update campaign sent count if campaign exists
     if (campaignId) {

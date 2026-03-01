@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     // Fetch existing contact
     const { data: contact, error: fetchError } = await supabase
       .from('contacts')
-      .select('id, email, phone')
+      .select('id, email, phone, email_verified_status')
       .eq('id', contactId)
       .eq('workspace_id', workspaceId)
       .single();
@@ -39,9 +39,13 @@ export async function POST(request: NextRequest) {
       enrichment_source: 'fullenrich',
     };
 
-    // Update email if found and contact had none, or if better verified
+    // Update email if FullEnrich found one:
+    // - Always overwrite if contact had no email
+    // - Always overwrite if existing email was never verified (e.g. from AI prospecting)
+    // - Always overwrite if FullEnrich says DELIVERABLE
     if (email) {
-      if (!contact.email || emailStatus === 'DELIVERABLE') {
+      const existingUnverified = !contact.email_verified_status;
+      if (!contact.email || existingUnverified || emailStatus === 'DELIVERABLE') {
         update.email = email;
       }
     }

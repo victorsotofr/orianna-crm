@@ -3,6 +3,12 @@ import { generateText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import type { Contact } from '@/types/database';
 import { searchCompany } from '@/lib/linkup';
+import { DEFAULT_SCORING_PROMPT } from '@/lib/ai-defaults';
+
+interface CustomPrompts {
+  scoringPrompt?: string;
+  linkupCompanyQuery?: string;
+}
 
 interface ScoringResult {
   score: number;
@@ -58,20 +64,14 @@ function parseScoringResponse(text: string): ScoringResult {
   return { score: 0, label: 'COLD', reasoning: 'Impossible d\'analyser ce contact.' };
 }
 
-export async function scoreContact(contact: Contact, linkupApiKey?: string): Promise<ScoringResult> {
+export async function scoreContact(
+  contact: Contact,
+  linkupApiKey?: string,
+  customPrompts?: CustomPrompts
+): Promise<ScoringResult> {
   const context = buildSearchContext(contact);
 
-  const systemPrompt = `Tu es un expert en lead scoring pour un CRM de prospection B2B.
-Tu analyses les contacts pour déterminer leur potentiel commercial.
-
-Évalue sur 4 axes (0-25 points chacun) :
-1. **Séniorité du poste** (0-25) : Décideur (DG, CEO, Directeur) = 20-25, Manager = 10-19, Junior = 0-9
-2. **Pertinence entreprise** (0-25) : Taille, secteur, budget estimé, type d'entreprise
-3. **Signaux de croissance** (0-25) : Recrutements, levées de fonds, nouveaux projets, actualités récentes
-4. **Présence digitale** (0-25) : Activité LinkedIn, site web professionnel, visibilité en ligne
-
-IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :
-{"score": <nombre 0-100>, "reasoning": "<explication concise en français, 2-3 phrases max>"}`;
+  const systemPrompt = customPrompts?.scoringPrompt || DEFAULT_SCORING_PROMPT;
 
   if (linkupApiKey) {
     // Linkup path: deep search then Claude scoring (no tools)
@@ -81,7 +81,8 @@ IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni text
         linkupApiKey,
         contact.company_name || '',
         contact.company_domain,
-        'deep'
+        'deep',
+        customPrompts?.linkupCompanyQuery
       );
     } catch (err) {
       console.error('Linkup search failed, falling back to web_search:', err);

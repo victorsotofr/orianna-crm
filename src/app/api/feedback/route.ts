@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { type, title, description, imageUrl } = await request.json();
+    const { type, title, description, imageUrl, imageUrls } = await request.json();
 
     if (!title?.trim() || !description?.trim()) {
       return NextResponse.json({ error: 'Title and description are required' }, { status: 400 });
@@ -27,6 +27,9 @@ export async function POST(request: Request) {
 
     const octokit = new Octokit({ auth: pat });
 
+    // Collect all image URLs (support both old single and new multiple)
+    const allImages: string[] = imageUrls || (imageUrl ? [imageUrl] : []);
+
     // Build issue body
     const lines = [
       `**Type:** ${type === 'bug' ? 'Bug' : 'Amelioration'}`,
@@ -38,8 +41,11 @@ export async function POST(request: Request) {
       description,
     ];
 
-    if (imageUrl) {
-      lines.push('', '## Screenshot', '', `![Screenshot](${imageUrl})`);
+    if (allImages.length > 0) {
+      lines.push('', '## Screenshots', '');
+      allImages.forEach((url: string, i: number) => {
+        lines.push(`![Screenshot ${i + 1}](${url})`, '');
+      });
     }
 
     const label = type === 'bug' ? 'bug' : 'enhancement';

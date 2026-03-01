@@ -30,43 +30,56 @@ interface FeedbackModalProps {
   onOpenChange: (open: boolean) => void
 }
 
+interface FilePreview {
+  file: File
+  url: string
+}
+
 export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
   const { t } = useTranslation()
   const [type, setType] = useState<string>('bug')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [files, setFiles] = useState<FilePreview[]>([])
   const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0]
+    const selected = e.target.files
     if (!selected) return
-    if (!selected.type.startsWith('image/')) {
-      toast.error(t.feedback.toasts.imageOnly)
-      return
+
+    const newFiles: FilePreview[] = []
+    for (const file of Array.from(selected)) {
+      if (!file.type.startsWith('image/')) {
+        toast.error(t.feedback.toasts.imageOnly)
+        continue
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(t.feedback.toasts.imageTooLarge)
+        continue
+      }
+      newFiles.push({ file, url: URL.createObjectURL(file) })
     }
-    if (selected.size > 5 * 1024 * 1024) {
-      toast.error(t.feedback.toasts.imageTooLarge)
-      return
-    }
-    setFile(selected)
-    setPreview(URL.createObjectURL(selected))
+
+    setFiles((prev) => [...prev, ...newFiles])
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const clearFile = () => {
-    setFile(null)
-    if (preview) URL.revokeObjectURL(preview)
-    setPreview(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+  const removeFile = (index: number) => {
+    setFiles((prev) => {
+      const next = [...prev]
+      URL.revokeObjectURL(next[index].url)
+      next.splice(index, 1)
+      return next
+    })
   }
 
   const resetForm = () => {
     setType('bug')
     setTitle('')
     setDescription('')
-    clearFile()
+    files.forEach((f) => URL.revokeObjectURL(f.url))
+    setFiles([])
   }
 
   const handleSubmit = async () => {
@@ -82,10 +95,10 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
     setSubmitting(true)
 
     try {
-      let imageUrl: string | null = null
+      const imageUrls: string[] = []
 
-      // Upload image to Supabase storage if provided
-      if (file) {
+      // Upload all images to Supabase storage
+      for (const { file } of files) {
         const ext = file.name.split('.').pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const { error: uploadError } = await supabase.storage
@@ -103,14 +116,19 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
           .from('feedback-assets')
           .getPublicUrl(fileName)
 
-        imageUrl = urlData.publicUrl
+        imageUrls.push(urlData.publicUrl)
       }
 
       // Submit feedback via API
       const response = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, title, description, imageUrl }),
+        body: JSON.stringify({
+          type,
+          title,
+          description,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        }),
       })
 
       if (!response.ok) {
@@ -175,33 +193,37 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>{t.feedback.labels.screenshot}</Label>
-            {preview ? (
-              <div className="relative rounded-md border overflow-hidden">
-                <img src={preview} alt="Preview" className="max-h-40 w-full object-contain bg-muted" />
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="absolute top-1 right-1 h-6 w-6"
-                  onClick={clearFile}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+            <Label>{t.feedback.labels.screenshots}</Label>
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {files.map((f, i) => (
+                  <div key={i} className="relative rounded-md border overflow-hidden w-24 h-24">
+                    <img src={f.url} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover" />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-0.5 right-0.5 h-5 w-5"
+                      onClick={() => removeFile(i)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 w-full rounded-md border border-dashed p-3 text-sm text-muted-foreground hover:bg-muted/50 transition-colors cursor-pointer"
-              >
-                <ImagePlus className="h-4 w-4" />
-                {t.feedback.labels.addScreenshot}
-              </button>
             )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 w-full rounded-md border border-dashed p-3 text-sm text-muted-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+            >
+              <ImagePlus className="h-4 w-4" />
+              {t.feedback.labels.addScreenshots}
+            </button>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={handleFileChange}
             />

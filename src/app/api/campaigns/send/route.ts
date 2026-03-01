@@ -4,6 +4,7 @@ import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { reportError } from '@/lib/error-alerting';
 
 export const maxDuration = 30;
 
@@ -219,6 +220,7 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Campaign send error:', error instanceof Error ? error.message : error);
+    reportError('POST /api/campaigns/send', error.message || 'Campaign send failed', { workspaceId: 'unknown' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

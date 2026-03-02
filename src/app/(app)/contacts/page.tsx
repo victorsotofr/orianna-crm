@@ -40,14 +40,14 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
   const [importing, setImporting] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
 
-  const handleSearch = async () => {
+  const handleSearch = async (depth: 'standard' | 'deep' = 'standard') => {
     if (!query.trim()) return;
     setLoading(true);
     try {
       const r = await apiFetch('/api/ai/search-contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() }),
+        body: JSON.stringify({ query: query.trim(), depth }),
       });
       if (r.ok) {
         const data = await r.json();
@@ -144,9 +144,13 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
                 {enhancing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
                 {enhancing ? t.contacts.aiSearch.enhancing : t.contacts.aiSearch.enhance}
               </Button>
-              <Button size="sm" onClick={handleSearch} disabled={!query.trim()}>
+              <Button size="sm" onClick={() => handleSearch('standard')} disabled={!query.trim()}>
                 <Search className="mr-1.5 h-3.5 w-3.5" />
                 {t.contacts.aiSearch.search}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => handleSearch('deep')} disabled={!query.trim()}>
+                <Search className="mr-1.5 h-3.5 w-3.5" />
+                {t.contacts.aiSearch.deepSearch}
               </Button>
             </div>
           </div>
@@ -505,22 +509,19 @@ export default function ContactsPage() {
     return member?.display_name || member?.email?.split('@')[0] || '';
   }, [teamMembers]);
 
-  const handleSort = (column: string, event: React.MouseEvent) => {
+  const handleSort = (column: string) => {
     setSortKeys(prev => {
       const existingIndex = prev.findIndex(s => s.column === column);
-      if (event.shiftKey) {
-        if (existingIndex >= 0) {
+      if (existingIndex >= 0) {
+        // asc → desc → remove
+        if (prev[existingIndex].direction === 'asc') {
           const next = [...prev];
-          next[existingIndex] = { column, direction: next[existingIndex].direction === 'asc' ? 'desc' : 'asc' };
+          next[existingIndex] = { column, direction: 'desc' };
           return next;
         }
-        return [...prev, { column, direction: 'asc' }];
-      } else {
-        if (existingIndex >= 0 && prev.length === 1) {
-          return [{ column, direction: prev[0].direction === 'asc' ? 'desc' : 'asc' }];
-        }
-        return [{ column, direction: 'asc' }];
+        return prev.filter((_, i) => i !== existingIndex);
       }
+      return [...prev, { column, direction: 'asc' }];
     });
   };
 
@@ -618,9 +619,12 @@ export default function ContactsPage() {
                   <SelectItem value="hot_leads">{t.contacts.hotLeads}</SelectItem>
                   <SelectItem value="new">{t.statuses.new}</SelectItem>
                   <SelectItem value="contacted">{t.statuses.contacted}</SelectItem>
-                  <SelectItem value="replied">{t.statuses.replied}</SelectItem>
+                  <SelectItem value="engaged">{t.statuses.engaged}</SelectItem>
                   <SelectItem value="qualified">{t.statuses.qualified}</SelectItem>
-                  <SelectItem value="unqualified">{t.statuses.unqualified}</SelectItem>
+                  <SelectItem value="meeting_scheduled">{t.statuses.meeting_scheduled}</SelectItem>
+                  <SelectItem value="opportunity">{t.statuses.opportunity}</SelectItem>
+                  <SelectItem value="customer">{t.statuses.customer}</SelectItem>
+                  <SelectItem value="lost">{t.statuses.lost}</SelectItem>
                   <SelectItem value="do_not_contact">{t.statuses.do_not_contact}</SelectItem>
                 </SelectContent>
               </Select>
@@ -701,7 +705,7 @@ export default function ContactsPage() {
                         <th
                           key={col.key}
                           className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
-                          onClick={(e) => handleSort(col.key, e)}
+                          onClick={() => handleSort(col.key)}
                         >
                           <span className="inline-flex items-center gap-1">
                             {col.label}

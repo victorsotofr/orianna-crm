@@ -74,7 +74,8 @@ export async function searchContact(
 export async function searchProspecting(
   apiKeyEncrypted: string,
   userQuery: string,
-  customTemplate?: string | null
+  customTemplate?: string | null,
+  depth: 'standard' | 'deep' = 'standard'
 ): Promise<string> {
   const apiKey = decrypt(apiKeyEncrypted);
   const client = new LinkupClient({ apiKey });
@@ -88,7 +89,7 @@ export async function searchProspecting(
 
   const response = await client.search({
     query: searchQuery,
-    depth: 'standard',
+    depth,
     outputType: 'sourcedAnswer',
   });
 

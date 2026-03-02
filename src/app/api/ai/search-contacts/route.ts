@@ -39,10 +39,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace' }, { status: 403 });
     }
 
-    const { query } = await request.json();
+    const { query, depth: requestedDepth } = await request.json();
     if (!query || typeof query !== 'string' || !query.trim()) {
       return NextResponse.json({ error: 'query is required' }, { status: 400 });
     }
+    const depth: 'standard' | 'deep' = requestedDepth === 'deep' ? 'deep' : 'standard';
 
     // Get workspace config
     const serviceSupabase = getServiceSupabase();
@@ -56,11 +57,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Linkup API key not configured' }, { status: 400 });
     }
 
-    // Run Linkup deep search
+    // Run Linkup search
     const rawResults = await searchProspecting(
       workspace.linkup_api_key_encrypted,
       query.trim(),
-      workspace.linkup_prospecting_query
+      workspace.linkup_prospecting_query,
+      depth
     );
 
     // Extract structured contacts with Claude

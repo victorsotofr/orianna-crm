@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 
-const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'];
+const VALID_STATUSES = ['new', 'contacted', 'engaged', 'qualified', 'meeting_scheduled', 'opportunity', 'customer', 'lost', 'do_not_contact'];
 const BATCH_SIZE = 500;
 
 function normalizeEmail(raw: string | undefined | null): string | null {

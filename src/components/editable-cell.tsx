@@ -31,9 +31,12 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
   const STATUS_OPTIONS = [
     { value: 'new', label: t.statuses.new },
     { value: 'contacted', label: t.statuses.contacted },
-    { value: 'replied', label: t.statuses.replied },
+    { value: 'engaged', label: t.statuses.engaged },
     { value: 'qualified', label: t.statuses.qualified },
-    { value: 'unqualified', label: t.statuses.unqualified },
+    { value: 'meeting_scheduled', label: t.statuses.meeting_scheduled },
+    { value: 'opportunity', label: t.statuses.opportunity },
+    { value: 'customer', label: t.statuses.customer },
+    { value: 'lost', label: t.statuses.lost },
     { value: 'do_not_contact', label: t.statuses.do_not_contact },
   ];
 

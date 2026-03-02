@@ -115,12 +115,12 @@ export async function POST(request: Request) {
               .eq('id', match.id)
               .is('replied_at', null);
 
-            // Update contact status
+            // Update contact status (only if still in early funnel stages)
             await supabase
               .from('contacts')
-              .update({ status: 'replied', replied_at: now })
+              .update({ status: 'engaged', replied_at: now })
               .eq('id', match.contactId)
-              .neq('status', 'replied');
+              .in('status', ['new', 'contacted']);
 
             // Add timeline entry
             await supabase.from('contact_timeline').insert({

@@ -155,9 +155,12 @@ export function ContactsListTable({ data, statusFilter, onStatusFilterChange }: 
             <SelectItem value="all">Tous les statuts</SelectItem>
             <SelectItem value="new">Nouveau</SelectItem>
             <SelectItem value="contacted">Contacté</SelectItem>
-            <SelectItem value="replied">Répondu</SelectItem>
+            <SelectItem value="engaged">Engagé</SelectItem>
             <SelectItem value="qualified">Qualifié</SelectItem>
-            <SelectItem value="unqualified">Non qualifié</SelectItem>
+            <SelectItem value="meeting_scheduled">RDV booké</SelectItem>
+            <SelectItem value="opportunity">Opportunité</SelectItem>
+            <SelectItem value="customer">Client</SelectItem>
+            <SelectItem value="lost">Perdu</SelectItem>
             <SelectItem value="do_not_contact">Ne pas contacter</SelectItem>
           </SelectContent>
         </Select>

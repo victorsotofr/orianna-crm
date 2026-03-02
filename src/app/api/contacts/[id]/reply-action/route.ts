@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Invalid type. Must be "hot" or "cold"' }, { status: 400 });
     }
 
-    const newStatus = type === 'hot' ? 'qualified' : 'unqualified';
+    const newStatus = type === 'hot' ? 'qualified' : 'lost';
 
     // Update contact status and replied_at
     const { error: updateError } = await supabase

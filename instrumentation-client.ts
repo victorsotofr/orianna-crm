@@ -8,4 +8,9 @@ Sentry.init({
   integrations: [Sentry.replayIntegration()],
   environment: process.env.NODE_ENV,
   enabled: process.env.NODE_ENV === "production",
+  ignoreErrors: [
+    // Supabase auth lock timeout — benign, happens when browser throttles
+    // backgrounded tabs. Auth retries automatically and recovers.
+    "Navigator LockManager lock",
+  ],
 });

@@ -68,7 +68,7 @@ export default function CampaignsPage() {
         supabase
           .from('contacts')
           .select('id, first_name, last_name, email, company_name, location, status, assigned_to, ai_personalized_line')
-          .in('status', ['new', 'contacted'])
+          .not('status', 'in', '("lost","do_not_contact","customer")')
           .order('created_at', { ascending: false }),
         supabase
           .from('templates')
@@ -299,22 +299,19 @@ export default function CampaignsPage() {
     }
   };
 
-  const handleSort = (column: string, event: React.MouseEvent) => {
+  const handleSort = (column: string) => {
     setSortKeys(prev => {
       const existingIndex = prev.findIndex(s => s.column === column);
-      if (event.shiftKey) {
-        if (existingIndex >= 0) {
+      if (existingIndex >= 0) {
+        // asc → desc → remove
+        if (prev[existingIndex].direction === 'asc') {
           const next = [...prev];
-          next[existingIndex] = { column, direction: next[existingIndex].direction === 'asc' ? 'desc' : 'asc' };
+          next[existingIndex] = { column, direction: 'desc' };
           return next;
         }
-        return [...prev, { column, direction: 'asc' }];
-      } else {
-        if (existingIndex >= 0 && prev.length === 1) {
-          return [{ column, direction: prev[0].direction === 'asc' ? 'desc' : 'asc' }];
-        }
-        return [{ column, direction: 'asc' }];
+        return prev.filter((_, i) => i !== existingIndex);
       }
+      return [...prev, { column, direction: 'asc' }];
     });
   };
 
@@ -339,6 +336,10 @@ export default function CampaignsPage() {
                   <SelectItem value="all">{t.campaigns.allStatuses}</SelectItem>
                   <SelectItem value="new">{t.statuses.new}</SelectItem>
                   <SelectItem value="contacted">{t.statuses.contacted}</SelectItem>
+                  <SelectItem value="engaged">{t.statuses.engaged}</SelectItem>
+                  <SelectItem value="qualified">{t.statuses.qualified}</SelectItem>
+                  <SelectItem value="meeting_scheduled">{t.statuses.meeting_scheduled}</SelectItem>
+                  <SelectItem value="opportunity">{t.statuses.opportunity}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={ownerFilter} onValueChange={setOwnerFilter}>
@@ -460,7 +461,7 @@ export default function CampaignsPage() {
                         <th
                           key={col.key}
                           className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
-                          onClick={(e) => handleSort(col.key, e)}
+                          onClick={() => handleSort(col.key)}
                         >
                           <span className="inline-flex items-center gap-1">
                             {col.label}

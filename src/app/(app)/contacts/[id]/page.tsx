@@ -266,7 +266,7 @@ export default function ContactDetailPage() {
       });
 
       if (response.ok) {
-        toast.success(type === 'hot' ? t.contacts.detail.toasts.qualified : t.contacts.detail.toasts.unqualified);
+        toast.success(type === 'hot' ? t.contacts.detail.toasts.qualified : t.contacts.detail.toasts.lost);
         fetchAll();
       } else {
         const data = await response.json();
@@ -409,9 +409,12 @@ export default function ContactDetailPage() {
                     <SelectContent>
                       <SelectItem value="new">{t.statuses.new}</SelectItem>
                       <SelectItem value="contacted">{t.statuses.contacted}</SelectItem>
-                      <SelectItem value="replied">{t.statuses.replied}</SelectItem>
+                      <SelectItem value="engaged">{t.statuses.engaged}</SelectItem>
                       <SelectItem value="qualified">{t.statuses.qualified}</SelectItem>
-                      <SelectItem value="unqualified">{t.statuses.unqualified}</SelectItem>
+                      <SelectItem value="meeting_scheduled">{t.statuses.meeting_scheduled}</SelectItem>
+                      <SelectItem value="opportunity">{t.statuses.opportunity}</SelectItem>
+                      <SelectItem value="customer">{t.statuses.customer}</SelectItem>
+                      <SelectItem value="lost">{t.statuses.lost}</SelectItem>
                       <SelectItem value="do_not_contact">{t.statuses.do_not_contact}</SelectItem>
                     </SelectContent>
                   </Select>

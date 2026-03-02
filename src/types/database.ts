@@ -20,7 +20,7 @@ export interface Contact {
   updated_at: string;
   user_id: string;
   // CRM extensions
-  status: 'new' | 'contacted' | 'replied' | 'qualified' | 'unqualified' | 'do_not_contact';
+  status: 'new' | 'contacted' | 'engaged' | 'qualified' | 'meeting_scheduled' | 'opportunity' | 'customer' | 'lost' | 'do_not_contact';
   assigned_to: string | null;
   phone: string | null;
   notes: string | null;

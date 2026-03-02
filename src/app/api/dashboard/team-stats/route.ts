@@ -49,6 +49,12 @@ export async function GET(request: Request) {
       .select('*', { count: 'exact', head: true })
       .not('replied_at', 'is', null);
 
+    // Hot leads count
+    const { count: hotLeadsCount } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('ai_score_label', 'HOT');
+
     // Per-user breakdown
     const { data: teamMembers } = await supabase
       .from('workspace_members')
@@ -91,20 +97,7 @@ export async function GET(request: Request) {
       })
     );
 
-    // Hot leads (AI scored)
-    const { count: hotLeadsCount } = await supabase
-      .from('contacts')
-      .select('*', { count: 'exact', head: true })
-      .eq('ai_score_label', 'HOT');
-
-    const { data: hotLeads } = await supabase
-      .from('contacts')
-      .select('id, first_name, last_name, email, company_name, ai_score, ai_score_label, ai_score_reasoning')
-      .eq('ai_score_label', 'HOT')
-      .order('ai_score', { ascending: false })
-      .limit(10);
-
-    // Recent sends
+    // Today's activity
     const { data: recentSends } = await supabase
       .from('emails_sent')
       .select(`
@@ -112,8 +105,8 @@ export async function GET(request: Request) {
         contacts (id, email, first_name, last_name, company_name, status),
         templates (id, name)
       `)
-      .order('sent_at', { ascending: false })
-      .limit(20);
+      .gte('sent_at', today.toISOString())
+      .order('sent_at', { ascending: false });
 
     const openRate = totalEmails && totalEmails > 0
       ? Math.round(((totalOpened || 0) / totalEmails) * 100)
@@ -129,7 +122,6 @@ export async function GET(request: Request) {
       openRate,
       replyRate,
       hotLeadsCount: hotLeadsCount || 0,
-      hotLeads: hotLeads || [],
       perUser,
       recentSends: recentSends || [],
     });

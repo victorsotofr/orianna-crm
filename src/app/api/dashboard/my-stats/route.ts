@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       .eq('sent_by', user.id)
       .not('replied_at', 'is', null);
 
-    // My recent sends
+    // My today's activity
     const { data: myRecentSends } = await supabase
       .from('emails_sent')
       .select(`
@@ -63,8 +63,8 @@ export async function GET(request: Request) {
         templates (id, name)
       `)
       .eq('sent_by', user.id)
-      .order('sent_at', { ascending: false })
-      .limit(20);
+      .gte('sent_at', today.toISOString())
+      .order('sent_at', { ascending: false });
 
     const myOpenRate = myTotalEmails && myTotalEmails > 0
       ? Math.round(((myOpened || 0) / myTotalEmails) * 100)

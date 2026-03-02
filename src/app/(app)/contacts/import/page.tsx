@@ -17,7 +17,7 @@ import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 
-const VALID_STATUSES = ['new', 'contacted', 'replied', 'qualified', 'unqualified', 'do_not_contact'] as const;
+const VALID_STATUSES = ['new', 'contacted', 'engaged', 'qualified', 'meeting_scheduled', 'opportunity', 'customer', 'lost', 'do_not_contact'] as const;
 
 const STATUS_ALIASES: Record<string, string> = {
   'nouveau': 'new',
@@ -27,15 +27,29 @@ const STATUS_ALIASES: Record<string, string> = {
   'contacté': 'contacted',
   'contacte': 'contacted',
   'contacted': 'contacted',
-  'répondu': 'replied',
-  'repondu': 'replied',
-  'replied': 'replied',
+  'engagé': 'engaged',
+  'engage': 'engaged',
+  'engaged': 'engaged',
+  'répondu': 'engaged',
+  'repondu': 'engaged',
+  'replied': 'engaged',
   'qualifié': 'qualified',
   'qualifie': 'qualified',
   'qualified': 'qualified',
-  'non qualifié': 'unqualified',
-  'non qualifie': 'unqualified',
-  'unqualified': 'unqualified',
+  'rdv booké': 'meeting_scheduled',
+  'rdv booke': 'meeting_scheduled',
+  'meeting_scheduled': 'meeting_scheduled',
+  'meeting scheduled': 'meeting_scheduled',
+  'opportunité': 'opportunity',
+  'opportunite': 'opportunity',
+  'opportunity': 'opportunity',
+  'client': 'customer',
+  'customer': 'customer',
+  'perdu': 'lost',
+  'lost': 'lost',
+  'non qualifié': 'lost',
+  'non qualifie': 'lost',
+  'unqualified': 'lost',
   'ne pas contacter': 'do_not_contact',
   'do_not_contact': 'do_not_contact',
   'dnc': 'do_not_contact',

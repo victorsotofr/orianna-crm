@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, User, AlertTriangle, UserCheck, Brain, Search } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Mail, Building2, AlertTriangle, UserCheck, Brain, Search, Sparkles, ArrowRight } from 'lucide-react';
 import { SiteHeader } from '@/components/site-header';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { useTranslation } from '@/lib/i18n';
@@ -188,17 +188,24 @@ export default function ImportPage() {
   const [csvDuplicates, setCsvDuplicates] = useState<number>(0);
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [step, setStep] = useState<'upload' | 'preview' | 'duplicates' | 'scoring'>('upload');
+  const [step, setStep] = useState<'upload' | 'preview' | 'duplicates' | 'done'>('upload');
 
   // Database duplicate state
   const [dbDuplicates, setDbDuplicates] = useState<DuplicateInfo[]>([]);
   const [newCount, setNewCount] = useState(0);
 
-  // Scoring state
+  // Post-import action state
   const [importedIds, setImportedIds] = useState<string[]>([]);
   const [scoringProgress, setScoringProgress] = useState(0);
   const [scoringTotal, setScoringTotal] = useState(0);
+  const [scoringRunning, setScoringRunning] = useState(false);
+  const [scoringDone, setScoringDone] = useState(false);
   const [enrichingImported, setEnrichingImported] = useState(false);
+  const [enrichingDone, setEnrichingDone] = useState(false);
+  const [personalizingProgress, setPersonalizingProgress] = useState(0);
+  const [personalizingTotal, setPersonalizingTotal] = useState(0);
+  const [personalizingRunning, setPersonalizingRunning] = useState(false);
+  const [personalizingDone, setPersonalizingDone] = useState(false);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -361,8 +368,7 @@ export default function ImportPage() {
           setImportedIds(data.importedIds);
           setScoringTotal(data.importedIds.length);
           setScoringProgress(0);
-          setStep('scoring');
-          startScoring(data.importedIds);
+          setStep('done');
         } else {
           router.push('/contacts');
         }
@@ -379,7 +385,6 @@ export default function ImportPage() {
   const handleEnrichImported = async (ids: string[]) => {
     setEnrichingImported(true);
     try {
-      // Enrich in batches of 100
       for (let i = 0; i < ids.length; i += 100) {
         const batch = ids.slice(i, i + 100);
         await apiFetch('/api/contacts/enrich', {
@@ -388,7 +393,8 @@ export default function ImportPage() {
           body: JSON.stringify({ contactIds: batch }),
         });
       }
-      toast.success(t.contacts.enrich.bulkStarted(ids.length));
+      toast.success(t.import.done.enrich.started);
+      setEnrichingDone(true);
     } catch {
       toast.error(t.contacts.enrich.error);
     } finally {
@@ -397,6 +403,7 @@ export default function ImportPage() {
   };
 
   const startScoring = async (ids: string[]) => {
+    setScoringRunning(true);
     const batchSize = 5;
     for (let i = 0; i < ids.length; i += batchSize) {
       const batch = ids.slice(i, i + batchSize);
@@ -411,8 +418,31 @@ export default function ImportPage() {
       }
       setScoringProgress(Math.min(i + batchSize, ids.length));
     }
-    toast.success(t.import.scoring.done);
-    setTimeout(() => router.push('/contacts'), 1500);
+    toast.success(t.import.done.scoring.done);
+    setScoringRunning(false);
+    setScoringDone(true);
+  };
+
+  const startPersonalizing = async (ids: string[]) => {
+    setPersonalizingRunning(true);
+    setPersonalizingTotal(ids.length);
+    const batchSize = 5;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      try {
+        await apiFetch('/api/ai/personalize-contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contactIds: batch }),
+        });
+      } catch {
+        // Continue with next batch even if one fails
+      }
+      setPersonalizingProgress(Math.min(i + batchSize, ids.length));
+    }
+    toast.success(t.import.done.personalize.done);
+    setPersonalizingRunning(false);
+    setPersonalizingDone(true);
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -622,49 +652,128 @@ export default function ImportPage() {
             </>
           )}
 
-          {step === 'scoring' && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5 text-amber-500" />
-                  {t.import.scoring.title}
-                </CardTitle>
-                <CardDescription>
-                  {t.import.scoring.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>{t.import.scoring.progress(scoringProgress, scoringTotal)}</span>
-                    <span>{scoringTotal > 0 ? Math.round((scoringProgress / scoringTotal) * 100) : 0}%</span>
-                  </div>
-                  <Progress value={scoringTotal > 0 ? (scoringProgress / scoringTotal) * 100 : 0} />
-                </div>
-                {importedIds.length > 0 && (
-                  <div className="flex items-center gap-2 pt-2 border-t">
-                    <Search className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm">{t.import.enrichPrompt}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEnrichImported(importedIds)}
-                      disabled={enrichingImported}
-                    >
-                      {enrichingImported ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-                      {t.contacts.enrich.button}
-                    </Button>
-                  </div>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push('/contacts')}
-                >
-                  {t.import.scoring.background}
+          {step === 'done' && (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    {t.import.done.title}
+                  </CardTitle>
+                  <CardDescription>
+                    {t.import.done.description(importedIds.length)}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              <div className="grid grid-cols-3 gap-3">
+                <Card>
+                  <CardContent className="pt-4 pb-4 px-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-amber-500" />
+                      <span className="text-sm font-medium">{t.import.done.scoring.title}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t.import.done.scoring.description}</p>
+                    {scoringRunning ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{t.import.done.scoring.progress(scoringProgress, scoringTotal)}</span>
+                          <span>{Math.round((scoringProgress / scoringTotal) * 100)}%</span>
+                        </div>
+                        <Progress value={(scoringProgress / scoringTotal) * 100} />
+                      </div>
+                    ) : scoringDone ? (
+                      <div className="flex items-center gap-1.5 text-xs text-green-600">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {t.import.done.scoring.done}
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => startScoring(importedIds)}
+                      >
+                        <Brain className="mr-1.5 h-3.5 w-3.5" />
+                        {t.import.done.scoring.button}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-4 pb-4 px-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      <span className="text-sm font-medium">{t.import.done.personalize.title}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t.import.done.personalize.description}</p>
+                    {personalizingRunning ? (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{t.import.done.personalize.progress(personalizingProgress, personalizingTotal)}</span>
+                          <span>{Math.round((personalizingProgress / personalizingTotal) * 100)}%</span>
+                        </div>
+                        <Progress value={(personalizingProgress / personalizingTotal) * 100} />
+                      </div>
+                    ) : personalizingDone ? (
+                      <div className="flex items-center gap-1.5 text-xs text-green-600">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {t.import.done.personalize.done}
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => startPersonalizing(importedIds)}
+                      >
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        {t.import.done.personalize.button}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-4 pb-4 px-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Search className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm font-medium">{t.import.done.enrich.title}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t.import.done.enrich.description}</p>
+                    {enrichingImported ? (
+                      <Button variant="outline" size="sm" className="w-full" disabled>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        {t.import.done.enrich.button}
+                      </Button>
+                    ) : enrichingDone ? (
+                      <div className="flex items-center gap-1.5 text-xs text-green-600">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {t.import.done.enrich.started}
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleEnrichImported(importedIds)}
+                      >
+                        <Search className="mr-1.5 h-3.5 w-3.5" />
+                        {t.import.done.enrich.button}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => router.push('/contacts')}>
+                  {t.import.done.viewContacts}
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </>
           )}
 
           {step === 'duplicates' && (

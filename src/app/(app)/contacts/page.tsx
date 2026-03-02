@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -268,6 +268,11 @@ export default function ContactsPage() {
 
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
+  const lastClickedIndexRef = useRef<number | null>(null);
+  const [scoringIds, setScoringIds] = useState<Set<string>>(new Set());
+  const [personalizingIds, setPersonalizingIds] = useState<Set<string>>(new Set());
+  const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
+
   const fetchContacts = useCallback(async () => {
     try {
       const params = new URLSearchParams({ limit: '10000', include_team: 'true' });
@@ -294,14 +299,31 @@ export default function ContactsPage() {
     fetchContacts();
   }, [fetchContacts]);
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const handleRowSelect = (id: string, index: number, event: React.MouseEvent) => {
+    if (event.shiftKey && lastClickedIndexRef.current !== null) {
+      const start = Math.min(lastClickedIndexRef.current, index);
+      const end = Math.max(lastClickedIndexRef.current, index);
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(filtered[i].id);
+        }
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
+    lastClickedIndexRef.current = index;
   };
+
+  useEffect(() => {
+    lastClickedIndexRef.current = null;
+  }, [search, statusFilter, ownerFilter, sortColumn, sortDirection]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) {
@@ -359,8 +381,9 @@ export default function ContactsPage() {
 
   const handleBulkScore = async () => {
     setBulkScoring(true);
+    const ids = Array.from(selectedIds);
+    setScoringIds(new Set(ids));
     try {
-      const ids = Array.from(selectedIds);
       const res = await apiFetch('/api/ai/score-contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -385,13 +408,15 @@ export default function ContactsPage() {
       toast.error(t.contacts.toasts.scoreErrorAi);
     } finally {
       setBulkScoring(false);
+      setScoringIds(new Set());
     }
   };
 
   const handleBulkEnrich = async () => {
     setBulkEnriching(true);
+    const ids = Array.from(selectedIds);
+    setEnrichingIds(new Set(ids));
     try {
-      const ids = Array.from(selectedIds);
       const res = await apiFetch('/api/contacts/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -409,6 +434,7 @@ export default function ContactsPage() {
               const data = await pollRes.json();
               if (data.finished) {
                 clearInterval(pollInterval);
+                setEnrichingIds(new Set());
                 fetchContacts();
                 if (data.updated > 0) toast.success(t.contacts.enrich.bulkCompleted(data.updated));
               }
@@ -417,14 +443,17 @@ export default function ContactsPage() {
         }, 10000);
         setTimeout(() => {
           clearInterval(pollInterval);
+          setEnrichingIds(new Set());
           fetchContacts();
         }, 180000);
       } else {
         const data = await res.json();
         toast.error(data.error || t.contacts.enrich.error);
+        setEnrichingIds(new Set());
       }
     } catch {
       toast.error(t.contacts.enrich.error);
+      setEnrichingIds(new Set());
     } finally {
       setBulkEnriching(false);
     }
@@ -432,8 +461,9 @@ export default function ContactsPage() {
 
   const handleBulkPersonalize = async () => {
     setBulkPersonalizing(true);
+    const ids = Array.from(selectedIds);
+    setPersonalizingIds(new Set(ids));
     try {
-      const ids = Array.from(selectedIds);
       const res = await apiFetch('/api/ai/personalize-contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -458,6 +488,7 @@ export default function ContactsPage() {
       toast.error(t.contacts.toasts.personalizeErrorAi);
     } finally {
       setBulkPersonalizing(false);
+      setPersonalizingIds(new Set());
     }
   };
 
@@ -670,25 +701,40 @@ export default function ContactsPage() {
                 </thead>
                 <tbody>
                   {filtered.length > 0 ? (
-                    filtered.map((contact) => (
+                    filtered.map((contact, index) => (
                       <tr key={contact.id} className="border-b hover:bg-muted/30 transition-colors">
-                        <td className="px-2 py-1 sticky left-0 bg-card z-10">
-                          <Checkbox
-                            checked={selectedIds.has(contact.id)}
-                            onCheckedChange={() => toggleSelect(contact.id)}
-                          />
+                        <td
+                          className="px-2 py-1 sticky left-0 bg-card z-10 cursor-pointer select-none"
+                          onClick={(e) => handleRowSelect(contact.id, index, e)}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <Checkbox
+                              checked={selectedIds.has(contact.id)}
+                              className="pointer-events-none"
+                              onCheckedChange={() => {}}
+                            />
+                            {enrichingIds.has(contact.id) && (
+                              <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                            )}
+                          </div>
                         </td>
                         {COLUMNS.map(col => (
                           <td key={col.key} className="px-3 py-1">
                             {col.type === 'ai_score' ? (
-                              <AIScoreBadge
-                                score={contact.ai_score}
-                                label={contact.ai_score_label}
-                                reasoning={contact.ai_score_reasoning}
-                                compact
-                              />
+                              scoringIds.has(contact.id) ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                              ) : (
+                                <AIScoreBadge
+                                  score={contact.ai_score}
+                                  label={contact.ai_score_label}
+                                  reasoning={contact.ai_score_reasoning}
+                                  compact
+                                />
+                              )
                             ) : col.type === 'ai_personalized' ? (
-                              contact.ai_personalized_line ? (
+                              personalizingIds.has(contact.id) ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+                              ) : contact.ai_personalized_line ? (
                                 <button
                                   type="button"
                                   className="text-xs max-w-[200px] truncate block text-left cursor-pointer hover:text-primary transition-colors"

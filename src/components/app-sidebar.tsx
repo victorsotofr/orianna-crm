@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Home,
   Users,
@@ -13,6 +13,7 @@ import {
   ChevronsUpDown,
   Plus,
   Check,
+  Reply,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -37,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTranslation } from "@/lib/i18n"
 import { useWorkspace } from "@/lib/workspace-context"
+import { supabase } from "@/lib/supabase"
 
 export function AppSidebar({
   user,
@@ -49,10 +51,41 @@ export function AppSidebar({
   }
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [followUpCount, setFollowUpCount] = useState(0)
   const { t } = useTranslation()
   const { workspace, workspaces, switchWorkspace } = useWorkspace()
 
-  const navMain = [
+  useEffect(() => {
+    const fetchFollowUpCount = async () => {
+      const todayStr = new Date().toISOString().split('T')[0]
+
+      const [tab1, tab2] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'contacted')
+          .not('first_contact', 'is', null)
+          .is('second_contact', null)
+          .lte('follow_up_1', todayStr),
+        supabase
+          .from('contacts')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'contacted')
+          .not('second_contact', 'is', null)
+          .is('third_contact', null)
+          .lte('follow_up_2', todayStr),
+      ])
+
+      setFollowUpCount((tab1.count ?? 0) + (tab2.count ?? 0))
+    }
+
+    fetchFollowUpCount()
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchFollowUpCount, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const navMain = useMemo(() => [
     {
       title: t.sidebar.dashboard,
       url: "/dashboard",
@@ -69,11 +102,17 @@ export function AppSidebar({
       icon: Send,
     },
     {
+      title: t.sidebar.followUps,
+      url: "/follow-ups",
+      icon: Reply,
+      badge: followUpCount,
+    },
+    {
       title: t.sidebar.templates,
       url: "/templates",
       icon: FileText,
     },
-  ]
+  ], [t, followUpCount])
 
   const showSwitcher = workspaces.length > 1
 

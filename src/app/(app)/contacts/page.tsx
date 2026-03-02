@@ -262,8 +262,7 @@ export default function ContactsPage() {
   const [bulkPersonalizing, setBulkPersonalizing] = useState(false);
   const [bulkEnriching, setBulkEnriching] = useState(false);
   const [previewLine, setPreviewLine] = useState<{ name: string; text: string } | null>(null);
-  const [sortColumn, setSortColumn] = useState<string>('created_at');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([{ column: 'created_at', direction: 'desc' }]);
   const [totalContacts, setTotalContacts] = useState(0);
 
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
@@ -323,7 +322,7 @@ export default function ContactsPage() {
 
   useEffect(() => {
     lastClickedIndexRef.current = null;
-  }, [search, statusFilter, ownerFilter, sortColumn, sortDirection]);
+  }, [search, statusFilter, ownerFilter, sortKeys]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) {
@@ -506,13 +505,23 @@ export default function ContactsPage() {
     return member?.display_name || member?.email?.split('@')[0] || '';
   }, [teamMembers]);
 
-  const handleSort = (column: string) => {
-    if (sortColumn === column) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
+  const handleSort = (column: string, event: React.MouseEvent) => {
+    setSortKeys(prev => {
+      const existingIndex = prev.findIndex(s => s.column === column);
+      if (event.shiftKey) {
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = { column, direction: next[existingIndex].direction === 'asc' ? 'desc' : 'asc' };
+          return next;
+        }
+        return [...prev, { column, direction: 'asc' }];
+      } else {
+        if (existingIndex >= 0 && prev.length === 1) {
+          return [{ column, direction: prev[0].direction === 'asc' ? 'desc' : 'asc' }];
+        }
+        return [{ column, direction: 'asc' }];
+      }
+    });
   };
 
   const filtered = contacts
@@ -528,30 +537,35 @@ export default function ContactsPage() {
       );
     })
     .sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
+      for (const { column, direction } of sortKeys) {
+        const dir = direction === 'asc' ? 1 : -1;
+        let result = 0;
 
-      if (sortColumn === 'ai_score') {
-        const scoreA = a.ai_score ?? -1;
-        const scoreB = b.ai_score ?? -1;
-        return (scoreA - scoreB) * dir;
+        if (column === 'ai_score') {
+          const scoreA = a.ai_score ?? -1;
+          const scoreB = b.ai_score ?? -1;
+          result = (scoreA - scoreB) * dir;
+        } else {
+          let valA: string | null | undefined;
+          let valB: string | null | undefined;
+
+          if (column === 'assigned_to') {
+            valA = getOwnerName(a.assigned_to);
+            valB = getOwnerName(b.assigned_to);
+          } else {
+            valA = (a as any)[column];
+            valB = (b as any)[column];
+          }
+
+          if (valA == null && valB == null) result = 0;
+          else if (valA == null) result = 1;
+          else if (valB == null) result = -1;
+          else result = String(valA).localeCompare(String(valB), 'fr', { sensitivity: 'base' }) * dir;
+        }
+
+        if (result !== 0) return result;
       }
-
-      let valA: string | null | undefined;
-      let valB: string | null | undefined;
-
-      if (sortColumn === 'assigned_to') {
-        valA = getOwnerName(a.assigned_to);
-        valB = getOwnerName(b.assigned_to);
-      } else {
-        valA = (a as any)[sortColumn];
-        valB = (b as any)[sortColumn];
-      }
-
-      if (valA == null && valB == null) return 0;
-      if (valA == null) return 1;
-      if (valB == null) return -1;
-
-      return String(valA).localeCompare(String(valB), 'fr', { sensitivity: 'base' }) * dir;
+      return 0;
     });
 
   // Use server-side counts for the owner filter dropdown
@@ -681,22 +695,28 @@ export default function ContactsPage() {
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
-                    {COLUMNS.map(col => (
-                      <th
-                        key={col.key}
-                        className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
-                        onClick={() => handleSort(col.key)}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          {sortColumn === col.key ? (
-                            sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                          ) : (
-                            <ArrowUpDown className="h-3 w-3 opacity-30" />
-                          )}
-                        </span>
-                      </th>
-                    ))}
+                    {COLUMNS.map(col => {
+                      const sortIndex = sortKeys.findIndex(s => s.column === col.key);
+                      return (
+                        <th
+                          key={col.key}
+                          className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
+                          onClick={(e) => handleSort(col.key, e)}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {col.label}
+                            {sortIndex >= 0 ? (
+                              <span className="inline-flex items-center gap-0.5">
+                                {sortKeys[sortIndex].direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                                {sortKeys.length > 1 && <span className="text-[10px] opacity-60">{sortIndex + 1}</span>}
+                              </span>
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-30" />
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>

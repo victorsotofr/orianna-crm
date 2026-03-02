@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Plus, Sparkles } from 'lucide-react';
+import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -58,6 +58,9 @@ export default function CampaignsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('new');
   const [ownerFilter, setOwnerFilter] = useState('all');
+  const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([]);
+
+  const lastClickedIndexRef = useRef<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -91,8 +94,14 @@ export default function CampaignsPage() {
     fetchData();
   }, [fetchData]);
 
+  const getOwnerName = useCallback((assignedTo: string | null) => {
+    if (!assignedTo) return '';
+    const member = teamMembers.find(m => m.user_id === assignedTo);
+    return member?.display_name || '';
+  }, [teamMembers]);
+
   const filteredContacts = useMemo(() => {
-    return contacts.filter(c => {
+    const filtered = contacts.filter(c => {
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (ownerFilter !== 'all') {
         if (ownerFilter === 'unassigned') {
@@ -113,7 +122,38 @@ export default function CampaignsPage() {
       }
       return true;
     });
-  }, [contacts, statusFilter, ownerFilter, search]);
+
+    if (sortKeys.length === 0) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      for (const { column, direction } of sortKeys) {
+        const dir = direction === 'asc' ? 1 : -1;
+        let result = 0;
+
+        let valA: string | null | undefined;
+        let valB: string | null | undefined;
+
+        if (column === 'assigned_to') {
+          valA = getOwnerName(a.assigned_to);
+          valB = getOwnerName(b.assigned_to);
+        } else if (column === 'name') {
+          valA = [a.first_name, a.last_name].filter(Boolean).join(' ');
+          valB = [b.first_name, b.last_name].filter(Boolean).join(' ');
+        } else {
+          valA = (a as any)[column];
+          valB = (b as any)[column];
+        }
+
+        if (valA == null && valB == null) result = 0;
+        else if (valA == null) result = 1;
+        else if (valB == null) result = -1;
+        else result = String(valA).localeCompare(String(valB), 'fr', { sensitivity: 'base' }) * dir;
+
+        if (result !== 0) return result;
+      }
+      return 0;
+    });
+  }, [contacts, statusFilter, ownerFilter, search, sortKeys, getOwnerName]);
 
   const templateUsesPersonalization = useMemo(() => {
     if (!selectedTemplate) return false;
@@ -225,14 +265,31 @@ export default function CampaignsPage() {
     fetchData();
   };
 
-  const toggleContact = (contactId: string) => {
-    setSelectedContacts(prev => {
-      const next = new Set(prev);
-      if (next.has(contactId)) next.delete(contactId);
-      else next.add(contactId);
-      return next;
-    });
+  const handleRowSelect = (id: string, index: number, event: React.MouseEvent) => {
+    if (event.shiftKey && lastClickedIndexRef.current !== null) {
+      const start = Math.min(lastClickedIndexRef.current, index);
+      const end = Math.max(lastClickedIndexRef.current, index);
+      setSelectedContacts(prev => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(filteredContacts[i].id);
+        }
+        return next;
+      });
+    } else {
+      setSelectedContacts(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
+    lastClickedIndexRef.current = index;
   };
+
+  useEffect(() => {
+    lastClickedIndexRef.current = null;
+  }, [search, statusFilter, ownerFilter, sortKeys]);
 
   const toggleAll = () => {
     if (selectedContacts.size === filteredContacts.length) {
@@ -242,10 +299,23 @@ export default function CampaignsPage() {
     }
   };
 
-  const getOwnerName = (assignedTo: string | null) => {
-    if (!assignedTo) return '—';
-    const member = teamMembers.find(m => m.user_id === assignedTo);
-    return member?.display_name || '—';
+  const handleSort = (column: string, event: React.MouseEvent) => {
+    setSortKeys(prev => {
+      const existingIndex = prev.findIndex(s => s.column === column);
+      if (event.shiftKey) {
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = { column, direction: next[existingIndex].direction === 'asc' ? 'desc' : 'asc' };
+          return next;
+        }
+        return [...prev, { column, direction: 'asc' }];
+      } else {
+        if (existingIndex >= 0 && prev.length === 1) {
+          return [{ column, direction: prev[0].direction === 'asc' ? 'desc' : 'asc' }];
+        }
+        return [{ column, direction: 'asc' }];
+      }
+    });
   };
 
   return (
@@ -377,30 +447,56 @@ export default function CampaignsPage() {
                         onCheckedChange={toggleAll}
                       />
                     </th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.owner}</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.status}</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.name}</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.email}</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.company}</th>
-                    <th className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap">{t.campaigns.tableHeaders.city}</th>
+                    {[
+                      { key: 'assigned_to', label: t.campaigns.tableHeaders.owner },
+                      { key: 'status', label: t.campaigns.tableHeaders.status },
+                      { key: 'name', label: t.campaigns.tableHeaders.name },
+                      { key: 'email', label: t.campaigns.tableHeaders.email },
+                      { key: 'company_name', label: t.campaigns.tableHeaders.company },
+                      { key: 'location', label: t.campaigns.tableHeaders.city },
+                    ].map(col => {
+                      const sortIndex = sortKeys.findIndex(s => s.column === col.key);
+                      return (
+                        <th
+                          key={col.key}
+                          className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
+                          onClick={(e) => handleSort(col.key, e)}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {col.label}
+                            {sortIndex >= 0 ? (
+                              <span className="inline-flex items-center gap-0.5">
+                                {sortKeys[sortIndex].direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                                {sortKeys.length > 1 && <span className="text-[10px] opacity-60">{sortIndex + 1}</span>}
+                              </span>
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-30" />
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredContacts.map(contact => (
+                  {filteredContacts.map((contact, index) => (
                     <tr
                       key={contact.id}
-                      className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
-                      onClick={() => toggleContact(contact.id)}
+                      className="border-b hover:bg-muted/30 transition-colors"
                     >
-                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className="px-2 py-1 cursor-pointer select-none"
+                        onClick={(e) => handleRowSelect(contact.id, index, e)}
+                      >
                         <Checkbox
                           checked={selectedContacts.has(contact.id)}
-                          onCheckedChange={() => toggleContact(contact.id)}
+                          className="pointer-events-none"
+                          onCheckedChange={() => {}}
                         />
                       </td>
                       <td className="px-3 py-1">
                         {contact.assigned_to ? (
-                          <Badge variant="secondary" className="text-xs">{getOwnerName(contact.assigned_to)}</Badge>
+                          <Badge variant="secondary" className="text-xs">{getOwnerName(contact.assigned_to) || '—'}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">{t.campaigns.unassigned}</span>
                         )}

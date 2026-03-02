@@ -532,8 +532,10 @@ export const en: Translations = {
     preview: {
       validContacts: 'Valid contacts',
       invalidEmails: 'Invalid emails',
+      noEmail: 'No email',
       csvDuplicates: 'CSV duplicates',
       invalidIgnored: (n: number) => `${n} invalid email(s) ignored`,
+      noEmailInfo: (n: number) => `${n} contact(s) without email will be imported (LinkedIn, phone only)`,
       title: 'Preview',
       firstN: (n: number) => `First 10 of ${n}`,
       nContacts: (n: number) => `${n} contact(s)`,

@@ -48,7 +48,7 @@ function normalizeStatus(raw: string | undefined): string | undefined {
 }
 
 interface ParsedContact {
-  email: string;
+  email?: string;
   first_name?: string;
   firstName?: string;
   prénom?: string;
@@ -124,7 +124,7 @@ function autoMapRows(rows: string[][]): ParsedContact[] {
     }
   }
 
-  if (emailCol === -1) return []; // Can't import without email column
+  if (emailCol === -1) return []; // Can't auto-map without email column
 
   return rows.map(row => {
     const contact: ParsedContact = {
@@ -184,6 +184,7 @@ export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [validContacts, setValidContacts] = useState<ParsedContact[]>([]);
   const [invalidEmails, setInvalidEmails] = useState<string[]>([]);
+  const [noEmailCount, setNoEmailCount] = useState<number>(0);
   const [csvDuplicates, setCsvDuplicates] = useState<number>(0);
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -209,17 +210,31 @@ export default function ImportPage() {
     const invalid: string[] = [];
     const seen = new Set<string>();
     let dupeCount = 0;
+    let noEmailCount = 0;
 
     contacts.forEach((contact) => {
       const email = (contact.email || '').toLowerCase().trim();
-      if (!email) { invalid.push('(empty email)'); return; }
+
+      if (!email) {
+        // Allow contacts without email if they have at least a name
+        const hasName = (contact.first_name || contact.firstName || contact.prénom || '') ||
+                        (contact.last_name || contact.lastName || contact.nom || '');
+        if (hasName) {
+          noEmailCount++;
+          valid.push({ ...contact, email: undefined });
+        } else {
+          invalid.push('(empty email)');
+        }
+        return;
+      }
+
       if (!validateEmail(email)) { invalid.push(email); return; }
       if (seen.has(email)) { dupeCount++; return; }
       seen.add(email);
       valid.push({ ...contact, email });
     });
 
-    return { valid, invalid, dupeCount };
+    return { valid, invalid, dupeCount, noEmailCount };
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,10 +281,11 @@ export default function ImportPage() {
           contacts = autoMapRows(rows);
         }
 
-        const { valid, invalid, dupeCount } = processContacts(contacts);
+        const { valid, invalid, dupeCount, noEmailCount: noEmail } = processContacts(contacts);
 
         setValidContacts(valid);
         setInvalidEmails(invalid);
+        setNoEmailCount(noEmail);
         setCsvDuplicates(dupeCount);
         setStep('preview');
 
@@ -421,6 +437,7 @@ export default function ImportPage() {
     setFile(null);
     setValidContacts([]);
     setInvalidEmails([]);
+    setNoEmailCount(0);
     setCsvDuplicates(0);
     setDbDuplicates([]);
     setNewCount(0);
@@ -470,7 +487,7 @@ export default function ImportPage() {
 
           {step === 'preview' && (
             <>
-              <div className="grid grid-cols-3 gap-3">
+              <div className={`grid gap-3 ${noEmailCount > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
                 <Card>
                   <CardContent className="pt-4 pb-3 px-4">
                     <div className="flex items-center justify-between mb-1">
@@ -480,6 +497,17 @@ export default function ImportPage() {
                     <div className="text-xl font-bold text-green-600">{validContacts.length}</div>
                   </CardContent>
                 </Card>
+                {noEmailCount > 0 && (
+                  <Card>
+                    <CardContent className="pt-4 pb-3 px-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-muted-foreground">{t.import.preview.noEmail}</span>
+                        <Mail className="h-3.5 w-3.5 text-blue-500" />
+                      </div>
+                      <div className="text-xl font-bold text-blue-600">{noEmailCount}</div>
+                    </CardContent>
+                  </Card>
+                )}
                 <Card>
                   <CardContent className="pt-4 pb-3 px-4">
                     <div className="flex items-center justify-between mb-1">
@@ -504,6 +532,15 @@ export default function ImportPage() {
                 <Alert variant="destructive">
                   <AlertDescription className="text-xs">
                     {t.import.preview.invalidIgnored(invalidEmails.length)}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {noEmailCount > 0 && (
+                <Alert>
+                  <Mail className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    {t.import.preview.noEmailInfo(noEmailCount)}
                   </AlertDescription>
                 </Alert>
               )}
@@ -538,7 +575,7 @@ export default function ImportPage() {
                               </div>
                               <div className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Mail className="h-3 w-3" />
-                                {contact.email}
+                                {contact.email || <span className="italic">{t.import.preview.noEmail}</span>}
                               </div>
                             </TableCell>
                             <TableCell>

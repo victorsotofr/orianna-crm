@@ -530,8 +530,10 @@ export const fr = {
     preview: {
       validContacts: 'Contacts valides',
       invalidEmails: 'Emails invalides',
+      noEmail: 'Sans email',
       csvDuplicates: 'Doublons CSV',
       invalidIgnored: (n: number) => `${n} email(s) invalide(s) ignorés`,
+      noEmailInfo: (n: number) => `${n} contact(s) sans email seront importé(s) (LinkedIn, téléphone uniquement)`,
       title: 'Aperçu',
       firstN: (n: number) => `10 premiers sur ${n}`,
       nContacts: (n: number) => `${n} contact(s)`,

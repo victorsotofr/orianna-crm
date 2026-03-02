@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       first_name: c.first_name || '',
       last_name: c.last_name || '',
-      email: c.email?.trim() || null,
+      email: c.email?.toLowerCase().trim() || null,
       company_name: c.company_name || '',
       job_title: c.job_title || '',
       location: c.location || '',
@@ -58,7 +58,10 @@ export async function POST(request: NextRequest) {
 
     const { error: insertError, data } = await serviceSupabase
       .from('contacts')
-      .insert(rows)
+      .upsert(rows, {
+        onConflict: 'workspace_id,email',
+        ignoreDuplicates: true,
+      })
       .select('id');
 
     if (insertError) {

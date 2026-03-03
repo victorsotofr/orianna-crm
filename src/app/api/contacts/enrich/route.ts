@@ -34,15 +34,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Maximum 100 contacts per request' }, { status: 400 });
     }
 
-    // Fetch workspace's FullEnrich API key
+    // Fetch user's FullEnrich API key
     const serviceSupabase = getServiceSupabase();
-    const { data: workspace } = await serviceSupabase
-      .from('workspaces')
+    const { data: userSettings } = await serviceSupabase
+      .from('user_settings')
       .select('fullenrich_api_key_encrypted')
-      .eq('id', ctx.workspaceId)
+      .eq('user_id', user.id)
       .single();
 
-    if (!workspace?.fullenrich_api_key_encrypted) {
+    if (!userSettings?.fullenrich_api_key_encrypted) {
       return NextResponse.json(
         { error: 'FullEnrich API key not configured. Go to Settings > Integrations.' },
         { status: 400 }
@@ -51,17 +51,17 @@ export async function POST(request: NextRequest) {
 
     // Check credit balance before starting enrichment
     try {
-      const credits = await getCreditBalance(workspace.fullenrich_api_key_encrypted);
+      const credits = await getCreditBalance(userSettings.fullenrich_api_key_encrypted);
       if (credits <= 0) {
-        console.warn(`[FullEnrich] No credits remaining for workspace ${ctx.workspaceId}. Enrichment blocked.`);
+        console.warn(`[FullEnrich] No credits remaining for user ${user.id}. Enrichment blocked.`);
         return NextResponse.json(
           { error: 'No FullEnrich credits remaining. Please top up your account at fullenrich.com.' },
           { status: 402 }
         );
       }
-      console.log(`[FullEnrich] Credits available: ${credits} for workspace ${ctx.workspaceId}`);
+      console.log(`[FullEnrich] Credits available: ${credits} for user ${user.id}`);
     } catch (creditErr: any) {
-      console.warn(`[FullEnrich] Could not verify credits for workspace ${ctx.workspaceId}:`, creditErr.message);
+      console.warn(`[FullEnrich] Could not verify credits for user ${user.id}:`, creditErr.message);
       // Continue anyway — the enrichment call itself will fail if no credits
     }
 
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     // Start enrichment
     const enrichmentId = await startBulkEnrichment(
-      workspace.fullenrich_api_key_encrypted,
+      userSettings.fullenrich_api_key_encrypted,
       enrichable.map((c) => ({
         contact_id: c.id,
         workspace_id: c.workspace_id,

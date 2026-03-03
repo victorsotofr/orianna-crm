@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
-import { encrypt } from '@/lib/encryption';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,13 +24,11 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = getServiceSupabase();
     const { data: workspace } = await serviceSupabase
       .from('workspaces')
-      .select('fullenrich_api_key_encrypted, linkup_api_key_encrypted, ai_personalization_prompt, ai_scoring_prompt, linkup_company_query, linkup_contact_query, linkup_prospecting_query')
+      .select('ai_personalization_prompt, ai_scoring_prompt, linkup_company_query, linkup_contact_query, linkup_prospecting_query')
       .eq('id', ctx.workspaceId)
       .single();
 
     return NextResponse.json({
-      fullenrichConfigured: !!workspace?.fullenrich_api_key_encrypted,
-      linkupConfigured: !!workspace?.linkup_api_key_encrypted,
       aiPersonalizationPrompt: workspace?.ai_personalization_prompt || null,
       aiScoringPrompt: workspace?.ai_scoring_prompt || null,
       linkupCompanyQuery: workspace?.linkup_company_query || null,
@@ -63,20 +60,11 @@ export async function POST(request: NextRequest) {
     }
 
     const {
-      fullenrichApiKey, linkupApiKey,
       aiPersonalizationPrompt, aiScoringPrompt, linkupCompanyQuery, linkupContactQuery, linkupProspectingQuery,
     } = await request.json();
 
     const serviceSupabase = getServiceSupabase();
     const update: Record<string, string | null> = {};
-
-    if (fullenrichApiKey !== undefined) {
-      update.fullenrich_api_key_encrypted = fullenrichApiKey ? encrypt(fullenrichApiKey) : null;
-    }
-
-    if (linkupApiKey !== undefined) {
-      update.linkup_api_key_encrypted = linkupApiKey ? encrypt(linkupApiKey) : null;
-    }
 
     // AI prompt fields — empty string resets to default (null)
     if (aiPersonalizationPrompt !== undefined) {

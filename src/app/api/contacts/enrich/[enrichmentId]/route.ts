@@ -27,20 +27,20 @@ export async function GET(
       return NextResponse.json({ error: 'No workspace' }, { status: 403 });
     }
 
-    // Fetch workspace's FullEnrich API key
+    // Fetch user's FullEnrich API key
     const serviceSupabase = getServiceSupabase();
-    const { data: workspace } = await serviceSupabase
-      .from('workspaces')
+    const { data: userSettings } = await serviceSupabase
+      .from('user_settings')
       .select('fullenrich_api_key_encrypted')
-      .eq('id', ctx.workspaceId)
+      .eq('user_id', user.id)
       .single();
 
-    if (!workspace?.fullenrich_api_key_encrypted) {
+    if (!userSettings?.fullenrich_api_key_encrypted) {
       return NextResponse.json({ error: 'FullEnrich API key not configured' }, { status: 400 });
     }
 
     // Poll FullEnrich for results
-    const result = await getEnrichmentResult(workspace.fullenrich_api_key_encrypted, enrichmentId);
+    const result = await getEnrichmentResult(userSettings.fullenrich_api_key_encrypted, enrichmentId);
 
     let updatedCount = 0;
 

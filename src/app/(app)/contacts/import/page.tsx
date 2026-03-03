@@ -64,15 +64,9 @@ function normalizeStatus(raw: string | undefined): string | undefined {
 interface ParsedContact {
   email?: string;
   first_name?: string;
-  firstName?: string;
-  prénom?: string;
   last_name?: string;
-  lastName?: string;
-  nom?: string;
   company_name?: string;
-  companyName?: string;
-  entreprise?: string;
-  société?: string;
+  status?: string;
   [key: string]: any;
 }
 
@@ -84,28 +78,56 @@ interface DuplicateInfo {
   created_by: string | null;
 }
 
+/**
+ * Case-insensitive, accent-insensitive header lookup.
+ * Normalizes all CSV column names to lowercase + stripped accents,
+ * then matches against known aliases for each field.
+ */
+function findField(raw: Record<string, any>, aliases: string[]): string | undefined {
+  const normalized = new Map<string, any>();
+  for (const key of Object.keys(raw)) {
+    const norm = key.toLowerCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!normalized.has(norm) && raw[key]) {
+      normalized.set(norm, raw[key]);
+    }
+  }
+  for (const alias of aliases) {
+    const value = normalized.get(alias);
+    if (value && typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+const EMAIL_ALIASES = ['email', 'e-mail', 'mail', 'courriel', 'email address', 'emailaddress'];
+const FIRST_NAME_ALIASES = ['first_name', 'firstname', 'first name', 'prenom', 'given name', 'givenname', 'given_name'];
+const LAST_NAME_ALIASES = ['last_name', 'lastname', 'last name', 'nom', 'family name', 'familyname', 'family_name', 'surname'];
+const COMPANY_ALIASES = ['company_name', 'companyname', 'company name', 'company', 'entreprise', 'societe', 'organization', 'organisation', 'org'];
+const STATUS_ALIASES_HEADERS = ['status', 'statut'];
+
 const KNOWN_HEADERS = [
-  'email', 'e-mail', 'first_name', 'firstname', 'prénom', 'prenom',
-  'last_name', 'lastname', 'nom', 'company_name', 'companyname',
-  'entreprise', 'société', 'status', 'statut',
+  ...EMAIL_ALIASES, ...FIRST_NAME_ALIASES, ...LAST_NAME_ALIASES,
+  ...COMPANY_ALIASES, ...STATUS_ALIASES_HEADERS,
 ];
 
 // Check if the first row looks like headers (contains known field names)
 function hasHeaderRow(keys: string[]): boolean {
-  const lowerKeys = keys.map(k => k.toLowerCase().trim());
+  const lowerKeys = keys.map(k => k.toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
   return KNOWN_HEADERS.some(h => lowerKeys.includes(h));
 }
 
-// Auto-detect headers in EN/FR
+// Auto-detect headers in EN/FR (case-insensitive, accent-insensitive)
 function normalizeContact(raw: ParsedContact): ParsedContact {
-  const rawStatus = raw.status || raw.Status || raw.STATUS || raw.statut || raw.Statut || raw.STATUT || undefined;
   return {
     ...raw,
-    email: (raw.email || raw.Email || raw.EMAIL || raw['e-mail'] || raw['E-mail'] || '').toLowerCase().trim(),
-    first_name: raw.first_name || raw.firstName || raw.prénom || raw.Prénom || raw['First Name'] || raw['first name'] || undefined,
-    last_name: raw.last_name || raw.lastName || raw.nom || raw.Nom || raw['Last Name'] || raw['last name'] || undefined,
-    company_name: raw.company_name || raw.companyName || raw.entreprise || raw.Entreprise || raw.société || raw.Société || raw['Company Name'] || raw['company name'] || raw.company || raw.Company || undefined,
-    status: normalizeStatus(rawStatus),
+    email: (findField(raw, EMAIL_ALIASES) || '').toLowerCase().trim(),
+    first_name: findField(raw, FIRST_NAME_ALIASES),
+    last_name: findField(raw, LAST_NAME_ALIASES),
+    company_name: findField(raw, COMPANY_ALIASES),
+    status: normalizeStatus(findField(raw, STATUS_ALIASES_HEADERS)),
   };
 }
 

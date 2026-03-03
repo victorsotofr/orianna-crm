@@ -351,6 +351,10 @@ export default function ContactsPage() {
         setSelectedIds(new Set());
         fetchContacts();
         toast.success(t.contacts.toasts.deleted);
+      } else {
+        const data = await response.json();
+        console.error('Bulk delete failed:', response.status, data);
+        toast.error(data.error || t.contacts.toasts.deleteError);
       }
     } catch (error) {
       console.error('Bulk delete error:', error);

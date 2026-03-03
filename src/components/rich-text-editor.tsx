@@ -2,10 +2,21 @@
 
 import { useEffect } from "react"
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
+import { Extension } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Underline from "@tiptap/extension-underline"
 import Placeholder from "@tiptap/extension-placeholder"
+
+const TabHardBreak = Extension.create({
+  name: 'tabHardBreak',
+  addKeyboardShortcuts() {
+    return {
+      Tab: ({ editor }) => editor.commands.setHardBreak(),
+      'Shift-Tab': ({ editor }) => editor.commands.setHardBreak(),
+    }
+  },
+})
 import { Button } from "@/components/ui/button"
 import { Bold, Italic, Underline as UnderlineIcon, Link2, List, ListOrdered, Undo, Redo } from "lucide-react"
 
@@ -25,6 +36,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, onEdit
       Link.configure({ openOnClick: false }),
       Underline,
       Placeholder.configure({ placeholder: placeholder || "" }),
+      TabHardBreak,
     ],
     content: value,
     onUpdate: ({ editor }) => {
@@ -121,10 +133,6 @@ export function RichTextEditor({ value, onChange, placeholder, className, onEdit
         className={`${isExpanded ? "flex-1" : "min-h-[180px] max-h-[300px]"} overflow-y-auto px-3 py-2 text-sm prose prose-sm max-w-none dark:prose-invert focus-within:outline-none [&_.tiptap]:outline-none [&_.tiptap]:min-h-full [&_.tiptap_p.is-editor-empty:first-child::before]:text-muted-foreground/50 [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:h-0 [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none`}
       />
 
-      {/* Hint */}
-      <div className="px-2 py-1 text-[10px] text-muted-foreground/60 border-t shrink-0">
-        Entrée = nouveau paragraphe, Maj+Entrée = retour à la ligne
-      </div>
     </div>
   )
 }

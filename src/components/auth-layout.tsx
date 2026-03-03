@@ -9,6 +9,8 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { Loader2 } from 'lucide-react';
 import { LanguageProvider, type Language } from '@/lib/i18n';
 import { WorkspaceProvider } from '@/lib/workspace-context';
+import { BackgroundJobProvider } from '@/lib/background-jobs';
+import { BackgroundJobsPanel } from '@/components/background-jobs-panel';
 
 function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
   useKeyboardShortcuts();
@@ -76,25 +78,28 @@ export default function AuthLayout({
   return (
     <LanguageProvider initialLanguage={language}>
       <WorkspaceProvider userId={user.id} onNoWorkspace={handleNoWorkspace}>
-        <SidebarProvider
-          open={true}
-          onOpenChange={() => {}}
-          style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
-        >
-          <AppSidebar
-            variant="inset"
-            user={{
-              name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-              email: user.email || '',
-              avatar: user.user_metadata?.avatar_url,
-            }}
-          />
-          <SidebarInset className="min-w-0">
-            <KeyboardShortcutsProvider>
-              {children}
-            </KeyboardShortcutsProvider>
-          </SidebarInset>
-        </SidebarProvider>
+        <BackgroundJobProvider>
+          <SidebarProvider
+            open={true}
+            onOpenChange={() => {}}
+            style={{ "--sidebar-width": "14rem" } as React.CSSProperties}
+          >
+            <AppSidebar
+              variant="inset"
+              user={{
+                name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+                email: user.email || '',
+                avatar: user.user_metadata?.avatar_url,
+              }}
+            />
+            <SidebarInset className="min-w-0">
+              <KeyboardShortcutsProvider>
+                {children}
+              </KeyboardShortcutsProvider>
+            </SidebarInset>
+          </SidebarProvider>
+          <BackgroundJobsPanel />
+        </BackgroundJobProvider>
       </WorkspaceProvider>
     </LanguageProvider>
   );

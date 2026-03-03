@@ -11,10 +11,9 @@ export default function TemplatesLoading() {
             <Skeleton className="h-8 w-[120px] rounded" />
             <Skeleton className="h-8 w-[100px] rounded" />
           </div>
-          <div className="flex-1 min-h-0 rounded-lg border bg-card p-3 space-y-3">
-            <Skeleton className="h-8 w-full rounded" />
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full rounded" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 flex-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-[100px] rounded-lg" />
             ))}
           </div>
         </div>

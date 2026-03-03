@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Use service role for writes to bypass RLS (user is already authenticated)
     const serviceSupabase = getServiceSupabase();
 
-    // Fetch Linkup API key + custom prompts from the first contact's workspace
+    // Fetch custom prompts from the first contact's workspace
     let linkupApiKey: string | undefined;
     let customPrompts: { personalizationPrompt?: string; linkupCompanyQuery?: string; linkupContactQuery?: string } | undefined;
     const { data: firstContact } = await supabase
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     if (firstContact?.workspace_id) {
       const { data: workspace } = await serviceSupabase
         .from('workspaces')
-        .select('linkup_api_key_encrypted, ai_personalization_prompt, linkup_company_query, linkup_contact_query')
+        .select('ai_personalization_prompt, linkup_company_query, linkup_contact_query')
         .eq('id', firstContact.workspace_id)
         .single();
 
@@ -66,20 +66,28 @@ export async function POST(request: NextRequest) {
             linkupContactQuery: workspace.linkup_contact_query || undefined,
           };
         }
+      }
+    }
 
-        if (workspace.linkup_api_key_encrypted) {
-          // Verify Linkup credits before using it
-          try {
-            const credits = await getLinkupCreditBalance(workspace.linkup_api_key_encrypted);
-            if (credits <= 0) {
-              console.warn(`[Linkup] No credits remaining for workspace ${firstContact.workspace_id}. Falling back to web_search.`);
-            } else {
-              linkupApiKey = workspace.linkup_api_key_encrypted;
-              console.log(`[Linkup] Credits available: ${credits} for workspace ${firstContact.workspace_id}`);
-            }
-          } catch (creditErr: any) {
-            console.warn(`[Linkup] Could not verify credits for workspace ${firstContact.workspace_id}:`, creditErr.message, '— falling back to web_search');
+    // Fetch Linkup API key from user settings
+    if (auth.userId !== 'service') {
+      const { data: userSettings } = await serviceSupabase
+        .from('user_settings')
+        .select('linkup_api_key_encrypted')
+        .eq('user_id', auth.userId)
+        .single();
+
+      if (userSettings?.linkup_api_key_encrypted) {
+        try {
+          const credits = await getLinkupCreditBalance(userSettings.linkup_api_key_encrypted);
+          if (credits <= 0) {
+            console.warn(`[Linkup] No credits remaining for user ${auth.userId}. Falling back to web_search.`);
+          } else {
+            linkupApiKey = userSettings.linkup_api_key_encrypted;
+            console.log(`[Linkup] Credits available: ${credits} for user ${auth.userId}`);
           }
+        } catch (creditErr: any) {
+          console.warn(`[Linkup] Could not verify credits for user ${auth.userId}:`, creditErr.message, '— falling back to web_search');
         }
       }
     }

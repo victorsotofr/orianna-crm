@@ -127,20 +127,26 @@ export default function SettingsPage() {
 
   const fetchIntegrations = async () => {
     try {
+      // Fetch user-level API key status
+      const ir = await fetch('/api/settings/integrations');
+      if (ir.ok) {
+        const iData = await ir.json();
+        setFullenrichConfigured(iData.fullenrichConfigured || false);
+        setLinkupConfigured(iData.linkupConfigured || false);
+      }
+      // Fetch workspace-level AI prompts
       const r = await apiFetch('/api/settings/workspace');
       if (r.ok) {
         const data = await r.json();
-        setFullenrichConfigured(data.fullenrichConfigured || false);
-        setLinkupConfigured(data.linkupConfigured || false);
         setAiPersonalizationPrompt(data.aiPersonalizationPrompt || DEFAULT_PERSONALIZATION_PROMPT);
         setAiScoringPrompt(data.aiScoringPrompt || DEFAULT_SCORING_PROMPT);
         setLinkupCompanyQuery(data.linkupCompanyQuery || DEFAULT_LINKUP_COMPANY_QUERY);
         setLinkupContactQuery(data.linkupContactQuery || DEFAULT_LINKUP_CONTACT_QUERY);
         setLinkupProspectingQuery(data.linkupProspectingQuery || DEFAULT_LINKUP_PROSPECTING_QUERY);
       }
-      // Fetch credits for both services
+      // Fetch credits for both services (user-level)
       setLoadingCredits(true);
-      const cr = await apiFetch('/api/settings/enrichment-credits');
+      const cr = await fetch('/api/settings/enrichment-credits');
       if (cr.ok) {
         const cData = await cr.json();
         if (cData.fullenrich?.configured) setFullenrichCredits(cData.fullenrich.credits);
@@ -161,7 +167,7 @@ export default function SettingsPage() {
         return;
       }
 
-      const r = await apiFetch('/api/settings/workspace', {
+      const r = await fetch('/api/settings/integrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

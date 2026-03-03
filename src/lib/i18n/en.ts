@@ -787,6 +787,20 @@ export const en: Translations = {
     loginToJoin: 'Log in to join',
     signupToJoin: 'Sign up to join',
   },
+  backgroundJobs: {
+    title: 'Background tasks',
+    clearAll: 'Clear all',
+    badge: (n: number) => `${n} task${n > 1 ? 's' : ''}`,
+    minimize: 'Minimize',
+    types: {
+      enrich: 'Enrichment',
+      score: 'AI Scoring',
+      personalize: 'AI Personalization',
+    },
+    running: (type: string, count: number) => `${type} for ${count} contact(s)...`,
+    completed: (type: string, count: number) => `${type} complete — ${count} contact(s)`,
+    failed: (type: string, error: string) => `${type} failed — ${error}`,
+  },
   login: {
     title: 'Sign in to your account',
     description: 'Enter your email below to sign in to your account',

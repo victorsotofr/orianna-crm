@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import type { Contact, TeamMember } from '@/types/database';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
+import { useBackgroundJobs } from '@/lib/background-jobs';
 
 function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void }) {
   const { t } = useTranslation();
@@ -262,9 +263,6 @@ export default function ContactsPage() {
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');
   const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
-  const [bulkScoring, setBulkScoring] = useState(false);
-  const [bulkPersonalizing, setBulkPersonalizing] = useState(false);
-  const [bulkEnriching, setBulkEnriching] = useState(false);
   const [previewLine, setPreviewLine] = useState<{ name: string; text: string } | null>(null);
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([{ column: 'created_at', direction: 'desc' }]);
   const [totalContacts, setTotalContacts] = useState(0);
@@ -272,9 +270,10 @@ export default function ContactsPage() {
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
   const lastClickedIndexRef = useRef<number | null>(null);
-  const [scoringIds, setScoringIds] = useState<Set<string>>(new Set());
-  const [personalizingIds, setPersonalizingIds] = useState<Set<string>>(new Set());
-  const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
+  const { startScoring, startPersonalizing, startEnrichment, getRunningJobContactIds, onJobCompleted } = useBackgroundJobs();
+  const scoringIds = getRunningJobContactIds('score');
+  const personalizingIds = getRunningJobContactIds('personalize');
+  const enrichingIds = getRunningJobContactIds('enrich');
 
   const fetchContacts = useCallback(async () => {
     try {
@@ -301,6 +300,10 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
+
+  useEffect(() => {
+    return onJobCompleted(() => fetchContacts());
+  }, [onJobCompleted, fetchContacts]);
 
   const handleRowSelect = (id: string, index: number, event: React.MouseEvent) => {
     if (event.shiftKey && lastClickedIndexRef.current !== null) {
@@ -382,117 +385,22 @@ export default function ContactsPage() {
     }
   };
 
-  const handleBulkScore = async () => {
-    setBulkScoring(true);
+  const handleBulkScore = () => {
     const ids = Array.from(selectedIds);
-    setScoringIds(new Set(ids));
-    try {
-      const res = await apiFetch('/api/ai/score-contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactIds: ids }),
-      });
-      if (res.ok) {
-        const { scores } = await res.json();
-        const succeeded = scores.filter((s: any) => !s.error).length;
-        const failed = scores.filter((s: any) => s.error);
-        if (succeeded > 0) {
-          toast.success(t.contacts.toasts.scored(succeeded));
-        }
-        if (failed.length > 0) {
-          toast.error(t.contacts.toasts.scoreErrors(failed.length, failed[0].error));
-        }
-        setSelectedIds(new Set());
-        fetchContacts();
-      } else {
-        toast.error(t.contacts.toasts.scoreError);
-      }
-    } catch {
-      toast.error(t.contacts.toasts.scoreErrorAi);
-    } finally {
-      setBulkScoring(false);
-      setScoringIds(new Set());
-    }
+    startScoring(ids);
+    setSelectedIds(new Set());
   };
 
-  const handleBulkEnrich = async () => {
-    setBulkEnriching(true);
+  const handleBulkEnrich = () => {
     const ids = Array.from(selectedIds);
-    setEnrichingIds(new Set(ids));
-    try {
-      const res = await apiFetch('/api/contacts/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactIds: ids }),
-      });
-      if (res.ok) {
-        const { enrichmentId, contactCount } = await res.json();
-        toast.success(t.contacts.enrich.bulkStarted(contactCount), { duration: 6000 });
-        setSelectedIds(new Set());
-        // Poll FullEnrich for results via our backend
-        const pollInterval = setInterval(async () => {
-          try {
-            const pollRes = await apiFetch(`/api/contacts/enrich/${enrichmentId}`);
-            if (pollRes.ok) {
-              const data = await pollRes.json();
-              if (data.finished) {
-                clearInterval(pollInterval);
-                setEnrichingIds(new Set());
-                fetchContacts();
-                if (data.updated > 0) toast.success(t.contacts.enrich.bulkCompleted(data.updated));
-              }
-            }
-          } catch {}
-        }, 10000);
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          setEnrichingIds(new Set());
-          fetchContacts();
-        }, 180000);
-      } else {
-        const data = await res.json();
-        toast.error(data.error || t.contacts.enrich.error);
-        setEnrichingIds(new Set());
-      }
-    } catch {
-      toast.error(t.contacts.enrich.error);
-      setEnrichingIds(new Set());
-    } finally {
-      setBulkEnriching(false);
-    }
+    startEnrichment(ids);
+    setSelectedIds(new Set());
   };
 
-  const handleBulkPersonalize = async () => {
-    setBulkPersonalizing(true);
+  const handleBulkPersonalize = () => {
     const ids = Array.from(selectedIds);
-    setPersonalizingIds(new Set(ids));
-    try {
-      const res = await apiFetch('/api/ai/personalize-contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactIds: ids }),
-      });
-      if (res.ok) {
-        const { results } = await res.json();
-        const succeeded = results.filter((r: any) => !r.error).length;
-        const failed = results.filter((r: any) => r.error);
-        if (succeeded > 0) {
-          toast.success(t.contacts.toasts.personalized(succeeded));
-        }
-        if (failed.length > 0) {
-          toast.error(t.contacts.toasts.personalizeErrors(failed.length, failed[0].error));
-        }
-        setSelectedIds(new Set());
-        fetchContacts();
-      } else {
-        toast.error(t.contacts.toasts.personalizeError);
-      }
-    } catch {
-      toast.error(t.contacts.toasts.personalizeErrorAi);
-    } finally {
-      setBulkPersonalizing(false);
-      setPersonalizingIds(new Set());
-    }
+    startPersonalizing(ids);
+    setSelectedIds(new Set());
   };
 
   const handleCellUpdate = (contactId: string, field: string, value: string | null) => {
@@ -841,27 +749,24 @@ export default function ContactsPage() {
             variant="outline"
             size="sm"
             onClick={handleBulkEnrich}
-            disabled={bulkEnriching}
           >
-            {bulkEnriching ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
+            <Search className="mr-1.5 h-3.5 w-3.5" />
             {t.contacts.enrich.button}
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={handleBulkScore}
-            disabled={bulkScoring}
           >
-            {bulkScoring ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Brain className="mr-1.5 h-3.5 w-3.5" />}
+            <Brain className="mr-1.5 h-3.5 w-3.5" />
             {t.contacts.bulkActions.aiScore}
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={handleBulkPersonalize}
-            disabled={bulkPersonalizing}
           >
-            {bulkPersonalizing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
             {t.contacts.bulkActions.personalize}
           </Button>
           <Button

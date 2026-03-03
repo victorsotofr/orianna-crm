@@ -785,6 +785,20 @@ export const fr = {
     loginToJoin: 'Connectez-vous pour rejoindre',
     signupToJoin: 'Inscrivez-vous pour rejoindre',
   },
+  backgroundJobs: {
+    title: 'Tâches en cours',
+    clearAll: 'Tout effacer',
+    badge: (n: number) => `${n} tâche${n > 1 ? 's' : ''}`,
+    minimize: 'Réduire',
+    types: {
+      enrich: 'Enrichissement',
+      score: 'Scoring IA',
+      personalize: 'Personnalisation IA',
+    },
+    running: (type: string, count: number) => `${type} de ${count} contact(s)...`,
+    completed: (type: string, count: number) => `${type} terminé — ${count} contact(s)`,
+    failed: (type: string, error: string) => `${type} échoué — ${error}`,
+  },
   login: {
     title: 'Se connecter à votre compte',
     description: 'Entrez votre email ci-dessous pour vous connecter à votre compte',

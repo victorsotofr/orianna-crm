@@ -341,24 +341,42 @@ export default function ContactsPage() {
 
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
+    const idsArray = Array.from(selectedIds);
+    const BATCH_SIZE = 100;
+    let deletedCount = 0;
+
     try {
-      const response = await apiFetch('/api/contacts/bulk-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact_ids: Array.from(selectedIds) }),
-      });
-      if (response.ok) {
+      // Process in batches to avoid timeout on large deletes
+      for (let i = 0; i < idsArray.length; i += BATCH_SIZE) {
+        const batch = idsArray.slice(i, i + BATCH_SIZE);
+        const response = await apiFetch('/api/contacts/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contact_ids: batch }),
+        });
+
+        if (response.ok) {
+          deletedCount += batch.length;
+          // Show progress for large deletes
+          if (idsArray.length > BATCH_SIZE) {
+            toast.loading(`Suppression en cours... ${deletedCount}/${idsArray.length}`, { id: 'bulk-delete-progress' });
+          }
+        } else {
+          const data = await response.json();
+          console.error('Bulk delete failed:', response.status, data);
+          toast.error(data.error || t.contacts.toasts.deleteError, { id: 'bulk-delete-progress' });
+          break;
+        }
+      }
+
+      if (deletedCount > 0) {
         setSelectedIds(new Set());
         fetchContacts();
-        toast.success(t.contacts.toasts.deleted);
-      } else {
-        const data = await response.json();
-        console.error('Bulk delete failed:', response.status, data);
-        toast.error(data.error || t.contacts.toasts.deleteError);
+        toast.success(`${deletedCount} contact${deletedCount > 1 ? 's' : ''} supprimé${deletedCount > 1 ? 's' : ''}`, { id: 'bulk-delete-progress' });
       }
     } catch (error) {
       console.error('Bulk delete error:', error);
-      toast.error(t.contacts.toasts.deleteError);
+      toast.error(t.contacts.toasts.deleteError, { id: 'bulk-delete-progress' });
     } finally {
       setBulkDeleting(false);
     }

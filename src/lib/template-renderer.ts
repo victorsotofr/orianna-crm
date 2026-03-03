@@ -3,19 +3,32 @@ export interface TemplateVariables {
 }
 
 /**
+ * Ensures empty paragraphs (used by TipTap for blank lines) are rendered
+ * with visible height. Browsers collapse `<p></p>` to zero height, so we
+ * inject a `<br>` to give them a line of space.
+ */
+export function preserveEmptyParagraphs(html: string): string {
+  // Match <p> tags that are empty or contain only whitespace
+  return html.replace(/<p>(\s*)<\/p>/gi, '<p><br></p>');
+}
+
+/**
  * Renders a template with variables using simple string replacement
  * Variables are in the format {{ variable_name }}
  */
 export function renderTemplate(templateContent: string, variables: TemplateVariables): string {
   try {
     let result = templateContent;
-    
+
     // Replace all {{variable}} with the actual values
     for (const [key, value] of Object.entries(variables)) {
       const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
       result = result.replace(regex, value || '');
     }
-    
+
+    // Preserve empty paragraphs so blank lines render with visible height
+    result = preserveEmptyParagraphs(result);
+
     return result;
   } catch (error) {
     console.error('Template rendering error:', error);

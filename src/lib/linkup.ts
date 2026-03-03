@@ -3,6 +3,29 @@ import { LinkupClient } from 'linkup-sdk';
 import { decrypt } from '@/lib/encryption';
 import { DEFAULT_LINKUP_COMPANY_QUERY, DEFAULT_LINKUP_CONTACT_QUERY, DEFAULT_LINKUP_PROSPECTING_QUERY } from '@/lib/ai-defaults';
 
+const RETRYABLE_STATUS_CODES = [502, 503, 504];
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 3000;
+
+async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const status = err?.statusCode ?? err?.status;
+      const isRetryable = RETRYABLE_STATUS_CODES.some(s => String(err?.message ?? '').includes(String(s))) || RETRYABLE_STATUS_CODES.includes(status);
+      if (isRetryable && attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY_MS * (attempt + 1);
+        console.warn(`[Linkup] ${label} attempt ${attempt + 1} failed (${status || 'timeout'}), retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error(`[Linkup] ${label} failed after ${MAX_RETRIES + 1} attempts`);
+}
+
 export async function searchCompany(
   apiKeyEncrypted: string,
   companyName: string,
@@ -19,11 +42,10 @@ export async function searchCompany(
     .replace(/\{companyName\}/g, companyName)
     .replace(/\{domainPart\}/g, domainPart);
 
-  const response = await client.search({
-    query,
-    depth,
-    outputType: 'sourcedAnswer',
-  });
+  const response = await withRetry(
+    () => client.search({ query, depth, outputType: 'sourcedAnswer' }),
+    `searchCompany(${companyName})`
+  );
 
   return typeof response === 'string' ? response : (response as any).answer || JSON.stringify(response);
 }
@@ -62,11 +84,10 @@ export async function searchContact(
     .replace(/\{companyName\}/g, companyName)
     .replace(/\{linkedinPart\}/g, linkedinPart);
 
-  const response = await client.search({
-    query,
-    depth: 'standard',
-    outputType: 'sourcedAnswer',
-  });
+  const response = await withRetry(
+    () => client.search({ query, depth: 'standard', outputType: 'sourcedAnswer' }),
+    `searchContact(${contactName})`
+  );
 
   return typeof response === 'string' ? response : (response as any).answer || JSON.stringify(response);
 }
@@ -87,11 +108,10 @@ export async function searchProspecting(
 
   const searchQuery = `${instructions}\n\n${userQuery}`;
 
-  const response = await client.search({
-    query: searchQuery,
-    depth,
-    outputType: 'sourcedAnswer',
-  });
+  const response = await withRetry(
+    () => client.search({ query: searchQuery, depth, outputType: 'sourcedAnswer' }),
+    `searchProspecting(${depth})`
+  );
 
   return typeof response === 'string' ? response : (response as any).answer || JSON.stringify(response);
 }

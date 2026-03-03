@@ -103,14 +103,30 @@ function findField(raw: Record<string, any>, aliases: string[]): string | undefi
 
 const EMAIL_ALIASES = ['email', 'e-mail', 'mail', 'courriel', 'email address', 'emailaddress'];
 const FIRST_NAME_ALIASES = ['first_name', 'firstname', 'first name', 'prenom', 'given name', 'givenname', 'given_name'];
-const LAST_NAME_ALIASES = ['last_name', 'lastname', 'last name', 'nom', 'family name', 'familyname', 'family_name', 'surname'];
+const LAST_NAME_ALIASES = ['last_name', 'lastname', 'last name', 'family name', 'familyname', 'family_name', 'surname'];
+const FULL_NAME_ALIASES = ['name', 'full name', 'fullname', 'full_name', 'nom', 'nom complet', 'nomcomplet'];
 const COMPANY_ALIASES = ['company_name', 'companyname', 'company name', 'company', 'entreprise', 'societe', 'organization', 'organisation', 'org'];
 const STATUS_ALIASES_HEADERS = ['status', 'statut'];
 
 const KNOWN_HEADERS = [
-  ...EMAIL_ALIASES, ...FIRST_NAME_ALIASES, ...LAST_NAME_ALIASES,
+  ...EMAIL_ALIASES, ...FIRST_NAME_ALIASES, ...LAST_NAME_ALIASES, ...FULL_NAME_ALIASES,
   ...COMPANY_ALIASES, ...STATUS_ALIASES_HEADERS,
 ];
+
+/**
+ * Split full name into first and last name.
+ * First word = first name, rest = last name.
+ */
+function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
+}
 
 // Check if the first row looks like headers (contains known field names)
 function hasHeaderRow(keys: string[]): boolean {
@@ -121,11 +137,25 @@ function hasHeaderRow(keys: string[]): boolean {
 
 // Auto-detect headers in EN/FR (case-insensitive, accent-insensitive)
 function normalizeContact(raw: ParsedContact): ParsedContact {
+  const email = (findField(raw, EMAIL_ALIASES) || '').toLowerCase().trim();
+  let firstName = findField(raw, FIRST_NAME_ALIASES);
+  let lastName = findField(raw, LAST_NAME_ALIASES);
+
+  // If first/last name not found separately, try to split full name
+  if (!firstName && !lastName) {
+    const fullName = findField(raw, FULL_NAME_ALIASES);
+    if (fullName) {
+      const split = splitFullName(fullName);
+      firstName = split.firstName;
+      lastName = split.lastName;
+    }
+  }
+
   return {
     ...raw,
-    email: (findField(raw, EMAIL_ALIASES) || '').toLowerCase().trim(),
-    first_name: findField(raw, FIRST_NAME_ALIASES),
-    last_name: findField(raw, LAST_NAME_ALIASES),
+    email,
+    first_name: firstName,
+    last_name: lastName,
     company_name: findField(raw, COMPANY_ALIASES),
     status: normalizeStatus(findField(raw, STATUS_ALIASES_HEADERS)),
   };

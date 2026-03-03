@@ -21,6 +21,7 @@ import { Template } from "@/types/database"
 import { VariablePicker, AVAILABLE_VARIABLES } from "@/components/variable-picker"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import { useTranslation } from "@/lib/i18n"
+import { preserveEmptyParagraphs } from "@/lib/template-renderer"
 import type { Editor } from "@tiptap/react"
 
 interface TemplateFormProps {
@@ -48,7 +49,7 @@ function renderPreview(html: string): string {
     const regex = new RegExp(`\\{\\{\\s*${v.name}\\s*\\}\\}`, "g")
     result = result.replace(regex, PREVIEW_DATA[v.name] || v.example)
   }
-  return result
+  return preserveEmptyParagraphs(result)
 }
 
 export function TemplateForm({ template, onSuccess }: TemplateFormProps) {

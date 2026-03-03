@@ -8,12 +8,21 @@ import Link from "@tiptap/extension-link"
 import Underline from "@tiptap/extension-underline"
 import Placeholder from "@tiptap/extension-placeholder"
 
-const TabHardBreak = Extension.create({
-  name: 'tabHardBreak',
+const TabNewParagraph = Extension.create({
+  name: 'tabNewParagraph',
   addKeyboardShortcuts() {
     return {
-      Tab: ({ editor }) => editor.commands.setHardBreak(),
-      'Shift-Tab': ({ editor }) => editor.commands.setHardBreak(),
+      Tab: ({ editor }) => {
+        // Insert an empty paragraph to create a visible blank line.
+        // Two splits: first ends the current paragraph, second creates
+        // the empty paragraph that acts as vertical spacing.
+        editor.chain().splitBlock().splitBlock().run()
+        return true
+      },
+      'Shift-Tab': ({ editor }) => {
+        editor.chain().splitBlock().splitBlock().run()
+        return true
+      },
     }
   },
 })
@@ -36,7 +45,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, onEdit
       Link.configure({ openOnClick: false }),
       Underline,
       Placeholder.configure({ placeholder: placeholder || "" }),
-      TabHardBreak,
+      TabNewParagraph,
     ],
     content: value,
     onUpdate: ({ editor }) => {

@@ -16,6 +16,7 @@ import type { Template } from '@/types/database';
 import { AVAILABLE_VARIABLES } from '@/components/variable-picker';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
+import { preserveEmptyParagraphs } from '@/lib/template-renderer';
 import type { Editor } from '@tiptap/react';
 
 const PREVIEW_DATA: Record<string, string> = {
@@ -38,7 +39,7 @@ function renderPreview(html: string): string {
     const regex = new RegExp(`\\{\\{\\s*${v.name}\\s*\\}\\}`, 'g');
     result = result.replace(regex, PREVIEW_DATA[v.name] || v.example);
   }
-  return result;
+  return preserveEmptyParagraphs(result);
 }
 
 export default function TemplateDetailPage() {

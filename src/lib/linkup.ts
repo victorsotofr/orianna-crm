@@ -72,20 +72,29 @@ export async function searchContact(
   contactName: string,
   companyName: string,
   linkedinUrl?: string | null,
-  customQuery?: string
+  customQuery?: string,
+  depth: 'deep' | 'standard' = 'standard',
+  title?: string | null,
+  location?: string | null,
 ): Promise<string> {
   const apiKey = decrypt(apiKeyEncrypted);
   const client = new LinkupClient({ apiKey });
 
-  const linkedinPart = linkedinUrl ? ` LinkedIn: ${linkedinUrl}` : '';
+  const linkedinPart = linkedinUrl
+    ? `If available, also check their LinkedIn profile: ${linkedinUrl}`
+    : 'Search for their LinkedIn profile to verify identity';
+  const titlePart = title ? `\nKnown title: ${title}` : '';
+  const locationPart = location ? `\nKnown location: ${location}` : '';
   const template = customQuery || DEFAULT_LINKUP_CONTACT_QUERY;
   const query = template
     .replace(/\{contactName\}/g, contactName)
     .replace(/\{companyName\}/g, companyName)
-    .replace(/\{linkedinPart\}/g, linkedinPart);
+    .replace(/\{linkedinPart\}/g, linkedinPart)
+    .replace(/\{titlePart\}/g, titlePart)
+    .replace(/\{locationPart\}/g, locationPart);
 
   const response = await withRetry(
-    () => client.search({ query, depth: 'standard', outputType: 'sourcedAnswer' }),
+    () => client.search({ query, depth, outputType: 'sourcedAnswer' }),
     `searchContact(${contactName})`
   );
 

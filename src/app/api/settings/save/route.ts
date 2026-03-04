@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       imapPassword,
       signatureHtml,
       dailySendLimit,
+      bccEnabled,
     } = body;
 
     // Validate required fields (password is optional if already saved)
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
       imap_port: parseInt(imapPort) || 993,
       imap_user: imapUser || null,
       daily_send_limit: parseInt(dailySendLimit) || 50,
+      bcc_enabled: bccEnabled !== undefined ? bccEnabled : true,
     };
 
     // Only update signature if provided

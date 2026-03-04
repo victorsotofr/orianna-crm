@@ -154,6 +154,7 @@ export async function POST(request: Request) {
             port: userSettings.smtp_port || 587,
             user: userSettings.smtp_user,
             passwordEncrypted: userSettings.smtp_password_encrypted,
+            bccEnabled: userSettings.bcc_enabled !== false,
           },
           {
             to: contact.email,

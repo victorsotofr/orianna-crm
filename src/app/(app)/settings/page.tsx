@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DEFAULT_PERSONALIZATION_PROMPT, DEFAULT_SCORING_PROMPT, DEFAULT_LINKUP_COMPANY_QUERY, DEFAULT_LINKUP_CONTACT_QUERY, DEFAULT_LINKUP_PROSPECTING_QUERY } from '@/lib/ai-defaults';
 import { SiteHeader } from '@/components/site-header';
@@ -65,9 +66,14 @@ export default function SettingsPage() {
   const [linkupContactQuery, setLinkupContactQuery] = useState('');
   const [linkupProspectingQuery, setLinkupProspectingQuery] = useState('');
   const [promptsDialogOpen, setPromptsDialogOpen] = useState(false);
-  const [promptSection, setPromptSection] = useState('perso-claude');
+  const [promptSection, setPromptSection] = useState('business-context');
   const [savingPrompts, setSavingPrompts] = useState(false);
   const [enhancingPrompt, setEnhancingPrompt] = useState<string | null>(null);
+  // Business context state
+  const [aiCompanyDescription, setAiCompanyDescription] = useState('');
+  const [aiTargetIndustry, setAiTargetIndustry] = useState('');
+  const [aiTargetRoles, setAiTargetRoles] = useState('');
+  const [aiGeographicFocus, setAiGeographicFocus] = useState('');
   const [smtpHost, setSmtpHost] = useState('webmail.polytechnique.fr');
   const [smtpPort, setSmtpPort] = useState('587');
   const [smtpUser, setSmtpUser] = useState('');
@@ -83,10 +89,11 @@ export default function SettingsPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [bccEnabled, setBccEnabled] = useState(true);
   const [originalValues, setOriginalValues] = useState({
     smtpHost: 'webmail.polytechnique.fr', smtpPort: '587', smtpUser: '', smtpPassword: '',
     imapHost: 'webmail.polytechnique.fr', imapPort: '993', imapUser: '', imapPassword: '',
-    dailySendLimit: '50',
+    dailySendLimit: '50', bccEnabled: true,
   });
 
   useEffect(() => { fetchSettings(); fetchIntegrations(); }, []);
@@ -96,9 +103,10 @@ export default function SettingsPage() {
       smtpUser !== originalValues.smtpUser || smtpPassword !== originalValues.smtpPassword ||
       imapHost !== originalValues.imapHost || imapPort !== originalValues.imapPort ||
       imapUser !== originalValues.imapUser || imapPassword !== originalValues.imapPassword ||
-      dailySendLimit !== originalValues.dailySendLimit
+      dailySendLimit !== originalValues.dailySendLimit ||
+      bccEnabled !== originalValues.bccEnabled
     );
-  }, [smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, imapPassword, dailySendLimit, originalValues]);
+  }, [smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, imapPassword, dailySendLimit, bccEnabled, originalValues]);
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => { if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
@@ -116,10 +124,11 @@ export default function SettingsPage() {
             imapHost: settings.imap_host || 'webmail.polytechnique.fr', imapPort: String(settings.imap_port || '993'),
             imapUser: settings.imap_user || '', imapPassword: settings.imap_password || '',
             dailySendLimit: String(settings.daily_send_limit || '50'),
+            bccEnabled: settings.bcc_enabled !== false,
           };
           setSmtpHost(v.smtpHost); setSmtpPort(v.smtpPort); setSmtpUser(v.smtpUser); setSmtpPassword(v.smtpPassword);
           setImapHost(v.imapHost); setImapPort(v.imapPort); setImapUser(v.imapUser); setImapPassword(v.imapPassword);
-          setDailySendLimit(v.dailySendLimit); setOriginalValues(v); setHasUnsavedChanges(false);
+          setDailySendLimit(v.dailySendLimit); setBccEnabled(v.bccEnabled); setOriginalValues(v); setHasUnsavedChanges(false);
         }
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -143,6 +152,10 @@ export default function SettingsPage() {
         setLinkupCompanyQuery(data.linkupCompanyQuery || DEFAULT_LINKUP_COMPANY_QUERY);
         setLinkupContactQuery(data.linkupContactQuery || DEFAULT_LINKUP_CONTACT_QUERY);
         setLinkupProspectingQuery(data.linkupProspectingQuery || DEFAULT_LINKUP_PROSPECTING_QUERY);
+        setAiCompanyDescription(data.aiCompanyDescription || '');
+        setAiTargetIndustry(data.aiTargetIndustry || '');
+        setAiTargetRoles(data.aiTargetRoles || '');
+        setAiGeographicFocus(data.aiGeographicFocus || '');
       }
       // Fetch credits for both services (user-level)
       setLoadingCredits(true);
@@ -203,6 +216,10 @@ export default function SettingsPage() {
           linkupCompanyQuery: normalize(linkupCompanyQuery, DEFAULT_LINKUP_COMPANY_QUERY),
           linkupContactQuery: normalize(linkupContactQuery, DEFAULT_LINKUP_CONTACT_QUERY),
           linkupProspectingQuery: normalize(linkupProspectingQuery, DEFAULT_LINKUP_PROSPECTING_QUERY),
+          aiCompanyDescription: aiCompanyDescription,
+          aiTargetIndustry: aiTargetIndustry,
+          aiTargetRoles: aiTargetRoles,
+          aiGeographicFocus: aiGeographicFocus,
         }),
       });
       if (r.ok) {
@@ -247,7 +264,7 @@ export default function SettingsPage() {
     if (!smtpPassword) { toast.error(t.settings.toasts.passwordRequired); return; }
     setSaving(true);
     try {
-      const body: Record<string, string> = { smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, dailySendLimit };
+      const body: Record<string, any> = { smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, dailySendLimit, bccEnabled };
       if (imapPassword) body.imapPassword = imapPassword;
       const r = await fetch('/api/settings/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (r.ok) { toast.success(t.settings.toasts.saved); await fetchSettings(); }
@@ -259,7 +276,7 @@ export default function SettingsPage() {
     setSmtpUser(originalValues.smtpUser); setSmtpPassword(originalValues.smtpPassword);
     setImapHost(originalValues.imapHost); setImapPort(originalValues.imapPort);
     setImapUser(originalValues.imapUser); setImapPassword(originalValues.imapPassword);
-    setDailySendLimit(originalValues.dailySendLimit);
+    setDailySendLimit(originalValues.dailySendLimit); setBccEnabled(originalValues.bccEnabled);
   }, [originalValues]);
   const handleTestConnection = async () => {
     if (!smtpHost || !smtpPort || !smtpUser) { toast.error(t.settings.toasts.fillSmtp); return; }
@@ -416,6 +433,14 @@ export default function SettingsPage() {
                       <div><Label className="text-xs">{t.settings.smtp.password}</Label><div className="mt-1"><PwInput value={imapPassword} onChange={setImapPassword} show={showImapPassword} onToggle={() => setShowImapPassword(!showImapPassword)} /></div></div>
                     </div>
 
+                    <div className="flex items-center justify-between rounded-lg border p-3 mt-1">
+                      <div>
+                        <Label className="text-xs font-medium">{t.settings.smtp.bccEnabled}</Label>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{t.settings.smtp.bccDescription}</p>
+                      </div>
+                      <Switch checked={bccEnabled} onCheckedChange={setBccEnabled} />
+                    </div>
+
                     <div className="flex items-center justify-between pt-1">
                       <p className="text-[11px] text-muted-foreground">{t.settings.smtp.encrypted}</p>
                       <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing}>
@@ -491,7 +516,7 @@ export default function SettingsPage() {
                     <div>
                       <Label className="text-xs flex items-center gap-1.5">
                         <img src="/fullenrich-logo.jpeg" alt="FullEnrich" className="h-4 w-4 rounded" />
-                        {t.settings.integrations.fullenrichKey}
+                        <a href="https://fullenrich.com/" target="_blank" rel="noopener noreferrer" className="hover:underline">{t.settings.integrations.fullenrichKey}</a>
                       </Label>
                       <div className="mt-1">
                         <PwInput
@@ -509,7 +534,7 @@ export default function SettingsPage() {
                     <div>
                       <Label className="text-xs flex items-center gap-1.5">
                         <img src="/linkup-logo.jpeg" alt="Linkup" className="h-4 w-4 rounded" />
-                        {t.settings.integrations.linkupKey}
+                        <a href="https://www.linkup.so/" target="_blank" rel="noopener noreferrer" className="hover:underline">{t.settings.integrations.linkupKey}</a>
                       </Label>
                       <div className="mt-1">
                         <PwInput
@@ -698,62 +723,97 @@ export default function SettingsPage() {
             {/* Sidebar nav */}
             <nav className="w-[180px] shrink-0 border-r py-3 px-3 space-y-3 bg-muted/30 overflow-y-auto">
               <div>
-                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.personalizationTab}</p>
-                {([
-                  { id: 'perso-claude', label: t.settings.aiPrompts.navClaude },
-                  { id: 'perso-company', label: t.settings.aiPrompts.navCompanySearch },
-                  { id: 'perso-contact', label: t.settings.aiPrompts.navContactSearch },
-                ] as const).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setPromptSection(item.id)}
-                    className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
-                      promptSection === item.id ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.scoringTab}</p>
-                {([
-                  { id: 'score-claude', label: t.settings.aiPrompts.navClaude },
-                  { id: 'score-company', label: t.settings.aiPrompts.navCompanySearch },
-                ] as const).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setPromptSection(item.id)}
-                    className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
-                      promptSection === item.id ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.prospectingTab}</p>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.contextTab}</p>
                 <button
-                  onClick={() => setPromptSection('prospecting')}
+                  onClick={() => setPromptSection('business-context')}
                   className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
-                    promptSection === 'prospecting' ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    promptSection === 'business-context' ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                   }`}
                 >
-                  {t.settings.aiPrompts.navProspectingQuery}
+                  {t.settings.aiPrompts.navBusinessContext}
                 </button>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-1.5 px-2">{t.settings.aiPrompts.advancedTab}</p>
+                {([
+                  { id: 'perso-claude', label: t.settings.aiPrompts.personalizationTab },
+                  { id: 'score-claude', label: t.settings.aiPrompts.scoringTab },
+                  { id: 'prospecting', label: t.settings.aiPrompts.prospectingTab },
+                ] as const).map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setPromptSection(item.id)}
+                    className={`block w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors ${
+                      promptSection === item.id ? 'font-medium bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </nav>
 
-            {/* Content — single textarea */}
-            <div className="flex-1 flex flex-col p-4 min-h-0">
+            {/* Content */}
+            <div className="flex-1 flex flex-col p-4 min-h-0 overflow-y-auto">
+              {promptSection === 'business-context' && (
+                <>
+                  <div className="shrink-0 mb-4">
+                    <h3 className="text-sm font-medium">{t.settings.aiPrompts.businessContext.title}</h3>
+                    <p className="text-xs text-muted-foreground mt-1">{t.settings.aiPrompts.businessContext.description}</p>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.businessContext.companyDescription}</Label>
+                      <p className="text-xs text-muted-foreground mb-1">{t.settings.aiPrompts.businessContext.companyDescriptionHint}</p>
+                      <Textarea
+                        value={aiCompanyDescription}
+                        onChange={(e) => setAiCompanyDescription(e.target.value)}
+                        placeholder={t.settings.aiPrompts.businessContext.companyDescriptionPlaceholder}
+                        className="text-sm h-20 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.businessContext.targetIndustry}</Label>
+                      <p className="text-xs text-muted-foreground mb-1">{t.settings.aiPrompts.businessContext.targetIndustryHint}</p>
+                      <Input
+                        value={aiTargetIndustry}
+                        onChange={(e) => setAiTargetIndustry(e.target.value)}
+                        placeholder={t.settings.aiPrompts.businessContext.targetIndustryPlaceholder}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.businessContext.targetRoles}</Label>
+                      <p className="text-xs text-muted-foreground mb-1">{t.settings.aiPrompts.businessContext.targetRolesHint}</p>
+                      <Input
+                        value={aiTargetRoles}
+                        onChange={(e) => setAiTargetRoles(e.target.value)}
+                        placeholder={t.settings.aiPrompts.businessContext.targetRolesPlaceholder}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium">{t.settings.aiPrompts.businessContext.geographicFocus}</Label>
+                      <p className="text-xs text-muted-foreground mb-1">{t.settings.aiPrompts.businessContext.geographicFocusHint}</p>
+                      <Input
+                        value={aiGeographicFocus}
+                        onChange={(e) => setAiGeographicFocus(e.target.value)}
+                        placeholder={t.settings.aiPrompts.businessContext.geographicFocusPlaceholder}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               {promptSection === 'perso-claude' && (
                 <>
-                  <div className="flex items-center justify-between shrink-0 mb-2">
-                    <div>
-                      <Label className="text-xs font-medium">{t.settings.aiPrompts.claudePrompt}</Label>
-                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.claudePromptHintPersonalization}</p>
-                    </div>
+                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-3 shrink-0">
+                    <p className="text-xs text-amber-800 dark:text-amber-200">{t.settings.aiPrompts.advancedWarning}</p>
+                  </div>
+                  <div className="shrink-0 mb-2">
+                    <Label className="text-xs font-medium">{t.settings.aiPrompts.claudePrompt} — {t.settings.aiPrompts.personalizationTab}</Label>
+                    <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.claudePromptHintPersonalization}</p>
                   </div>
                   <Textarea
                     value={aiPersonalizationPrompt}
@@ -773,65 +833,14 @@ export default function SettingsPage() {
                 </>
               )}
 
-              {promptSection === 'perso-company' && (
-                <>
-                  <div className="flex items-center justify-between shrink-0 mb-2">
-                    <div>
-                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
-                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.linkupCompanyHint}</p>
-                    </div>
-                  </div>
-                  <Textarea
-                    value={linkupCompanyQuery}
-                    onChange={(e) => setLinkupCompanyQuery(e.target.value)}
-                    className="text-sm font-mono flex-1 resize-none"
-                  />
-                  <div className="flex gap-1.5 mt-2 shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('personalization_linkup_company', linkupCompanyQuery, setLinkupCompanyQuery)} disabled={enhancingPrompt !== null || !linkupCompanyQuery.trim()}>
-                      {enhancingPrompt === 'personalization_linkup_company' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                      {enhancingPrompt === 'personalization_linkup_company' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setLinkupCompanyQuery(DEFAULT_LINKUP_COMPANY_QUERY)} disabled={linkupCompanyQuery === DEFAULT_LINKUP_COMPANY_QUERY}>
-                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                      {t.settings.aiPrompts.resetToDefault}
-                    </Button>
-                  </div>
-                </>
-              )}
-
-              {promptSection === 'perso-contact' && (
-                <>
-                  <div className="flex items-center justify-between shrink-0 mb-2">
-                    <div>
-                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
-                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.linkupContactHint}</p>
-                    </div>
-                  </div>
-                  <Textarea
-                    value={linkupContactQuery}
-                    onChange={(e) => setLinkupContactQuery(e.target.value)}
-                    className="text-sm font-mono flex-1 resize-none"
-                  />
-                  <div className="flex gap-1.5 mt-2 shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('personalization_linkup_contact', linkupContactQuery, setLinkupContactQuery)} disabled={enhancingPrompt !== null || !linkupContactQuery.trim()}>
-                      {enhancingPrompt === 'personalization_linkup_contact' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                      {enhancingPrompt === 'personalization_linkup_contact' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setLinkupContactQuery(DEFAULT_LINKUP_CONTACT_QUERY)} disabled={linkupContactQuery === DEFAULT_LINKUP_CONTACT_QUERY}>
-                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                      {t.settings.aiPrompts.resetToDefault}
-                    </Button>
-                  </div>
-                </>
-              )}
-
               {promptSection === 'score-claude' && (
                 <>
-                  <div className="flex items-center justify-between shrink-0 mb-2">
-                    <div>
-                      <Label className="text-xs font-medium">{t.settings.aiPrompts.claudePrompt}</Label>
-                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.claudePromptHintScoring}</p>
-                    </div>
+                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-3 shrink-0">
+                    <p className="text-xs text-amber-800 dark:text-amber-200">{t.settings.aiPrompts.advancedWarning}</p>
+                  </div>
+                  <div className="shrink-0 mb-2">
+                    <Label className="text-xs font-medium">{t.settings.aiPrompts.claudePrompt} — {t.settings.aiPrompts.scoringTab}</Label>
+                    <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.claudePromptHintScoring}</p>
                   </div>
                   <Textarea
                     value={aiScoringPrompt}
@@ -851,39 +860,14 @@ export default function SettingsPage() {
                 </>
               )}
 
-              {promptSection === 'score-company' && (
-                <>
-                  <div className="flex items-center justify-between shrink-0 mb-2">
-                    <div>
-                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
-                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.linkupCompanyHint}</p>
-                    </div>
-                  </div>
-                  <Textarea
-                    value={linkupCompanyQuery}
-                    onChange={(e) => setLinkupCompanyQuery(e.target.value)}
-                    className="text-sm font-mono flex-1 resize-none"
-                  />
-                  <div className="flex gap-1.5 mt-2 shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => handleEnhancePrompt('scoring_linkup_company', linkupCompanyQuery, setLinkupCompanyQuery)} disabled={enhancingPrompt !== null || !linkupCompanyQuery.trim()}>
-                      {enhancingPrompt === 'scoring_linkup_company' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                      {enhancingPrompt === 'scoring_linkup_company' ? t.settings.aiPrompts.enhancing : t.settings.aiPrompts.enhance}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setLinkupCompanyQuery(DEFAULT_LINKUP_COMPANY_QUERY)} disabled={linkupCompanyQuery === DEFAULT_LINKUP_COMPANY_QUERY}>
-                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                      {t.settings.aiPrompts.resetToDefault}
-                    </Button>
-                  </div>
-                </>
-              )}
-
               {promptSection === 'prospecting' && (
                 <>
-                  <div className="flex items-center justify-between shrink-0 mb-2">
-                    <div>
-                      <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery}</Label>
-                      <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.prospectingQueryHint}</p>
-                    </div>
+                  <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-3 shrink-0">
+                    <p className="text-xs text-amber-800 dark:text-amber-200">{t.settings.aiPrompts.advancedWarning}</p>
+                  </div>
+                  <div className="shrink-0 mb-2">
+                    <Label className="text-xs font-medium">{t.settings.aiPrompts.linkupQuery} — {t.settings.aiPrompts.prospectingTab}</Label>
+                    <p className="text-xs text-muted-foreground">{t.settings.aiPrompts.prospectingQueryHint}</p>
                   </div>
                   <Textarea
                     value={linkupProspectingQuery}

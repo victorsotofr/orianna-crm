@@ -8,6 +8,7 @@ export interface EmailConfig {
   port: number;
   user: string;
   passwordEncrypted: string;
+  bccEnabled?: boolean;
 }
 
 export interface EmailData {
@@ -46,13 +47,17 @@ export async function sendEmail(config: EmailConfig, emailData: EmailData): Prom
 
     const transporter = nodemailer.createTransport(transportConfig as nodemailer.TransportOptions);
 
-    const info = await transporter.sendMail({
+    const mailOptions: Record<string, unknown> = {
       from: `"${emailData.from}" <${config.user}>`,
       to: emailData.to,
       subject: emailData.subject,
       html: emailData.html,
-      bcc: config.user,
-    });
+    };
+    if (config.bccEnabled !== false) {
+      mailOptions.bcc = config.user;
+    }
+
+    const info = await transporter.sendMail(mailOptions as nodemailer.SendMailOptions);
 
     return {
       success: true,

@@ -166,6 +166,7 @@ export async function POST(request: Request) {
         port: settings.smtp_port,
         user: settings.smtp_user!,
         passwordEncrypted: settings.smtp_password_encrypted,
+        bccEnabled: settings.bcc_enabled !== false,
       },
       {
         to: contact.email,

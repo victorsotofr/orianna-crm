@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = getServiceSupabase();
     const { data: workspace } = await serviceSupabase
       .from('workspaces')
-      .select('ai_personalization_prompt, ai_scoring_prompt, linkup_company_query, linkup_contact_query, linkup_prospecting_query')
+      .select('ai_personalization_prompt, ai_scoring_prompt, linkup_company_query, linkup_contact_query, linkup_prospecting_query, ai_company_description, ai_target_industry, ai_target_roles, ai_geographic_focus')
       .eq('id', ctx.workspaceId)
       .single();
 
@@ -34,6 +34,10 @@ export async function GET(request: NextRequest) {
       linkupCompanyQuery: workspace?.linkup_company_query || null,
       linkupContactQuery: workspace?.linkup_contact_query || null,
       linkupProspectingQuery: workspace?.linkup_prospecting_query || null,
+      aiCompanyDescription: workspace?.ai_company_description || null,
+      aiTargetIndustry: workspace?.ai_target_industry || null,
+      aiTargetRoles: workspace?.ai_target_roles || null,
+      aiGeographicFocus: workspace?.ai_geographic_focus || null,
     });
   } catch (error: any) {
     console.error('Workspace settings GET error:', error);
@@ -61,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     const {
       aiPersonalizationPrompt, aiScoringPrompt, linkupCompanyQuery, linkupContactQuery, linkupProspectingQuery,
+      aiCompanyDescription, aiTargetIndustry, aiTargetRoles, aiGeographicFocus,
     } = await request.json();
 
     const serviceSupabase = getServiceSupabase();
@@ -81,6 +86,19 @@ export async function POST(request: NextRequest) {
     }
     if (linkupProspectingQuery !== undefined) {
       update.linkup_prospecting_query = linkupProspectingQuery?.trim() || null;
+    }
+    // Business context fields — empty string → null
+    if (aiCompanyDescription !== undefined) {
+      update.ai_company_description = aiCompanyDescription?.trim() || null;
+    }
+    if (aiTargetIndustry !== undefined) {
+      update.ai_target_industry = aiTargetIndustry?.trim() || null;
+    }
+    if (aiTargetRoles !== undefined) {
+      update.ai_target_roles = aiTargetRoles?.trim() || null;
+    }
+    if (aiGeographicFocus !== undefined) {
+      update.ai_geographic_focus = aiGeographicFocus?.trim() || null;
     }
 
     if (Object.keys(update).length === 0) {

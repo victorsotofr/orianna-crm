@@ -38,9 +38,10 @@ export const DEFAULT_LINKUP_COMPANY_QUERY = `You are an expert company researche
 Objective: Find key business intelligence about {companyName}{domainPart}.
 
 Instructions:
-- Run a web search to find what the company does, its size, industry, and recent news
-- If a company domain is provided, scrape the homepage to extract: company description, products/services, and team size indicators
-- Also search for recent news, funding rounds, hiring activity, and growth signals
+1. Search for {companyName} to find what the company does, its size, industry, and recent news
+2. If a company domain is provided, scrape the homepage to extract: company description, products/services, and team size indicators
+3. Search for recent news, funding rounds, hiring activity, and growth signals about {companyName}
+4. Cross-reference company website and news sources for a complete picture
 
 Return a structured summary with:
 - Company overview (what they do, industry, size)
@@ -56,6 +57,7 @@ Instructions:
 2. For each result, scrape the source page to extract: full name, company, job title, email (if visible), location, LinkedIn URL, company domain
 3. Only include people who clearly match the criteria — do not invent or guess data
 4. Focus on LinkedIn profiles, company team pages, and professional directories
+5. Use company name and title to disambiguate common names — flag low-confidence matches
 
 Return a JSON array of objects with these exact fields:
 [{"first_name": "...", "last_name": "...", "company_name": "...", "job_title": "...", "email": "...", "location": "...", "linkedin_url": "...", "company_domain": "..."}]
@@ -68,13 +70,17 @@ Rules:
 export const DEFAULT_LINKUP_CONTACT_QUERY = `You are an expert professional researcher.
 
 Objective: Find professional background information about {contactName} at {companyName}.
+{titlePart}{locationPart}
 
 Instructions:
-- Search for the person's professional profile, role, and career history
-- {linkedinPart}
-- Look for recent professional activity: publications, conference talks, job changes, posts
+1. Search for "{contactName}" AND "{companyName}" on LinkedIn. Use title and location to disambiguate if multiple results.
+2. From the LinkedIn profile, extract: current role, professional headline, time in current position, career history highlights
+3. {linkedinPart}
+4. Search for recent professional activity: publications, conference talks, LinkedIn posts, job changes
+5. Check the company website for any bio or team page mention
 
 Return a structured summary with:
 - Current role and responsibilities
-- Career history highlights
-- Recent professional activity or publications`;
+- Career history highlights (last 2-3 positions)
+- Recent professional activity or publications
+- Confidence level of the match (high/medium/low)`;

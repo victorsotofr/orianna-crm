@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       .from('user_settings')
       .select('linkup_api_key_encrypted')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!userSettings?.linkup_api_key_encrypted) {
       return NextResponse.json({ error: 'Linkup API key not configured. Go to Settings > Integrations.' }, { status: 400 });
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       .from('workspaces')
       .select('linkup_prospecting_query')
       .eq('id', ctx.workspaceId)
-      .single();
+      .maybeSingle();
 
     // Run Linkup search
     const rawResults = await searchProspecting(

@@ -2,12 +2,14 @@ import 'server-only';
 import { generateText, stepCountIs } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import type { Contact } from '@/types/database';
-import { searchCompany } from '@/lib/linkup';
+import { searchCompany, searchContact } from '@/lib/linkup';
 import { DEFAULT_SCORING_PROMPT } from '@/lib/ai-defaults';
+import { type BusinessContext, buildBusinessContextBlock } from '@/lib/ai-business-context';
 
 interface CustomPrompts {
   scoringPrompt?: string;
   linkupCompanyQuery?: string;
+  linkupContactQuery?: string;
 }
 
 interface ScoringResult {
@@ -67,30 +69,52 @@ function parseScoringResponse(text: string): ScoringResult {
 export async function scoreContact(
   contact: Contact,
   linkupApiKey?: string,
-  customPrompts?: CustomPrompts
+  customPrompts?: CustomPrompts,
+  businessContext?: BusinessContext
 ): Promise<ScoringResult> {
   const context = buildSearchContext(contact);
 
-  const systemPrompt = customPrompts?.scoringPrompt || DEFAULT_SCORING_PROMPT;
+  const systemPrompt = (customPrompts?.scoringPrompt || DEFAULT_SCORING_PROMPT)
+    + buildBusinessContextBlock(businessContext);
 
   if (linkupApiKey) {
-    // Linkup path: deep search then Claude scoring (no tools)
-    let linkupResearch = '';
+    // Linkup path: deep search for company AND contact, then Claude scoring (no tools)
+    let companyResearch = '';
+    let contactResearch = '';
     try {
-      linkupResearch = await searchCompany(
-        linkupApiKey,
-        contact.company_name || '',
-        contact.company_domain,
-        'deep',
-        customPrompts?.linkupCompanyQuery
-      );
+      const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
+      const results = await Promise.all([
+        searchCompany(
+          linkupApiKey,
+          contact.company_name || '',
+          contact.company_domain,
+          'deep',
+          customPrompts?.linkupCompanyQuery
+        ),
+        contactName ? searchContact(
+          linkupApiKey,
+          contactName,
+          contact.company_name || '',
+          contact.linkedin_url,
+          customPrompts?.linkupContactQuery,
+          'deep',
+          contact.job_title,
+          contact.location,
+        ) : Promise.resolve(''),
+      ]);
+      companyResearch = results[0];
+      contactResearch = results[1];
     } catch (err) {
       console.error('Linkup search failed, falling back to web_search:', err);
-      // Fall through to web_search path
       return scoreWithWebSearch(context, systemPrompt);
     }
 
-    const userPrompt = `Analyse ce contact et donne-lui un score de 0 à 100 :\n\n${context}\n\nRECHERCHE ENTREPRISE:\n${linkupResearch}`;
+    let researchBlock = `RECHERCHE ENTREPRISE:\n${companyResearch}`;
+    if (contactResearch) {
+      researchBlock += `\n\nRECHERCHE CONTACT:\n${contactResearch}`;
+    }
+
+    const userPrompt = `Analyse ce contact et donne-lui un score de 0 à 100 :\n\n${context}\n\n${researchBlock}`;
 
     const { text } = await generateText({
       model: anthropic('claude-sonnet-4-5-20250929'),

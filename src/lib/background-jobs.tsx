@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
 
-export type JobType = 'score' | 'personalize' | 'enrich';
+export type JobType = 'score' | 'personalize' | 'enrich' | 'ai_search' | 'email_send';
 export type JobStatus = 'running' | 'completed' | 'failed';
 
 export interface BackgroundJob {
@@ -16,6 +16,9 @@ export interface BackgroundJob {
   resultCount?: number;
   error?: string;
   dismissedAt?: number;
+  label?: string; // custom display label (e.g. search query, "5 emails")
+  totalCount?: number; // for progress tracking (email send)
+  processedCount?: number; // current progress
 }
 
 interface BackgroundJobsContextValue {
@@ -23,10 +26,16 @@ interface BackgroundJobsContextValue {
   startScoring: (contactIds: string[]) => void;
   startPersonalizing: (contactIds: string[]) => void;
   startEnrichment: (contactIds: string[]) => void;
+  // Generic lifecycle methods for externally-managed jobs
+  addJob: (type: JobType, opts?: { contactIds?: string[]; label?: string; totalCount?: number }) => string;
+  completeJob: (jobId: string, resultCount?: number) => void;
+  failJob: (jobId: string, error: string) => void;
+  updateJobProgress: (jobId: string, processedCount: number) => void;
   dismissJob: (jobId: string) => void;
   clearCompleted: () => void;
   getRunningJobContactIds: (type: JobType) => Set<string>;
   onJobCompleted: (callback: () => void) => () => void;
+  hasRunningJobs: boolean;
 }
 
 const BackgroundJobsContext = createContext<BackgroundJobsContextValue | null>(null);
@@ -63,10 +72,23 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
   const pollIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const autoDismissTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  const hasRunningJobs = jobs.some(j => j.status === 'running');
+
   // Persist to localStorage on every change
   useEffect(() => {
     saveJobs(jobs);
   }, [jobs]);
+
+  // Warn user before leaving when jobs are running
+  useEffect(() => {
+    if (!hasRunningJobs) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasRunningJobs]);
 
   const notifyCompletion = useCallback(() => {
     completionCallbacksRef.current.forEach(cb => cb());
@@ -127,14 +149,19 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
           return job;
         }
 
+        // ai_search / email_send: if still running after refresh, mark as failed (no way to recover)
+        if (job.type === 'ai_search' || job.type === 'email_send') {
+          return { ...job, status: 'failed' as const, error: 'Interrupted' };
+        }
+
         // Score/personalize: server already wrote to DB, mark completed
         return { ...job, status: 'completed' as const };
       });
 
-      // Schedule auto-dismiss for jobs we just marked completed
+      // Schedule auto-dismiss for jobs we just marked completed/failed
       updated.forEach(job => {
         const wasPrev = prev.find(p => p.id === job.id);
-        if (wasPrev?.status === 'running' && job.status === 'completed' && job.type !== 'enrich') {
+        if (wasPrev?.status === 'running' && job.status !== 'running' && job.type !== 'enrich') {
           scheduleAutoDismiss(job.id);
         }
       });
@@ -257,6 +284,38 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
       });
   }, [updateJob, startEnrichmentPolling, scheduleAutoDismiss]);
 
+  // Generic lifecycle: add a job tracked externally
+  const addJob = useCallback((type: JobType, opts?: { contactIds?: string[]; label?: string; totalCount?: number }): string => {
+    const jobId = generateId();
+    const job: BackgroundJob = {
+      id: jobId,
+      type,
+      contactIds: opts?.contactIds || [],
+      status: 'running',
+      startedAt: Date.now(),
+      label: opts?.label,
+      totalCount: opts?.totalCount,
+      processedCount: 0,
+    };
+    setJobs(prev => [...prev, job]);
+    return jobId;
+  }, []);
+
+  const completeJob = useCallback((jobId: string, resultCount?: number) => {
+    updateJob(jobId, { status: 'completed', resultCount });
+    notifyCompletion();
+    scheduleAutoDismiss(jobId);
+  }, [updateJob, notifyCompletion, scheduleAutoDismiss]);
+
+  const failJob = useCallback((jobId: string, error: string) => {
+    updateJob(jobId, { status: 'failed', error });
+    scheduleAutoDismiss(jobId);
+  }, [updateJob, scheduleAutoDismiss]);
+
+  const updateJobProgress = useCallback((jobId: string, processedCount: number) => {
+    updateJob(jobId, { processedCount });
+  }, [updateJob]);
+
   const dismissJob = useCallback((jobId: string) => {
     const timer = autoDismissTimersRef.current.get(jobId);
     if (timer) {
@@ -299,10 +358,15 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
         startScoring,
         startPersonalizing,
         startEnrichment,
+        addJob,
+        completeJob,
+        failJob,
+        updateJobProgress,
         dismissJob,
         clearCompleted,
         getRunningJobContactIds,
         onJobCompleted,
+        hasRunningJobs,
       }}
     >
       {children}

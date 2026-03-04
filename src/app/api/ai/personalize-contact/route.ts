@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { personalizeContact } from '@/lib/ai-personalization';
 import { getLinkupCreditBalance } from '@/lib/linkup';
+import type { BusinessContext } from '@/lib/ai-business-context';
 
 
 export const maxDuration = 300;
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
     // Fetch custom prompts from the first contact's workspace
     let linkupApiKey: string | undefined;
     let customPrompts: { personalizationPrompt?: string; linkupCompanyQuery?: string; linkupContactQuery?: string } | undefined;
+    let businessContext: BusinessContext | undefined;
     const { data: firstContact } = await supabase
       .from('contacts')
       .select('workspace_id')
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
     if (firstContact?.workspace_id) {
       const { data: workspace } = await serviceSupabase
         .from('workspaces')
-        .select('ai_personalization_prompt, linkup_company_query, linkup_contact_query')
+        .select('ai_personalization_prompt, linkup_company_query, linkup_contact_query, ai_company_description, ai_target_industry, ai_target_roles, ai_geographic_focus')
         .eq('id', firstContact.workspace_id)
         .single();
 
@@ -64,6 +66,14 @@ export async function POST(request: NextRequest) {
             personalizationPrompt: workspace.ai_personalization_prompt || undefined,
             linkupCompanyQuery: workspace.linkup_company_query || undefined,
             linkupContactQuery: workspace.linkup_contact_query || undefined,
+          };
+        }
+        if (workspace.ai_company_description || workspace.ai_target_industry || workspace.ai_target_roles || workspace.ai_geographic_focus) {
+          businessContext = {
+            companyDescription: workspace.ai_company_description || undefined,
+            targetIndustry: workspace.ai_target_industry || undefined,
+            targetRoles: workspace.ai_target_roles || undefined,
+            geographicFocus: workspace.ai_geographic_focus || undefined,
           };
         }
       }
@@ -111,7 +121,7 @@ export async function POST(request: NextRequest) {
 
         const contactWorkspaceId = contact.workspace_id;
 
-        const result = await personalizeContact(contact, linkupApiKey, customPrompts);
+        const result = await personalizeContact(contact, linkupApiKey, customPrompts, businessContext);
 
         await serviceSupabase
           .from('contacts')

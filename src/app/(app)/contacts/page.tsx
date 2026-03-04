@@ -32,6 +32,7 @@ import { useBackgroundJobs } from '@/lib/background-jobs';
 
 function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void }) {
   const { t } = useTranslation();
+  const { addJob, completeJob, failJob } = useBackgroundJobs();
   const [query, setQuery] = useState('');
   const [step, setStep] = useState<'query' | 'results'>('query');
   const [results, setResults] = useState<any[]>([]);
@@ -44,6 +45,7 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
   const handleSearch = async (depth: 'standard' | 'deep' = 'standard') => {
     if (!query.trim()) return;
     setLoading(true);
+    const jobId = addJob('ai_search', { label: query.trim().slice(0, 50) });
     try {
       const r = await apiFetch('/api/ai/search-contacts', {
         method: 'POST',
@@ -63,12 +65,16 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
             })
         ));
         setStep('results');
+        completeJob(jobId, (data.contacts || []).length);
       } else {
         const d = await r.json();
-        toast.error(d.error === 'Linkup API key not configured' ? t.contacts.aiSearch.linkupRequired : (d.error || 'Search failed'));
+        const errMsg = d.error === 'Linkup API key not configured' ? t.contacts.aiSearch.linkupRequired : (d.error || 'Search failed');
+        toast.error(errMsg);
+        failJob(jobId, d.error || 'Search failed');
       }
     } catch {
       toast.error('Network error');
+      failJob(jobId, 'Network error');
     } finally {
       setLoading(false);
     }

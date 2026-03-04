@@ -4,6 +4,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import type { Contact } from '@/types/database';
 import { searchCompany, searchContact } from '@/lib/linkup';
 import { DEFAULT_PERSONALIZATION_PROMPT } from '@/lib/ai-defaults';
+import { type BusinessContext, buildBusinessContextBlock } from '@/lib/ai-business-context';
 
 interface CustomPrompts {
   personalizationPrompt?: string;
@@ -82,19 +83,29 @@ function cleanOutput(raw: string): string {
 export async function personalizeContact(
   contact: Contact,
   linkupApiKey?: string,
-  customPrompts?: CustomPrompts
+  customPrompts?: CustomPrompts,
+  businessContext?: BusinessContext
 ): Promise<PersonalizationResult> {
   const context = buildContext(contact);
 
   let research: string;
 
   if (linkupApiKey) {
-    // Linkup path: standard search for company + contact
+    // Linkup path: company (standard) + contact (deep for richer personalization context)
     try {
       const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
       const [companyResearch, contactResearch] = await Promise.all([
         searchCompany(linkupApiKey, contact.company_name || '', contact.company_domain, 'standard', customPrompts?.linkupCompanyQuery),
-        searchContact(linkupApiKey, contactName, contact.company_name || '', contact.linkedin_url, customPrompts?.linkupContactQuery),
+        searchContact(
+          linkupApiKey,
+          contactName,
+          contact.company_name || '',
+          contact.linkedin_url,
+          customPrompts?.linkupContactQuery,
+          'deep',
+          contact.job_title,
+          contact.location,
+        ),
       ]);
       research = `ENTREPRISE:\n${companyResearch}\n\nCONTACT:\n${contactResearch}`;
     } catch (err) {
@@ -106,7 +117,8 @@ export async function personalizeContact(
     research = await researchWithWebSearch(context);
   }
 
-  const systemPrompt = customPrompts?.personalizationPrompt || DEFAULT_PERSONALIZATION_PROMPT;
+  const systemPrompt = (customPrompts?.personalizationPrompt || DEFAULT_PERSONALIZATION_PROMPT)
+    + buildBusinessContextBlock(businessContext);
 
   // --- PASS 2: Generate the personalized sentence (no tools = clean output) ---
   const result = await generateText({

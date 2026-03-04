@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
+import { useBackgroundJobs } from '@/lib/background-jobs';
 
 interface CampaignContact {
   id: string;
@@ -58,6 +59,7 @@ export default function CampaignsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('new');
   const [ownerFilter, setOwnerFilter] = useState('all');
+  const { addJob, completeJob, failJob, updateJobProgress } = useBackgroundJobs();
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([]);
 
   const lastClickedIndexRef = useRef<number | null>(null);
@@ -217,12 +219,14 @@ export default function CampaignsPage() {
     setSendPhase('sending');
     const total = contactIds.length;
     setSendProgress({ current: 0, total });
+    const emailJobId = addJob('email_send', { contactIds, totalCount: total });
 
     let sentCount = 0;
     let errorCount = 0;
 
     for (let i = 0; i < contactIds.length; i++) {
       setSendProgress({ current: i + 1, total });
+      updateJobProgress(emailJobId, i + 1);
 
       try {
         const response = await apiFetch('/api/campaigns/send', {
@@ -253,8 +257,11 @@ export default function CampaignsPage() {
 
     if (sentCount > 0) {
       toast.success(t.campaigns.toasts.sent(sentCount));
+      completeJob(emailJobId, sentCount);
+    } else {
+      failJob(emailJobId, `${errorCount} error(s)`);
     }
-    if (errorCount > 0) {
+    if (errorCount > 0 && sentCount > 0) {
       toast.warning(t.campaigns.toasts.errors(errorCount));
     }
 

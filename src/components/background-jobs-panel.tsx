@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useBackgroundJobs, type BackgroundJob } from '@/lib/background-jobs';
 import { useTranslation } from '@/lib/i18n';
-import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, X, AlertTriangle } from 'lucide-react';
 
 function ElapsedTimer({ startedAt }: { startedAt: number }) {
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startedAt) / 1000));
@@ -25,13 +25,39 @@ function getTypeName(job: BackgroundJob, t: any): string {
     enrich: t.backgroundJobs.types.enrich,
     score: t.backgroundJobs.types.score,
     personalize: t.backgroundJobs.types.personalize,
+    ai_search: t.backgroundJobs.types.aiSearch,
+    email_send: t.backgroundJobs.types.emailSend,
   };
   return typeNames[job.type] || job.type;
 }
 
+function getJobMessage(job: BackgroundJob, t: any): string {
+  const typeName = getTypeName(job, t);
+
+  if (job.status === 'running') {
+    if (job.type === 'email_send' && job.totalCount) {
+      return t.backgroundJobs.emailProgress(job.processedCount || 0, job.totalCount);
+    }
+    if (job.type === 'ai_search') {
+      return t.backgroundJobs.aiSearchRunning;
+    }
+    return t.backgroundJobs.running(typeName, job.contactIds.length);
+  }
+  if (job.status === 'completed') {
+    if (job.type === 'email_send') {
+      return t.backgroundJobs.emailCompleted(job.resultCount ?? 0);
+    }
+    if (job.type === 'ai_search') {
+      return t.backgroundJobs.aiSearchCompleted(job.resultCount ?? 0);
+    }
+    return t.backgroundJobs.completed(typeName, job.resultCount ?? job.contactIds.length);
+  }
+  return t.backgroundJobs.failed(typeName, job.error || 'Unknown');
+}
+
 export function BackgroundJobsPanel() {
   const { t } = useTranslation();
-  const { jobs, dismissJob, clearCompleted } = useBackgroundJobs();
+  const { jobs, dismissJob, clearCompleted, hasRunningJobs } = useBackgroundJobs();
   const [minimized, setMinimized] = useState(false);
 
   const visibleJobs = jobs;
@@ -76,6 +102,14 @@ export function BackgroundJobsPanel() {
         </div>
       </div>
 
+      {/* Warning banner */}
+      {hasRunningJobs && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900">
+          <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+          <p className="text-[10px] text-amber-700 dark:text-amber-400">{t.backgroundJobs.doNotClose}</p>
+        </div>
+      )}
+
       {/* Jobs list */}
       <div className="max-h-60 overflow-y-auto">
         {visibleJobs.map(job => (
@@ -93,9 +127,7 @@ export function BackgroundJobsPanel() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs leading-snug">
-                {job.status === 'running' && t.backgroundJobs.running(getTypeName(job, t), job.contactIds.length)}
-                {job.status === 'completed' && t.backgroundJobs.completed(getTypeName(job, t), job.resultCount ?? job.contactIds.length)}
-                {job.status === 'failed' && t.backgroundJobs.failed(getTypeName(job, t), job.error || 'Unknown')}
+                {getJobMessage(job, t)}
               </p>
               {job.status === 'running' && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">

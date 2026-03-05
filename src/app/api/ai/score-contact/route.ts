@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { scoreContact } from '@/lib/ai-scoring';
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ scores });
   } catch (error: any) {
     console.error('AI scoring error:', error instanceof Error ? error.message : error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Scoring failed' }, { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
@@ -222,7 +222,7 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Campaign send error:', error instanceof Error ? error.message : error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -50,6 +50,7 @@ export default function CampaignDetailPage() {
   const [contactProgress, setContactProgress] = useState<ContactProgress[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!campaignId) return;
@@ -141,6 +142,43 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleSendNow = async () => {
+    setSendingNow(true);
+    try {
+      const response = await apiFetch(`/api/campaigns/sequences/${campaignId}/send-now`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[send-now] Response:', data);
+
+        if (data.sent > 0) {
+          toast.success(`${data.sent} email(s) envoyé(s)`);
+          fetchData(); // Refresh to see updated stats
+        } else {
+          const errorMsg = data.errors && data.errors.length > 0
+            ? `Erreur: ${data.errors[0].error}`
+            : data.message || 'Aucun email à envoyer';
+          toast.error(errorMsg);
+
+          // Log all errors to console for debugging
+          if (data.errors) {
+            console.error('[send-now] Errors:', data.errors);
+          }
+        }
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Erreur lors de l\'envoi');
+      }
+    } catch (err) {
+      console.error('[send-now] Exception:', err);
+      toast.error('Erreur lors de l\'envoi');
+    } finally {
+      setSendingNow(false);
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('fr-FR', {
       day: '2-digit',
@@ -182,6 +220,19 @@ export default function CampaignDetailPage() {
                 </Button>
                 {campaign.is_sequence && sequence && (
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleSendNow}
+                      disabled={sendingNow || actionLoading}
+                    >
+                      {sendingNow ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Mail className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Envoyer maintenant
+                    </Button>
                     {sequence.is_active ? (
                       <Button
                         variant="outline"
@@ -281,28 +332,55 @@ export default function CampaignDetailPage() {
                 <div className="border rounded-lg p-4 space-y-3 bg-card">
                   <h3 className="text-sm font-medium">{t.sequences.detail.viewSequence}</h3>
                   <div className="space-y-2">
-                    {sequence.steps.map(step => (
-                      <div key={step.step_order} className="border rounded-lg p-3 bg-muted/30">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant="secondary" className="text-xs">
-                            {getStepLabel(step.step_order)}
-                          </Badge>
-                          {step.step_order > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              {t.sequences.delayDays(step.delay_days)} {t.sequences.afterPrevious}
-                            </span>
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-sm font-medium">
-                            {templates[step.template_id]?.name || step.template_id}
+                    {sequence.steps.map((step: any) => {
+                      const hasSent = step.stats?.sent > 0;
+                      const hasScheduled = step.stats?.scheduled > 0;
+                      const nextSendDate = step.stats?.nextSendDate;
+
+                      return (
+                        <div key={step.step_order} className="border rounded-lg p-3 bg-muted/30">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <Badge variant="secondary" className="text-xs">
+                              {getStepLabel(step.step_order)}
+                            </Badge>
+                            {step.step_order > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                {t.sequences.delayDays(step.delay_days)} {t.sequences.afterPrevious}
+                              </span>
+                            )}
+                            {hasSent && (
+                              <div className="flex items-center gap-1 ml-auto">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                <span className="text-xs font-medium text-green-600">
+                                  {step.stats.sent} envoyé{step.stats.sent > 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            )}
+                            {!hasSent && hasScheduled && nextSendDate && (
+                              <div className="flex items-center gap-1 ml-auto">
+                                <Clock className="h-3.5 w-3.5 text-blue-600" />
+                                <span className="text-xs font-medium text-blue-600">
+                                  Prévu: {formatDate(nextSendDate)}
+                                </span>
+                              </div>
+                            )}
+                            {!hasSent && !hasScheduled && (
+                              <Badge variant="outline" className="text-xs ml-auto">
+                                En attente
+                              </Badge>
+                            )}
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {templates[step.template_id]?.subject}
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium">
+                              {templates[step.template_id]?.name || step.template_id}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {templates[step.template_id]?.subject}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

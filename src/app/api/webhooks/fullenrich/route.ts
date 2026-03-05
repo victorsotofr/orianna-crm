@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { getServiceSupabase } from '@/lib/supabase';
 
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('FullEnrich webhook error:', error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

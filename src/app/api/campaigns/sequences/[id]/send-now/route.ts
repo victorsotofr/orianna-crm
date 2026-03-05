@@ -109,7 +109,7 @@ export async function POST(
     const sortedSteps = sequence.steps.sort((a: any, b: any) => a.step_order - b.step_order);
 
     for (const enrollment of pendingEnrollments) {
-      const contact = enrollment.contact;
+      const contact = enrollment.contact as any;
       console.log(`[send-now] Processing enrollment ${enrollment.id}:`, {
         hasContact: !!contact,
         email: contact?.email,

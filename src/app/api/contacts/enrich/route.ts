@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Enrich error:', error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Enrichment failed' }, { status: 500 });
   }
 }

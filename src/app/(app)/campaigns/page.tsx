@@ -95,7 +95,7 @@ export default function CampaignsPage() {
         const response = await apiFetch('/api/campaigns/sequences');
         if (response.ok) {
           const data = await response.json();
-          setCampaigns(data.campaigns || []);
+          setCampaigns(data.sequences || []);
         }
       }
     } catch (error) {

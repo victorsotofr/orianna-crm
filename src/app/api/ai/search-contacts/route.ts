@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
@@ -129,7 +129,7 @@ Rules:
     return NextResponse.json({ contacts, existingEmails });
   } catch (error: any) {
     console.error('Search contacts error:', error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Search failed' }, { status: 500 });
   }
 }

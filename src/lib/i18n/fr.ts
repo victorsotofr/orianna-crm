@@ -131,6 +131,8 @@ export const fr = {
     bulkActions: {
       assignTo: 'Assigner à...',
       assign: 'Assigner',
+      changeStatus: 'Modifier le statut...',
+      updateStatus: 'Modifier',
       aiScore: 'ICP Score IA',
       personalize: 'Personnaliser',
       delete: 'Supprimer',
@@ -149,6 +151,8 @@ export const fr = {
       deleteError: 'Erreur lors de la suppression',
       assigned: (n: number) => `${n} contact(s) assigné(s)`,
       assignError: "Erreur lors de l'assignation",
+      statusUpdated: (n: number) => `${n} contact(s) mis à jour`,
+      statusUpdateError: 'Erreur lors de la mise à jour du statut',
       scored: (n: number) => `${n} contact(s) scoré(s)`,
       scoreErrors: (n: number, msg: string) => `${n} erreur(s) : ${msg}`,
       scoreError: 'Erreur lors du scoring',

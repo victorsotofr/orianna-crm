@@ -133,6 +133,8 @@ export const en: Translations = {
     bulkActions: {
       assignTo: 'Assign to...',
       assign: 'Assign',
+      changeStatus: 'Change status...',
+      updateStatus: 'Update',
       aiScore: 'ICP AI Score',
       personalize: 'Personalize',
       delete: 'Delete',
@@ -151,6 +153,8 @@ export const en: Translations = {
       deleteError: 'Error deleting contacts',
       assigned: (n: number) => `${n} contact(s) assigned`,
       assignError: 'Error assigning contacts',
+      statusUpdated: (n: number) => `${n} contact(s) updated`,
+      statusUpdateError: 'Error updating status',
       scored: (n: number) => `${n} contact(s) scored`,
       scoreErrors: (n: number, msg: string) => `${n} error(s): ${msg}`,
       scoreError: 'Error during scoring',

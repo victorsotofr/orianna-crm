@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search, ArrowLeft } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search, ArrowLeft, ListChecks } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -268,6 +268,8 @@ export default function ContactsPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');
+  const [bulkStatusUpdating, setBulkStatusUpdating] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
   const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
   const [previewLine, setPreviewLine] = useState<{ name: string; text: string } | null>(null);
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([{ column: 'created_at', direction: 'desc' }]);
@@ -410,6 +412,34 @@ export default function ContactsPage() {
       toast.error(t.contacts.toasts.assignError);
     } finally {
       setBulkAssigning(false);
+    }
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    if (!bulkStatus) return;
+    setBulkStatusUpdating(true);
+    try {
+      const response = await apiFetch('/api/contacts/bulk-update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_ids: Array.from(selectedIds), status: bulkStatus }),
+      });
+
+      if (response.ok) {
+        const { updated } = await response.json();
+        toast.success(t.contacts.toasts.statusUpdated(updated));
+        setSelectedIds(new Set());
+        setBulkStatus('');
+        fetchContacts();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || t.contacts.toasts.statusUpdateError);
+      }
+    } catch (error) {
+      console.error('Bulk status update error:', error);
+      toast.error(t.contacts.toasts.statusUpdateError);
+    } finally {
+      setBulkStatusUpdating(false);
     }
   };
 
@@ -771,6 +801,33 @@ export default function ContactsPage() {
               disabled={!bulkOwner || bulkAssigning}
             >
               {bulkAssigning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t.contacts.bulkActions.assign}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 border-l pl-3">
+            <ListChecks className="h-3.5 w-3.5 text-muted-foreground" />
+            <Select value={bulkStatus} onValueChange={setBulkStatus}>
+              <SelectTrigger className="h-7 w-[160px] text-xs">
+                <SelectValue placeholder={t.contacts.bulkActions.changeStatus} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">{t.statuses.new}</SelectItem>
+                <SelectItem value="contacted">{t.statuses.contacted}</SelectItem>
+                <SelectItem value="engaged">{t.statuses.engaged}</SelectItem>
+                <SelectItem value="qualified">{t.statuses.qualified}</SelectItem>
+                <SelectItem value="meeting_scheduled">{t.statuses.meeting_scheduled}</SelectItem>
+                <SelectItem value="opportunity">{t.statuses.opportunity}</SelectItem>
+                <SelectItem value="customer">{t.statuses.customer}</SelectItem>
+                <SelectItem value="lost">{t.statuses.lost}</SelectItem>
+                <SelectItem value="do_not_contact">{t.statuses.do_not_contact}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkStatusUpdate}
+              disabled={!bulkStatus || bulkStatusUpdating}
+            >
+              {bulkStatusUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t.contacts.bulkActions.updateStatus}
             </Button>
           </div>
           <Button

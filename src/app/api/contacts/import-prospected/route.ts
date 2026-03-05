@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ imported: data?.length || 0 });
   } catch (error: any) {
     console.error('Import prospected contacts error:', error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Import failed' }, { status: 500 });
   }
 }

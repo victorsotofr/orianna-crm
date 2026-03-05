@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Contact upload error:', error instanceof Error ? error.message : error);
-    Sentry.captureException(error);
+    // Sentry.captureException(error);
 
     // User-friendly message for unique constraint violations
     if (error?.code === '23505') {

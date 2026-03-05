@@ -10,7 +10,7 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Layers } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { useBackgroundJobs } from '@/lib/background-jobs';
+
+type CampaignTab = 'manual' | 'sequences';
 
 interface CampaignContact {
   id: string;
@@ -47,11 +49,13 @@ interface TeamMember {
 export default function CampaignsPage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const [tab, setTab] = useState<CampaignTab>('manual');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [contacts, setContacts] = useState<CampaignContact[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendPhase, setSendPhase] = useState<'idle' | 'enriching' | 'sending'>('idle');
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
@@ -66,33 +70,43 @@ export default function CampaignsPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [contactsRes, templatesRes, teamRes] = await Promise.all([
-        supabase
-          .from('contacts')
-          .select('id, first_name, last_name, email, company_name, location, status, assigned_to, ai_personalized_line')
-          .not('status', 'in', '("lost","do_not_contact","customer")')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('templates')
-          .select('id, name, subject, html_content')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('team_members')
-          .select('user_id, display_name, email'),
-      ]);
+      if (tab === 'manual') {
+        const [contactsRes, templatesRes, teamRes] = await Promise.all([
+          supabase
+            .from('contacts')
+            .select('id, first_name, last_name, email, company_name, location, status, assigned_to, ai_personalized_line')
+            .not('status', 'in', '("lost","do_not_contact","customer")')
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('templates')
+            .select('id, name, subject, html_content')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('team_members')
+            .select('user_id, display_name, email'),
+        ]);
 
-      if (contactsRes.data) setContacts(contactsRes.data);
-      if (templatesRes.data) setTemplates(templatesRes.data);
-      if (teamRes.data) setTeamMembers(teamRes.data);
+        if (contactsRes.data) setContacts(contactsRes.data);
+        if (templatesRes.data) setTemplates(templatesRes.data);
+        if (teamRes.data) setTeamMembers(teamRes.data);
+      } else {
+        // Fetch sequences
+        const response = await apiFetch('/api/campaigns/sequences');
+        if (response.ok) {
+          const data = await response.json();
+          setCampaigns(data.sequences || []);
+        }
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tab]);
 
   useEffect(() => {
+    setLoading(true);
     fetchData();
   }, [fetchData]);
 
@@ -322,13 +336,56 @@ export default function CampaignsPage() {
     });
   };
 
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
   return (
     <>
       <SiteHeader title={t.campaigns.title} />
       <div className="page-container">
         <div className="page-content">
-          {/* Toolbar */}
-          <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
+          {/* Tab toggle */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex shrink-0 rounded-md border">
+              <Button
+                variant={tab === 'manual' ? 'default' : 'ghost'}
+                size="sm"
+                className="rounded-r-none text-xs h-8"
+                onClick={() => setTab('manual')}
+              >
+                <Send className="mr-1.5 h-3.5 w-3.5" />
+                {t.sequences.manualCampaigns}
+              </Button>
+              <Button
+                variant={tab === 'sequences' ? 'default' : 'ghost'}
+                size="sm"
+                className="rounded-l-none text-xs h-8"
+                onClick={() => setTab('sequences')}
+              >
+                <Layers className="mr-1.5 h-3.5 w-3.5" />
+                {t.sequences.sequenceCampaigns}
+              </Button>
+            </div>
+            {tab === 'sequences' && (
+              <Button
+                size="sm"
+                className="ml-auto"
+                onClick={() => router.push('/campaigns/new')}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                {t.sequences.newSequence}
+              </Button>
+            )}
+          </div>
+
+          {/* Manual campaign toolbar */}
+          {tab === 'manual' && (
+            <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
               <Input
                 placeholder={t.campaigns.searchPlaceholder}
                 value={search}
@@ -428,10 +485,111 @@ export default function CampaignsPage() {
                   {t.campaigns.buttons.send(selectedContacts.size)}
                 </Button>
               )}
-          </div>
+            </div>
+          )}
 
-          {/* Table */}
-          {loading ? (
+          {/* Sequences table */}
+          {tab === 'sequences' && (
+            <>
+              {loading ? (
+                <div className="flex-1 min-h-0 rounded-lg border bg-card p-3 space-y-3">
+                  <Skeleton className="h-8 w-full rounded" />
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full rounded" />
+                  ))}
+                </div>
+              ) : campaigns.length === 0 ? (
+                <div className="flex flex-col items-center justify-center flex-1 text-center rounded-lg border bg-card">
+                  <Layers className="h-10 w-10 text-muted-foreground mb-3" />
+                  <h3 className="text-sm font-medium mb-1">{t.sequences.emptyState.title}</h3>
+                  <p className="text-xs text-muted-foreground mb-4">{t.sequences.emptyState.description}</p>
+                  <Button size="sm" onClick={() => router.push('/campaigns/new')}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    {t.sequences.create}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="bg-muted/50 sticky top-0 z-10">
+                      <tr className="border-b">
+                        <th className="h-9 px-3 text-left text-xs font-medium">
+                          {t.sequences.list.name}
+                        </th>
+                        <th className="h-9 px-3 text-left text-xs font-medium">
+                          {t.sequences.list.contacts}
+                        </th>
+                        <th className="h-9 px-3 text-left text-xs font-medium">
+                          {t.sequences.list.status}
+                        </th>
+                        <th className="h-9 px-3 text-left text-xs font-medium">
+                          {t.sequences.list.created}
+                        </th>
+                        <th className="h-9 px-3 text-left text-xs font-medium">
+                          {t.sequences.list.actions}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {campaigns.map((campaign) => (
+                        <tr
+                          key={campaign.id}
+                          className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
+                          onClick={() => router.push(`/campaigns/${campaign.id}`)}
+                        >
+                          <td className="px-3 py-2">
+                            <div className="space-y-0.5">
+                              <div className="text-xs font-medium">{campaign.name}</div>
+                              {campaign.description && (
+                                <div className="text-xs text-muted-foreground line-clamp-1">
+                                  {campaign.description}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge variant="outline" className="text-xs">
+                              {campaign.contact_count || 0}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2">
+                            {campaign.is_active ? (
+                              <Badge variant="default" className="text-xs">
+                                {t.sequences.status.active}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">
+                                {t.sequences.status.paused}
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {formatDate(campaign.created_at)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/campaigns/${campaign.id}`);
+                              }}
+                            >
+                              {t.common.edit}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Manual campaign table */}
+          {tab === 'manual' && (loading ? (
             <div className="flex-1 min-h-0 rounded-lg border bg-card p-3 space-y-3">
               <Skeleton className="h-8 w-full rounded" />
               {Array.from({ length: 5 }).map((_, i) => (
@@ -529,7 +687,7 @@ export default function CampaignsPage() {
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </div>
       </div>
     </>

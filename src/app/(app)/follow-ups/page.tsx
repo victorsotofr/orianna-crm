@@ -9,7 +9,7 @@ import { SiteHeader } from '@/components/site-header';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Reply } from 'lucide-react';
+import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Reply, Layers, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { useBackgroundJobs } from '@/lib/background-jobs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 type FollowUpTab = 'first' | 'second';
 
@@ -357,6 +358,22 @@ export default function FollowUpsPage() {
       <SiteHeader title={t.followUps.title} />
       <div className="page-container">
         <div className="page-content">
+          {/* Info banner about sequences */}
+          <Alert className="bg-muted/50 border-muted">
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-xs">
+              {t.followUps.sequenceInfo}{' '}
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs underline"
+                onClick={() => router.push('/campaigns/new')}
+              >
+                {t.sequences.create}
+              </Button>
+            </AlertDescription>
+          </Alert>
+
           {/* Toolbar */}
           <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
               {/* Tab toggle */}

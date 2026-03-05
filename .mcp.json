@@ -1,8 +1,13 @@
 {
   "mcpServers": {
     "supabase": {
-      "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=dregduozycgxwytkubrh"
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--access-token",
+        "sbp_011d9923e778133c467f8b56afc1f855e366cf0b"
+      ]
     }
   }
 }

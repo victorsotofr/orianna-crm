@@ -1,6 +1,7 @@
 // Database types for Supabase tables
 export interface Contact {
   id: string;
+  workspace_id: string | null;
   email: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -42,6 +43,7 @@ export interface Contact {
 
 export interface Template {
   id: string;
+  workspace_id: string | null;
   name: string;
   subject: string;
   html_content: string;
@@ -52,6 +54,7 @@ export interface Template {
 
 export interface Campaign {
   id: string;
+  workspace_id: string | null;
   name: string;
   template_id: string | null;
   template_variables: Record<string, string> | null;
@@ -65,12 +68,15 @@ export interface Campaign {
 
 export interface EmailSent {
   id: string;
+  workspace_id: string | null;
   contact_id: string;
   campaign_id: string | null;
   template_id: string | null;
   user_id: string;
+  enrollment_id: string | null;
+  step_id: string | null;
   sent_at: string;
-  status: 'sent' | 'failed' | 'delivered' | 'opened' | 'replied' | 'bounced';
+  status: 'sent' | 'failed' | 'delivered' | 'opened' | 'replied' | 'bounced' | 'pending';
   error_message: string | null;
   message_id: string | null;
   follow_up_stage: number;
@@ -93,6 +99,7 @@ export interface UserSettings {
   imap_password_encrypted: string | null;
   signature_html: string | null;
   daily_send_limit: number;
+  bcc_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +118,7 @@ export interface TeamMember {
 
 export interface ContactTimeline {
   id: string;
+  workspace_id: string | null;
   contact_id: string;
   event_type: string;
   title: string;
@@ -144,4 +152,69 @@ export interface CommentWithAuthor extends Comment {
 
 export interface TimelineWithAuthor extends ContactTimeline {
   team_members?: TeamMember;
+}
+
+// Email Sequences types
+
+export interface CampaignSequence {
+  id: string;
+  workspace_id: string;
+  name: string;
+  template_variables: Record<string, string> | null;
+  created_by: string;
+  status: 'draft' | 'active' | 'paused' | 'archived';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignSequenceStep {
+  id: string;
+  sequence_id: string;
+  template_id: string;
+  step_order: number;
+  delay_days: number;
+  created_at: string;
+}
+
+export interface CampaignEnrollment {
+  id: string;
+  workspace_id: string;
+  sequence_id: string;
+  contact_id: string;
+  enrolled_by: string;
+  enrolled_at: string;
+  current_step_id: string | null;
+  next_send_at: string | null;
+  status: 'active' | 'paused' | 'completed' | 'bounced';
+  completed_at: string | null;
+  retry_count: number;
+  max_retries: number;
+}
+
+export interface EmailStats {
+  id: string;
+  workspace_id: string;
+  emails_sent_id: string;
+  enrollment_id: string | null;
+  step_id: string | null;
+  event_type: 'sent' | 'opened' | 'replied' | 'bounced';
+  event_at: string;
+  user_agent: string | null;
+  ip_address: string | null;
+}
+
+// Extended types with joins
+
+export interface CampaignSequenceWithSteps extends CampaignSequence {
+  campaign_sequence_steps?: CampaignSequenceStep[];
+}
+
+export interface CampaignSequenceStepWithTemplate extends CampaignSequenceStep {
+  templates?: Template;
+}
+
+export interface CampaignEnrollmentWithDetails extends CampaignEnrollment {
+  contacts?: Contact;
+  campaign_sequences?: CampaignSequence;
+  campaign_sequence_steps?: CampaignSequenceStep;
 }

@@ -122,6 +122,13 @@ export async function POST(request: Request) {
               .eq('id', match.contactId)
               .in('status', ['new', 'contacted']);
 
+            // Mark any active sequence enrollments as completed (contact replied)
+            await supabase
+              .from('campaign_enrollments')
+              .update({ status: 'completed', completed_at: now })
+              .eq('contact_id', match.contactId)
+              .eq('status', 'active');
+
             // Add timeline entry
             await supabase.from('contact_timeline').insert({
               contact_id: match.contactId,

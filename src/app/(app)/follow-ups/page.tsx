@@ -260,6 +260,8 @@ export default function FollowUpsPage() {
           sentCount++;
         } else {
           errorCount++;
+          const errMsg = data.errors?.[0] || data.error || 'Unknown error';
+          console.error('[follow-up send] Failed for contact:', contactIds[i], errMsg);
         }
       } catch {
         errorCount++;

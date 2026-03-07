@@ -118,28 +118,33 @@ export async function POST(request: Request) {
 
         console.log(`[cron] Email sent successfully to ${pending.contact_email}`);
 
-        await finalizeSentEmail({
-          supabase,
-          workspaceId: pending.workspace_id,
-          userId: pending.user_id,
-          contactId: pending.contact_id,
-          emailSentId: emailRecord.id,
-          rawMessageId: result.messageId!,
-          subject: renderedSubject,
-          htmlBody: rendered,
-          textBody: plainText,
-          to: pending.contact_email,
-          from: {
-            email: pending.smtp_user,
-            name: pending.user_email || 'CRM',
-          },
-          enrollmentId: pending.enrollment_id,
-          stepId: pending.step_id,
-          metadata: {
-            sequence_id: pending.sequence_id,
-            legacy_cron: true,
-          },
-        });
+        try {
+          await finalizeSentEmail({
+            supabase,
+            workspaceId: pending.workspace_id,
+            userId: pending.user_id,
+            contactId: pending.contact_id,
+            emailSentId: emailRecord.id,
+            rawMessageId: result.messageId!,
+            subject: renderedSubject,
+            htmlBody: rendered,
+            textBody: plainText,
+            to: pending.contact_email,
+            from: {
+              email: pending.smtp_user,
+              name: pending.user_email || 'CRM',
+            },
+            enrollmentId: pending.enrollment_id,
+            stepId: pending.step_id,
+            metadata: {
+              sequence_id: pending.sequence_id,
+              legacy_cron: true,
+            },
+          });
+        } catch (finalizeErr) {
+          console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
+          await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
+        }
 
         // Get sequence info to find next step
         const { data: sequence } = await supabase

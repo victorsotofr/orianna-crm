@@ -219,28 +219,33 @@ export async function POST(
           throw new Error(result.error || 'Failed to send email');
         }
 
-        await finalizeSentEmail({
-          supabase,
-          workspaceId: ctx.workspaceId,
-          userId: user.id,
-          contactId: contact.id,
-          emailSentId: emailRecord.id,
-          rawMessageId: result.messageId!,
-          subject: renderedSubject,
-          htmlBody: rendered,
-          textBody: plainText,
-          to: contact.email,
-          from: {
-            email: userSettings.smtp_user,
-            name: userSettings.user_email || 'CRM',
-          },
-          enrollmentId: enrollment.id,
-          stepId: currentStep.id,
-          metadata: {
-            sequence_id: sequence.id,
-            template_id: template.id,
-          },
-        });
+        try {
+          await finalizeSentEmail({
+            supabase,
+            workspaceId: ctx.workspaceId,
+            userId: user.id,
+            contactId: contact.id,
+            emailSentId: emailRecord.id,
+            rawMessageId: result.messageId!,
+            subject: renderedSubject,
+            htmlBody: rendered,
+            textBody: plainText,
+            to: contact.email,
+            from: {
+              email: userSettings.smtp_user,
+              name: userSettings.user_email || 'CRM',
+            },
+            enrollmentId: enrollment.id,
+            stepId: currentStep.id,
+            metadata: {
+              sequence_id: sequence.id,
+              template_id: template.id,
+            },
+          });
+        } catch (finalizeErr) {
+          console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
+          await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
+        }
 
         // Find next step
         const currentStepIndex = sortedSteps.findIndex((s: any) => s.id === currentStep.id);

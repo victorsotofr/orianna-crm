@@ -212,29 +212,34 @@ export async function POST(request: Request) {
             }
           }
 
-          await finalizeSentEmail({
-            supabase,
-            workspaceId: email.workspace_id,
-            userId: email.user_id,
-            contactId: email.contact_id,
-            emailSentId: emailRecord.id,
-            rawMessageId: result.messageId!,
-            subject: renderedSubject,
-            htmlBody: renderedHtml,
-            textBody: plainText,
-            to: email.contact_email,
-            from: {
-              email: email.smtp_user,
-              name: email.user_email || email.smtp_user,
-            },
-            enrollmentId: email.enrollment_id,
-            stepId: email.step_id,
-            metadata: {
-              enrollment_id: email.enrollment_id,
-              step_id: email.step_id,
-              sequence_id: email.sequence_id,
-            },
-          });
+          try {
+            await finalizeSentEmail({
+              supabase,
+              workspaceId: email.workspace_id,
+              userId: email.user_id,
+              contactId: email.contact_id,
+              emailSentId: emailRecord.id,
+              rawMessageId: result.messageId!,
+              subject: renderedSubject,
+              htmlBody: renderedHtml,
+              textBody: plainText,
+              to: email.contact_email,
+              from: {
+                email: email.smtp_user,
+                name: email.user_email || email.smtp_user,
+              },
+              enrollmentId: email.enrollment_id,
+              stepId: email.step_id,
+              metadata: {
+                enrollment_id: email.enrollment_id,
+                step_id: email.step_id,
+                sequence_id: email.sequence_id,
+              },
+            });
+          } catch (finalizeErr) {
+            console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
+            await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
+          }
 
           // Update contact status if this is first email in sequence
           if (email.step_order === 0) {

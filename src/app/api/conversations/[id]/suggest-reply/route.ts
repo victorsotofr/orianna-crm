@@ -314,6 +314,7 @@ Respecte ces règles :
 - Ne promets rien qui n'apparaisse pas dans le thread.
 - Garde un ton naturel, pas robotique.
 - Ne mets pas d'objet dans ta réponse.
+- N'utilise JAMAIS de formatage markdown (pas de **gras**, *italique*, # titres, etc.). L'email est envoyé en texte brut.
 - Réponds uniquement avec le corps de l'email, prêt à être édité.${calendarInstruction}`,
       prompt: `Conversation avec ${contactName || 'le contact'}${contact?.company_name ? ` (${contact.company_name})` : ''}${contact?.email ? ` <${contact.email}>` : ''}.
 Sujet: ${thread.subject || 'Sans objet'}

@@ -387,73 +387,42 @@ export default function CampaignDetailPage() {
 
               {/* Contact progress table (only for sequences) */}
               {campaign.is_sequence && contactProgress.length > 0 && (
-                <div className="border rounded-lg overflow-hidden bg-card">
+                <div className="border rounded-lg bg-card">
                   <div className="p-4 border-b">
                     <h3 className="text-sm font-medium">{t.sequences.detail.contacts}</h3>
                   </div>
-                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 sticky top-0 z-10">
-                        <tr className="border-b">
-                          <th className="h-9 px-3 text-left text-xs font-medium">
-                            {t.campaigns.tableHeaders.name}
-                          </th>
-                          <th className="h-9 px-3 text-left text-xs font-medium">
-                            {t.campaigns.tableHeaders.email}
-                          </th>
-                          <th className="h-9 px-3 text-left text-xs font-medium">
-                            {t.campaigns.tableHeaders.company}
-                          </th>
-                          <th className="h-9 px-3 text-left text-xs font-medium">
-                            {t.sequences.detail.currentStep}
-                          </th>
-                          <th className="h-9 px-3 text-left text-xs font-medium">
-                            {t.sequences.detail.nextSend}
-                          </th>
-                          <th className="h-9 px-3 text-left text-xs font-medium">
-                            {t.common.status}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {contactProgress.map(cp => (
-                          <tr key={cp.contact_id} className="border-b hover:bg-muted/30">
-                            <td className="px-3 py-2 text-xs font-medium">
-                              {cp.contact.first_name} {cp.contact.last_name}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-muted-foreground">
-                              {cp.contact.email}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-muted-foreground">
-                              {cp.contact.company_name || '\u2014'}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className="text-xs">
-                                {getStepLabel(cp.current_step)}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-xs text-muted-foreground">
-                              {cp.next_send_date ? formatDate(cp.next_send_date) : '\u2014'}
-                            </td>
-                            <td className="px-3 py-2">
-                              {cp.is_completed ? (
-                                <Badge variant="secondary" className="text-xs">
-                                  {t.sequences.status.completed}
-                                </Badge>
-                              ) : cp.is_paused ? (
-                                <Badge variant="outline" className="text-xs">
-                                  {t.sequences.status.paused}
-                                </Badge>
-                              ) : (
-                                <Badge variant="default" className="text-xs">
-                                  {t.sequences.status.active}
-                                </Badge>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="max-h-[400px] overflow-y-auto divide-y">
+                    {contactProgress.map(cp => (
+                      <div key={cp.contact_id} className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-muted/30">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">
+                            {cp.contact.first_name} {cp.contact.last_name}
+                            {cp.contact.company_name && (
+                              <span className="text-muted-foreground font-normal ml-1">({cp.contact.company_name})</span>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate">{cp.contact.email}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="outline" className="text-[10px]">
+                            {getStepLabel(cp.current_step)}
+                          </Badge>
+                          {cp.is_completed ? (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {t.sequences.status.completed}
+                            </Badge>
+                          ) : cp.is_paused ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              {t.sequences.status.paused}
+                            </Badge>
+                          ) : (
+                            <Badge variant="default" className="text-[10px]">
+                              {t.sequences.status.active}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

@@ -29,7 +29,6 @@ import {
   VisibilityState,
 } from "@tanstack/react-table"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -57,6 +56,7 @@ import {
 import { format } from 'date-fns'
 import { useTranslation } from '@/lib/i18n'
 import type { Translations } from '@/lib/i18n'
+import { EmailStatusBadge } from '@/components/email-status-badge'
 
 interface EmailSentRow {
   id: string
@@ -73,29 +73,6 @@ interface EmailSentRow {
   templates: {
     name: string
   } | null
-}
-
-// Helper functions for status styling
-const getStatusBadgeVariant = (status: string): "default" | "destructive" | "secondary" | "outline" => {
-  switch (status) {
-    case 'sent':
-      return 'default'
-    case 'failed':
-      return 'destructive'
-    default:
-      return 'outline'
-  }
-}
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'sent':
-      return 'bg-green-500'
-    case 'failed':
-      return 'bg-red-500'
-    default:
-      return 'bg-gray-500'
-  }
 }
 
 function getColumns(t: Translations, dateFnsLocale: import('date-fns').Locale): ColumnDef<EmailSentRow>[] {
@@ -162,18 +139,7 @@ function getColumns(t: Translations, dateFnsLocale: import('date-fns').Locale): 
       accessorKey: "status",
       header: t.emailsTable.columns.status,
       cell: ({ row }) => {
-        const status = row.original.status
-        const color = getStatusColor(status)
-        const label = status === 'sent' ? t.emailsTable.statuses.sent : status === 'failed' ? t.emailsTable.statuses.failed : status
-
-        return (
-          <div className="flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full ${color}`} />
-            <Badge variant={getStatusBadgeVariant(status)}>
-              {label}
-            </Badge>
-          </div>
-        )
+        return <EmailStatusBadge status={row.original.status} />
       },
       filterFn: (row, id, value) => {
         return value === "all" || row.original.status === value
@@ -352,18 +318,12 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t.emailsTable.allStatuses}</SelectItem>
-              <SelectItem value="sent">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
-                  {t.emailsTable.statuses.sent}
-                </div>
-              </SelectItem>
-              <SelectItem value="failed">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-red-500" />
-                  {t.emailsTable.statuses.failed}
-                </div>
-              </SelectItem>
+              <SelectItem value="pending">{t.emailsTable.statuses.pending}</SelectItem>
+              <SelectItem value="sent">{t.emailsTable.statuses.sent}</SelectItem>
+              <SelectItem value="opened">{t.emailsTable.statuses.opened}</SelectItem>
+              <SelectItem value="replied">{t.emailsTable.statuses.replied}</SelectItem>
+              <SelectItem value="bounced">{t.emailsTable.statuses.bounced}</SelectItem>
+              <SelectItem value="failed">{t.emailsTable.statuses.failed}</SelectItem>
             </SelectContent>
           </Select>
           <DropdownMenu>

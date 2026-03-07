@@ -4,6 +4,8 @@ import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 export const maxDuration = 30;
 
@@ -156,8 +158,10 @@ export async function POST(request: Request) {
     }
 
     // Build tracking pixel and append after signature
+    const composedHtml = `${renderedHtml}\n\n${settings.signature_html}`;
     const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
-    const finalHtml = `${renderedHtml}\n\n${settings.signature_html}\n${trackingPixel}`;
+    const finalHtml = `${composedHtml}\n${trackingPixel}`;
+    const plainText = extractPlainText(undefined, composedHtml);
 
     // Send email
     const emailResult = await sendEmail(
@@ -172,6 +176,7 @@ export async function POST(request: Request) {
         to: contact.email,
         subject: renderedSubject,
         html: finalHtml,
+        text: plainText,
         from: settings.user_email || user.email || 'Email Automation',
       }
     );
@@ -189,11 +194,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // Update record to sent with message_id
-    await supabase
-      .from('emails_sent')
-      .update({ status: 'sent', message_id: emailResult.messageId })
-      .eq('id', emailRecord.id);
+    await finalizeSentEmail({
+      supabase,
+      workspaceId: ctx.workspaceId,
+      userId: user.id,
+      contactId,
+      emailSentId: emailRecord.id,
+      rawMessageId: emailResult.messageId!,
+      subject: renderedSubject,
+      htmlBody: composedHtml,
+      textBody: plainText,
+      to: contact.email,
+      from: {
+        email: settings.smtp_user!,
+        name: settings.user_email || user.email || 'Email Automation',
+      },
+      metadata: {
+        campaign_id: campaignId || null,
+        template_id: templateId,
+      },
+    });
 
     // Update campaign sent count if campaign exists
     if (campaignId) {
@@ -215,4 +235,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

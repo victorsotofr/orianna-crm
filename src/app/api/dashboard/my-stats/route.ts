@@ -21,50 +21,54 @@ export async function GET(request: Request) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // My contacts
-    const { count: myContacts } = await supabase
-      .from('contacts')
-      .select('*', { count: 'exact', head: true })
-      .eq('assigned_to', user.id);
-
-    // My emails today
-    const { count: myEmailsToday } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .eq('sent_by', user.id)
-      .gte('sent_at', today.toISOString());
-
-    // My total emails
-    const { count: myTotalEmails } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .eq('sent_by', user.id);
-
-    // My opened emails
-    const { count: myOpened } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .eq('sent_by', user.id)
-      .not('opened_at', 'is', null);
-
-    // My replied emails
-    const { count: myReplied } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .eq('sent_by', user.id)
-      .not('replied_at', 'is', null);
-
-    // My today's activity
-    const { data: myRecentSends } = await supabase
-      .from('emails_sent')
-      .select(`
-        id, contact_id, sent_at, status, sent_by_email,
-        contacts (id, email, first_name, last_name, company_name, status),
-        templates (id, name)
-      `)
-      .eq('sent_by', user.id)
-      .gte('sent_at', today.toISOString())
-      .order('sent_at', { ascending: false });
+    const [
+      { count: myContacts },
+      { count: myEmailsToday },
+      { count: myTotalEmails },
+      { count: myOpened },
+      { count: myReplied },
+      { data: myRecentSends },
+    ] = await Promise.all([
+      supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('assigned_to', user.id),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('sent_by', user.id)
+        .gte('sent_at', today.toISOString()),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('sent_by', user.id),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('sent_by', user.id)
+        .not('opened_at', 'is', null),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('sent_by', user.id)
+        .not('replied_at', 'is', null),
+      supabase
+        .from('emails_sent')
+        .select(`
+          id, contact_id, sent_at, status, sent_by_email,
+          contacts (id, email, first_name, last_name, company_name, status),
+          templates (id, name)
+        `)
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('sent_by', user.id)
+        .gte('sent_at', today.toISOString())
+        .order('sent_at', { ascending: false }),
+    ]);
 
     const myOpenRate = myTotalEmails && myTotalEmails > 0
       ? Math.round(((myOpened || 0) / myTotalEmails) * 100)

@@ -3,6 +3,9 @@ import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
+import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 // POST /api/campaigns/sequences/[id]/send-now - Send pending emails immediately (for testing)
 export async function POST(
@@ -165,8 +168,27 @@ export async function POST(
         company_name: contact.company_name || '',
       });
 
-      // Send email
       try {
+        const { data: emailRecord, error: emailRecordError } = await supabase
+          .from('emails_sent')
+          .insert({
+            workspace_id: ctx.workspaceId,
+            contact_id: contact.id,
+            template_id: template.id,
+            user_id: contact.assigned_to,
+            sent_by: user.id,
+            sent_by_email: userSettings.user_email,
+            status: 'pending',
+            enrollment_id: enrollment.id,
+            step_id: currentStep.id,
+          })
+          .select('id')
+          .single();
+
+        if (emailRecordError || !emailRecord) {
+          throw new Error(emailRecordError?.message || 'Failed to create email record');
+        }
+
         const emailConfig = {
           host: userSettings.smtp_host,
           port: userSettings.smtp_port,
@@ -175,33 +197,49 @@ export async function POST(
           bccEnabled: userSettings.bcc_enabled,
         };
 
+        const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
+        const finalHtml = `${rendered}\n${trackingPixel}`;
+        const plainText = extractPlainText(undefined, rendered);
+
         const emailData = {
           to: contact.email,
           subject: renderedSubject,
-          html: rendered,
-          from: contact.first_name && contact.last_name
-            ? `${contact.first_name} ${contact.last_name}`
-            : userSettings.user_email || 'CRM',
+          html: finalHtml,
+          text: plainText,
+          from: userSettings.user_email || user.email || 'CRM',
         };
 
         const result = await sendEmail(emailConfig, emailData);
 
         if (!result.success) {
+          await supabase
+            .from('emails_sent')
+            .update({ status: 'failed', error_message: result.error || 'Failed to send email' })
+            .eq('id', emailRecord.id);
           throw new Error(result.error || 'Failed to send email');
         }
 
-        // Record email sent
-        await supabase.from('emails_sent').insert({
-          workspace_id: ctx.workspaceId,
-          contact_id: contact.id,
-          template_id: template.id,
-          user_id: contact.assigned_to,
-          sent_by: user.id,
-          sent_by_email: userSettings.user_email,
-          status: 'sent',
-          enrollment_id: enrollment.id,
-          step_id: currentStep.id,
-          sent_at: new Date().toISOString(),
+        await finalizeSentEmail({
+          supabase,
+          workspaceId: ctx.workspaceId,
+          userId: user.id,
+          contactId: contact.id,
+          emailSentId: emailRecord.id,
+          rawMessageId: result.messageId!,
+          subject: renderedSubject,
+          htmlBody: rendered,
+          textBody: plainText,
+          to: contact.email,
+          from: {
+            email: userSettings.smtp_user,
+            name: userSettings.user_email || 'CRM',
+          },
+          enrollmentId: enrollment.id,
+          stepId: currentStep.id,
+          metadata: {
+            sequence_id: sequence.id,
+            template_id: template.id,
+          },
         });
 
         // Find next step

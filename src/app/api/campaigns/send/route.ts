@@ -5,6 +5,8 @@ import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 
 export const maxDuration = 30;
@@ -143,9 +145,12 @@ export async function POST(request: Request) {
           throw new Error(insertError?.message || 'Failed to create email record');
         }
 
-        // Build tracking pixel and append to HTML
+        const composedHtml = userSettings.signature_html
+          ? `${renderedHtml}\n\n${userSettings.signature_html}`
+          : renderedHtml;
         const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
-        const finalHtml = `${renderedHtml}\n${trackingPixel}`;
+        const finalHtml = `${composedHtml}\n${trackingPixel}`;
+        const plainText = extractPlainText(undefined, composedHtml);
 
         // Send email via SMTP
         const result = await sendEmail(
@@ -160,7 +165,8 @@ export async function POST(request: Request) {
             to: contact.email,
             subject: renderedSubject,
             html: finalHtml,
-            from: userSettings.smtp_user,
+            text: plainText,
+            from: userSettings.user_email || user.email || 'CRM',
           }
         );
 
@@ -173,11 +179,27 @@ export async function POST(request: Request) {
           throw new Error(result.error || 'Email sending failed');
         }
 
-        // Update record to sent with message_id
-        await supabase
-          .from('emails_sent')
-          .update({ status: 'sent', message_id: result.messageId })
-          .eq('id', emailRecord.id);
+        await finalizeSentEmail({
+          supabase,
+          workspaceId: ctx.workspaceId,
+          userId: user.id,
+          contactId: contact.id,
+          emailSentId: emailRecord.id,
+          rawMessageId: result.messageId!,
+          subject: renderedSubject,
+          htmlBody: composedHtml,
+          textBody: plainText,
+          to: contact.email,
+          from: {
+            email: userSettings.smtp_user,
+            name: userSettings.user_email || user.email || 'CRM',
+          },
+          metadata: {
+            template_id: templateId,
+            template_name: template.name,
+            stage,
+          },
+        });
 
         // Update contact date field
         const dateField = stage === 'first' ? 'first_contact'

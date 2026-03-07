@@ -14,6 +14,7 @@ import {
   Plus,
   Check,
   Reply,
+  MessageSquareText,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -100,6 +101,11 @@ export function AppSidebar({
       title: t.sidebar.campaigns,
       url: "/campaigns",
       icon: Send,
+    },
+    {
+      title: t.sidebar.conversations,
+      url: "/conversations",
+      icon: MessageSquareText,
     },
     {
       title: t.sidebar.followUps,

@@ -3,6 +3,8 @@ import { getServiceSupabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 // NO maxDuration constraint for cron jobs
 export const dynamic = 'force-dynamic';
@@ -152,9 +154,9 @@ export async function POST(request: Request) {
             throw new Error(insertError?.message || 'Failed to create email record');
           }
 
-          // Build tracking pixel and append to HTML
           const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
           const finalHtml = `${renderedHtml}\n${trackingPixel}`;
+          const plainText = extractPlainText(undefined, renderedHtml);
 
           // Send email via SMTP
           const result = await sendEmail(
@@ -169,7 +171,8 @@ export async function POST(request: Request) {
               to: email.contact_email,
               subject: renderedSubject,
               html: finalHtml,
-              from: email.smtp_user,
+              text: plainText,
+              from: email.user_email || email.smtp_user,
             }
           );
 
@@ -209,19 +212,28 @@ export async function POST(request: Request) {
             }
           }
 
-          // Update record to sent with message_id
-          await supabase
-            .from('emails_sent')
-            .update({ status: 'sent', message_id: result.messageId })
-            .eq('id', emailRecord.id);
-
-          // Log to email_stats with enrollment_id and step_id
-          await supabase.from('email_stats').insert({
-            emails_sent_id: emailRecord.id,
-            event_type: 'sent',
-            enrollment_id: email.enrollment_id,
-            step_id: email.step_id,
-            workspace_id: email.workspace_id,
+          await finalizeSentEmail({
+            supabase,
+            workspaceId: email.workspace_id,
+            userId: email.user_id,
+            contactId: email.contact_id,
+            emailSentId: emailRecord.id,
+            rawMessageId: result.messageId!,
+            subject: renderedSubject,
+            htmlBody: renderedHtml,
+            textBody: plainText,
+            to: email.contact_email,
+            from: {
+              email: email.smtp_user,
+              name: email.user_email || email.smtp_user,
+            },
+            enrollmentId: email.enrollment_id,
+            stepId: email.step_id,
+            metadata: {
+              enrollment_id: email.enrollment_id,
+              step_id: email.step_id,
+              sequence_id: email.sequence_id,
+            },
           });
 
           // Update contact status if this is first email in sequence

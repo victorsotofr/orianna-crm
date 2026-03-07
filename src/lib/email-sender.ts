@@ -12,10 +12,16 @@ export interface EmailConfig {
 }
 
 export interface EmailData {
-  to: string;
+  to: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
   subject: string;
   html: string;
+  text?: string;
   from: string;
+  replyTo?: string;
+  inReplyTo?: string;
+  references?: string[];
 }
 
 export async function sendEmail(config: EmailConfig, emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
@@ -50,11 +56,23 @@ export async function sendEmail(config: EmailConfig, emailData: EmailData): Prom
     const mailOptions: Record<string, unknown> = {
       from: `"${emailData.from}" <${config.user}>`,
       to: emailData.to,
+      cc: emailData.cc,
       subject: emailData.subject,
       html: emailData.html,
+      text: emailData.text,
+      replyTo: emailData.replyTo,
+      inReplyTo: emailData.inReplyTo,
+      references: emailData.references,
     };
+    const combinedBcc: string[] = [];
+    if (emailData.bcc) {
+      combinedBcc.push(...(Array.isArray(emailData.bcc) ? emailData.bcc : [emailData.bcc]));
+    }
     if (config.bccEnabled !== false) {
-      mailOptions.bcc = config.user;
+      combinedBcc.push(config.user);
+    }
+    if (combinedBcc.length > 0) {
+      mailOptions.bcc = combinedBcc;
     }
 
     const info = await transporter.sendMail(mailOptions as nodemailer.SendMailOptions);

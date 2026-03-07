@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SiteHeader } from '@/components/site-header';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ContactStatusBadge } from '@/components/contact-status-badge';
+import { EmailStatusBadge } from '@/components/email-status-badge';
 import { Users, Flame, Send, MailOpen, MessageSquareText, UserCheck } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
@@ -20,7 +20,7 @@ interface TeamStats {
   openRate: number;
   replyRate: number;
   hotLeadsCount: number;
-  perUser: { name: string; email: string; contacts: number; emailsToday: number; opens: number; replies: number }[];
+  perUser: { name: string; email: string; contacts: number; totalEmails: number; emailsToday: number; opens: number; replies: number }[];
   recentSends: any[];
 }
 
@@ -113,7 +113,7 @@ function RecentActivityTable({ data, onClickContact, t, dateFnsLocale }: { data:
                   {contact?.company_name || '\u2014'}
                 </td>
                 <td className="px-3 py-1">
-                  <ContactStatusBadge status={contact?.status || 'new'} />
+                  <EmailStatusBadge status={row.status || 'sent'} />
                 </td>
                 <td className="px-3 py-1 text-xs text-muted-foreground whitespace-nowrap">
                   {sentDate}
@@ -259,6 +259,7 @@ export default function DashboardPage() {
                         <TableRow>
                           <TableHead className="text-xs">{t.dashboard.teamTable.member}</TableHead>
                           <TableHead className="text-xs text-right">{t.dashboard.teamTable.contacts}</TableHead>
+                          <TableHead className="text-xs text-right">{t.dashboard.teamTable.totalEmails}</TableHead>
                           <TableHead className="text-xs text-right">{t.dashboard.teamTable.emailsToday}</TableHead>
                           <TableHead className="text-xs text-right">{t.dashboard.teamTable.opens}</TableHead>
                           <TableHead className="text-xs text-right">{t.dashboard.teamTable.replies}</TableHead>
@@ -274,6 +275,7 @@ export default function DashboardPage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-xs font-mono tabular-nums text-right">{member.contacts}</TableCell>
+                            <TableCell className="text-xs font-mono tabular-nums text-right">{member.totalEmails}</TableCell>
                             <TableCell className="text-xs font-mono tabular-nums text-right">{member.emailsToday}</TableCell>
                             <TableCell className="text-xs font-mono tabular-nums text-right">{member.opens}</TableCell>
                             <TableCell className="text-xs font-mono tabular-nums text-right">{member.replies}</TableCell>

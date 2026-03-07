@@ -16,7 +16,7 @@ import { SiteHeader } from '@/components/site-header';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown, Search } from 'lucide-react';
+import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown, Search, MessageSquareText } from 'lucide-react';
 import { EmailVerifiedBadge } from '@/components/email-verified-badge';
 import {
   AlertDialog,
@@ -329,6 +329,15 @@ export default function ContactDetailPage() {
               >
                 <ThumbsDown className="mr-1 h-3 w-3" />
                 {t.contacts.detail.cold}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => router.push(`/conversations?contactId=${contactId}`)}
+              >
+                <MessageSquareText className="mr-1 h-3 w-3" />
+                {t.contacts.detail.openConversation}
               </Button>
               {contact.enriched_at ? (
                 <EmailVerifiedBadge status={contact.email_verified_status} />

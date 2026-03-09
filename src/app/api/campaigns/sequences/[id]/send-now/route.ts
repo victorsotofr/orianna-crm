@@ -48,7 +48,57 @@ export async function POST(
       return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
     }
 
-    // Get pending enrollments (next_send_at in the past or null)
+    // Get current user's SMTP settings
+    const { data: currentUserSettings, error: currentUserSettingsError } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!currentUserSettings || !currentUserSettings.smtp_host) {
+      return NextResponse.json({
+        error: 'Vous devez configurer votre SMTP dans Paramètres avant d\'envoyer des emails',
+        sent: 0,
+      }, { status: 400 });
+    }
+
+    // If sequence is draft, activate it and initialize next_send_at for all enrollments
+    if (sequence.status === 'draft') {
+      const sortedSteps = sequence.steps.sort((a: any, b: any) => a.step_order - b.step_order);
+      const firstStep = sortedSteps[0];
+
+      // Get all enrollments with null next_send_at
+      const { data: draftEnrollments } = await supabase
+        .from('campaign_enrollments')
+        .select('id')
+        .eq('sequence_id', id)
+        .eq('workspace_id', ctx.workspaceId)
+        .is('next_send_at', null);
+
+      if (draftEnrollments && draftEnrollments.length > 0) {
+        // Set all enrollments to send NOW (not staggered in next_send_at)
+        // The staggering will happen via the delay in the send loop below
+        const now = new Date();
+        now.setDate(now.getDate() + firstStep.delay_days);
+
+        const updates = draftEnrollments.map((enrollment) => {
+          return supabase
+            .from('campaign_enrollments')
+            .update({ next_send_at: now.toISOString() })
+            .eq('id', enrollment.id);
+        });
+
+        await Promise.all(updates);
+      }
+
+      // Activate the sequence
+      await supabase
+        .from('campaign_sequences')
+        .update({ status: 'active' })
+        .eq('id', id);
+    }
+
+    // Get pending enrollments (next_send_at in the past or now)
     const { data: pendingEnrollments, error: enrollError } = await supabase
       .from('campaign_enrollments')
       .select(`
@@ -72,7 +122,7 @@ export async function POST(
       .eq('sequence_id', id)
       .eq('workspace_id', ctx.workspaceId)
       .eq('status', 'active')
-      .or('next_send_at.is.null,next_send_at.lte.' + new Date().toISOString());
+      .lte('next_send_at', new Date().toISOString());
 
     if (enrollError) {
       throw enrollError;
@@ -80,35 +130,32 @@ export async function POST(
 
     if (!pendingEnrollments || pendingEnrollments.length === 0) {
       return NextResponse.json({
-        message: 'No pending emails to send',
+        message: 'Aucun email à envoyer pour le moment',
         sent: 0,
       });
     }
 
-    // Get current user's SMTP settings (for testing, use sender's settings instead of contact.assigned_to)
-    const { data: currentUserSettings, error: currentUserSettingsError } = await supabase
-      .from('user_settings')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Limit batch size based on daily send limit
+    const dailyLimit = currentUserSettings.daily_send_limit || 50;
+    const batchSize = Math.min(pendingEnrollments.length, dailyLimit, 20); // Max 20 per batch
+    const emailsToSend = pendingEnrollments.slice(0, batchSize);
 
-    console.log('[send-now] Current user settings:', {
-      found: !!currentUserSettings,
-      hasSmtp: !!currentUserSettings?.smtp_host,
-      error: currentUserSettingsError?.message,
-    });
-
-    if (!currentUserSettings || !currentUserSettings.smtp_host) {
-      return NextResponse.json({
-        error: 'Vous devez configurer votre SMTP dans Paramètres avant d\'envoyer des emails',
-        sent: 0,
-      }, { status: 400 });
-    }
+    console.log(`[send-now] Processing ${emailsToSend.length}/${pendingEnrollments.length} pending emails`);
 
     const results = [];
     const sortedSteps = sequence.steps.sort((a: any, b: any) => a.step_order - b.step_order);
 
-    for (const enrollment of pendingEnrollments) {
+    // Helper function to delay between sends
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    for (let i = 0; i < emailsToSend.length; i++) {
+      const enrollment = emailsToSend[i];
+
+      // Add 1-minute delay between emails (except for first one)
+      if (i > 0) {
+        console.log(`[send-now] Waiting 1 minute before sending next email...`);
+        await delay(60000); // 1 minute = 60,000ms
+      }
       const contact = enrollment.contact;
       console.log(`[send-now] Processing enrollment ${enrollment.id}:`, {
         hasContact: !!contact,

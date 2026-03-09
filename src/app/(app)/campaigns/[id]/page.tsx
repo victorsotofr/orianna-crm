@@ -231,7 +231,7 @@ export default function CampaignDetailPage() {
                       ) : (
                         <Mail className="mr-1.5 h-3.5 w-3.5" />
                       )}
-                      Envoyer maintenant
+                      {sequence.is_active ? 'Envoyer maintenant' : 'Commencer la campagne'}
                     </Button>
                     {sequence.is_active ? (
                       <Button
@@ -391,7 +391,7 @@ export default function CampaignDetailPage() {
                   <div className="p-4 border-b">
                     <h3 className="text-sm font-medium">{t.sequences.detail.contacts}</h3>
                   </div>
-                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                  <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 sticky top-0 z-10">
                         <tr className="border-b">

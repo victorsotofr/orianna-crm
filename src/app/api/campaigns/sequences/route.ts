@@ -165,7 +165,8 @@ export async function POST(request: Request) {
       throw stepsError;
     }
 
-    // If contactIds provided, auto-enroll and activate
+    // If contactIds provided, enroll contacts but keep sequence in draft
+    // User will need to click "Commencer la campagne" to activate and start sending
     if (contactIds && Array.isArray(contactIds) && contactIds.length > 0) {
       const sortedSteps = insertedSteps.sort((a, b) => a.step_order - b.step_order);
       const firstStep = sortedSteps[0];
@@ -184,17 +185,14 @@ export async function POST(request: Request) {
         );
 
         if (eligibleContacts.length > 0) {
-          const now = new Date();
-          const nextSendAt = new Date(now);
-          nextSendAt.setDate(nextSendAt.getDate() + firstStep.delay_days);
-
+          // Set next_send_at to null - will be calculated when sequence is activated
           const enrollments = eligibleContacts.map(contact => ({
             workspace_id: ctx.workspaceId,
             sequence_id: sequence.id,
             contact_id: contact.id,
             enrolled_by: user.id,
             current_step_id: firstStep.id,
-            next_send_at: nextSendAt.toISOString(),
+            next_send_at: null, // Will be set when sequence starts
             status: 'active' as const,
           }));
 
@@ -205,7 +203,7 @@ export async function POST(request: Request) {
             contact_id: contact.id,
             event_type: 'sequence_enrolled',
             title: `Ajouté à la séquence "${sequence.name}"`,
-            description: `${insertedSteps.length} étapes configurées.`,
+            description: `${insertedSteps.length} étapes configurées. En attente de lancement.`,
             metadata: { sequence_id: sequence.id },
             created_by: user.id,
             workspace_id: ctx.workspaceId,
@@ -213,13 +211,7 @@ export async function POST(request: Request) {
 
           await supabase.from('contact_timeline').insert(timelineEvents);
 
-          // Update sequence status to active
-          await supabase
-            .from('campaign_sequences')
-            .update({ status: 'active' })
-            .eq('id', sequence.id);
-
-          sequence.status = 'active';
+          // Keep sequence in draft - user must click "Commencer la campagne" to activate
         }
       }
     }

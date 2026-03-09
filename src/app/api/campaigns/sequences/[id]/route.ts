@@ -93,8 +93,8 @@ export async function GET(
           const enrollmentStepIndex = sortedSteps.findIndex((s: any) => s.id === enrollment.current_step_id);
           const currentStepIndex = sortedSteps.findIndex((s: any) => s.id === step.id);
 
-          // Count if this step is the current step or a future step
-          if (enrollmentStepIndex <= currentStepIndex && enrollment.next_send_at) {
+          // Count if this step is the current step (exact match)
+          if (enrollmentStepIndex === currentStepIndex && enrollment.next_send_at) {
             scheduledCount++;
             if (!earliestDate || enrollment.next_send_at < earliestDate) {
               earliestDate = enrollment.next_send_at;

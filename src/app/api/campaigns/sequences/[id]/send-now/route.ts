@@ -184,6 +184,32 @@ export async function POST(
         continue;
       }
 
+      // Check if email has already been successfully sent for this enrollment/step (dedup check)
+      // Note: We allow retrying 'pending' or 'failed' emails
+      const { data: existingEmail, error: dedupError } = await supabase
+        .from('emails_sent')
+        .select('id, status')
+        .eq('enrollment_id', enrollment.id)
+        .eq('step_id', currentStep.id)
+        .in('status', ['sent', 'delivered', 'opened', 'replied'])
+        .maybeSingle();
+
+      console.log(`[send-now] Dedup check for enrollment ${enrollment.id}, step ${currentStep.id}:`, {
+        existingEmail,
+        dedupError,
+      });
+
+      if (existingEmail) {
+        console.log(`[send-now] Skipping enrollment ${enrollment.id}: email already ${existingEmail.status} for this step`);
+        results.push({
+          enrollment_id: enrollment.id,
+          contact_email: contact.email,
+          success: false,
+          error: `Email already ${existingEmail.status} for this step`,
+        });
+        continue;
+      }
+
       // Get template
       const { data: template } = await supabase
         .from('templates')
@@ -217,7 +243,8 @@ export async function POST(
       });
 
       try {
-        const { data: emailRecord, error: emailRecordError } = await supabase
+        // Insert emails_sent record first to get an ID for tracking pixel
+        const { data: emailRecord, error: insertError } = await supabase
           .from('emails_sent')
           .insert({
             workspace_id: ctx.workspaceId,
@@ -233,8 +260,20 @@ export async function POST(
           .select('id')
           .single();
 
-        if (emailRecordError || !emailRecord) {
-          throw new Error(emailRecordError?.message || 'Failed to create email record');
+        // Unique constraint violation = already sent for this enrollment/step
+        if (insertError?.code === '23505') {
+          console.log(`[send-now] Skipping ${contact.email}: email already exists for this step (dedup)`);
+          results.push({
+            enrollment_id: enrollment.id,
+            contact_email: contact.email,
+            success: false,
+            error: 'Email already sent for this step',
+          });
+          continue;
+        }
+
+        if (insertError || !emailRecord) {
+          throw new Error(insertError?.message || 'Failed to create email record');
         }
 
         const emailConfig = {
@@ -293,6 +332,22 @@ export async function POST(
         } catch (finalizeErr) {
           console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
           await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
+        }
+
+        // Update contact date field based on step order
+        const dateField = currentStep.step_order === 0 ? 'first_contact'
+          : currentStep.step_order === 1 ? 'second_contact'
+          : currentStep.step_order === 2 ? 'third_contact'
+          : null;
+
+        if (dateField) {
+          await supabase
+            .from('contacts')
+            .update({
+              [dateField]: new Date().toISOString().split('T')[0],
+              status: 'contacted',
+            })
+            .eq('id', contact.id);
         }
 
         // Find next step

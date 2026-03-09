@@ -132,6 +132,21 @@ export async function POST(request: Request) {
         const renderedSubject = renderTemplate(email.template_subject || '', variables);
         const renderedHtml = renderTemplate(email.template_html_content || '', variables);
 
+        // Check if email has already been successfully sent for this enrollment/step (dedup check)
+        // Note: We allow retrying 'pending' or 'failed' emails
+        const { data: existingEmail } = await supabase
+          .from('emails_sent')
+          .select('id, status')
+          .eq('enrollment_id', email.enrollment_id)
+          .eq('step_id', email.step_id)
+          .in('status', ['sent', 'delivered', 'opened', 'replied'])
+          .maybeSingle();
+
+        if (existingEmail) {
+          console.log(`[process-sequences] Skipping ${email.contact_email}: email already ${existingEmail.status} for this step`);
+          continue;
+        }
+
         // Insert emails_sent record first to get an ID for tracking pixel
         const { data: emailRecord, error: insertError } = await supabase
           .from('emails_sent')
@@ -146,6 +161,12 @@ export async function POST(request: Request) {
           })
           .select('id')
           .single();
+
+        // Unique constraint violation = already sent for this enrollment/step
+        if (insertError?.code === '23505') {
+          console.log(`[process-sequences] Skipping ${email.contact_email}: email already exists (dedup)`);
+          continue;
+        }
 
         if (insertError || !emailRecord) {
           throw new Error(insertError?.message || 'Failed to create email record');
@@ -238,13 +259,20 @@ export async function POST(request: Request) {
           await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
         }
 
-        // Update contact status if this is first email in sequence
-        if (email.step_order === 0) {
+        // Update contact date field based on step order
+        const dateField = email.step_order === 0 ? 'first_contact'
+          : email.step_order === 1 ? 'second_contact'
+          : email.step_order === 2 ? 'third_contact'
+          : null;
+
+        if (dateField) {
           await supabase
             .from('contacts')
-            .update({ status: 'contacted' })
-            .eq('id', email.contact_id)
-            .in('status', ['new']);
+            .update({
+              [dateField]: new Date().toISOString().split('T')[0],
+              status: 'contacted',
+            })
+            .eq('id', email.contact_id);
         }
 
         // Get next step in sequence

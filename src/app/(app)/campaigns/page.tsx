@@ -258,6 +258,8 @@ export default function CampaignsPage() {
           sentCount++;
         } else {
           errorCount++;
+          const errMsg = data.errors?.[0] || data.error || 'Unknown error';
+          console.error('[campaign send] Failed for contact:', contactIds[i], errMsg);
         }
       } catch {
         errorCount++;

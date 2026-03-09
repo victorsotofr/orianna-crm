@@ -100,6 +100,13 @@ export interface UserSettings {
   signature_html: string | null;
   daily_send_limit: number;
   bcc_enabled: boolean;
+  google_calendar_refresh_token_encrypted: string | null;
+  google_calendar_email: string | null;
+  google_calendar_scopes: string[] | null;
+  google_calendar_connected_at: string | null;
+  google_calendar_default_calendar_id: string | null;
+  google_calendar_default_timezone: string | null;
+  google_calendar_last_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -201,6 +208,79 @@ export interface EmailStats {
   event_at: string;
   user_agent: string | null;
   ip_address: string | null;
+}
+
+export interface MailboxAddress {
+  name: string | null;
+  email: string;
+}
+
+export interface MailboxThread {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  contact_id: string | null;
+  subject: string | null;
+  subject_normalized: string | null;
+  snippet: string | null;
+  unread_count: number;
+  last_message_at: string;
+  last_message_direction: 'inbound' | 'outbound' | null;
+  participants: MailboxAddress[];
+  last_message_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MailboxMessage {
+  id: string;
+  thread_id: string;
+  workspace_id: string;
+  user_id: string;
+  contact_id: string | null;
+  email_sent_id: string | null;
+  direction: 'inbound' | 'outbound';
+  internet_message_id: string;
+  in_reply_to: string | null;
+  references: string[];
+  subject: string | null;
+  from_name: string | null;
+  from_email: string | null;
+  to_emails: MailboxAddress[];
+  cc_emails: MailboxAddress[];
+  bcc_emails: MailboxAddress[];
+  text_body: string | null;
+  html_body: string | null;
+  snippet: string | null;
+  message_at: string;
+  sent_at: string | null;
+  received_at: string | null;
+  folder: string | null;
+  imap_uid: number | null;
+  is_auto_reply: boolean;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  user_id: string;
+  workspace_id: string | null;
+  contact_id: string | null;
+  thread_id: string | null;
+  google_event_id: string;
+  calendar_id: string;
+  summary: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  meet_url: string | null;
+  google_event_url: string | null;
+  status: 'confirmed' | 'cancelled' | 'deleted';
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
 }
 
 // Extended types with joins

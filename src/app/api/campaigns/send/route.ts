@@ -5,6 +5,8 @@ import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 
 export const maxDuration = 30;
@@ -133,9 +135,20 @@ export async function POST(request: Request) {
           .select('id')
           .single();
 
-        // Unique constraint violation = already sent by concurrent request
+        // Unique constraint violation = already sent at this stage
         if (insertError?.code === '23505') {
-          errors.push(`${contact.email}: déjà envoyé`);
+          // Still update the contact status in case it was missed before
+          const dateField = stage === 'first' ? 'first_contact'
+            : stage === 'second' ? 'second_contact'
+            : 'third_contact';
+          await supabase
+            .from('contacts')
+            .update({
+              [dateField]: new Date().toISOString().split('T')[0],
+              status: 'contacted',
+            })
+            .eq('id', contact.id);
+          sentCount++;
           continue;
         }
 
@@ -143,9 +156,12 @@ export async function POST(request: Request) {
           throw new Error(insertError?.message || 'Failed to create email record');
         }
 
-        // Build tracking pixel and append to HTML
+        const composedHtml = userSettings.signature_html
+          ? `${renderedHtml}\n\n${userSettings.signature_html}`
+          : renderedHtml;
         const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
-        const finalHtml = `${renderedHtml}\n${trackingPixel}`;
+        const finalHtml = `${composedHtml}\n${trackingPixel}`;
+        const plainText = extractPlainText(undefined, composedHtml);
 
         // Send email via SMTP
         const result = await sendEmail(
@@ -160,7 +176,8 @@ export async function POST(request: Request) {
             to: contact.email,
             subject: renderedSubject,
             html: finalHtml,
-            from: userSettings.smtp_user,
+            text: plainText,
+            from: userSettings.user_email || user.email || 'CRM',
           }
         );
 
@@ -173,11 +190,38 @@ export async function POST(request: Request) {
           throw new Error(result.error || 'Email sending failed');
         }
 
-        // Update record to sent with message_id
-        await supabase
-          .from('emails_sent')
-          .update({ status: 'sent', message_id: result.messageId })
-          .eq('id', emailRecord.id);
+        try {
+          await finalizeSentEmail({
+            supabase,
+            workspaceId: ctx.workspaceId,
+            userId: user.id,
+            contactId: contact.id,
+            emailSentId: emailRecord.id,
+            rawMessageId: result.messageId!,
+            subject: renderedSubject,
+            htmlBody: composedHtml,
+            textBody: plainText,
+            to: contact.email,
+            from: {
+              email: userSettings.smtp_user,
+              name: userSettings.user_email || user.email || 'CRM',
+            },
+            metadata: {
+              template_id: templateId,
+              template_name: template.name,
+              stage,
+            },
+          });
+        } catch (finalizeErr) {
+          // Email was sent via SMTP — don't fail the whole send just because
+          // the mailbox/thread record couldn't be created.
+          console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
+          // At minimum mark as sent in emails_sent
+          await supabase
+            .from('emails_sent')
+            .update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() })
+            .eq('id', emailRecord.id);
+        }
 
         // Update contact date field
         const dateField = stage === 'first' ? 'first_contact'
@@ -210,8 +254,9 @@ export async function POST(request: Request) {
 
         sentCount++;
       } catch (error: any) {
-        console.error('Campaign email send error:', error instanceof Error ? error.message : error);
-        errors.push(error.message || 'Send failed');
+        const errMsg = error instanceof Error ? error.message : String(error);
+        console.error(`Campaign email send error for ${contact.email}:`, errMsg);
+        errors.push(`${contact.email}: ${errMsg}`);
       }
     }
 

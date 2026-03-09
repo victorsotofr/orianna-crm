@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit } from 'lucide-react';
+import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit, CheckCircle2, XCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DEFAULT_PERSONALIZATION_PROMPT, DEFAULT_SCORING_PROMPT, DEFAULT_LINKUP_COMPANY_QUERY, DEFAULT_LINKUP_CONTACT_QUERY, DEFAULT_LINKUP_PROSPECTING_QUERY } from '@/lib/ai-defaults';
@@ -59,6 +59,12 @@ export default function SettingsPage() {
   const [savingIntegrations, setSavingIntegrations] = useState(false);
   const [showFullenrichKey, setShowFullenrichKey] = useState(false);
   const [showLinkupKey, setShowLinkupKey] = useState(false);
+  // Google Calendar state
+  const [gcalAvailable, setGcalAvailable] = useState(false);
+  const [gcalConnected, setGcalConnected] = useState(false);
+  const [gcalEmail, setGcalEmail] = useState<string | null>(null);
+  const [gcalLastError, setGcalLastError] = useState<string | null>(null);
+  const [gcalDisconnecting, setGcalDisconnecting] = useState(false);
   // AI Prompts state
   const [aiPersonalizationPrompt, setAiPersonalizationPrompt] = useState('');
   const [aiScoringPrompt, setAiScoringPrompt] = useState('');
@@ -96,7 +102,32 @@ export default function SettingsPage() {
     dailySendLimit: '50', bccEnabled: true,
   });
 
-  useEffect(() => { fetchSettings(); fetchIntegrations(); }, []);
+  useEffect(() => { fetchSettings(); fetchIntegrations(); fetchGoogleCalendarStatus(); }, []);
+  // Handle Google Calendar OAuth callback query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gcParam = params.get('google_calendar');
+    if (!gcParam) return;
+    const gcError = params.get('google_calendar_error');
+    // Clean URL
+    params.delete('google_calendar');
+    params.delete('google_calendar_error');
+    const newUrl = params.toString() ? `${window.location.pathname}?${params}` : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
+    setSection('integrations');
+    if (gcParam === 'connected') {
+      toast.success(t.settings.googleCalendar.justConnected);
+      fetchGoogleCalendarStatus();
+    } else if (gcParam === 'denied') {
+      toast.error(t.settings.googleCalendar.denied);
+    } else if (gcParam === 'state_error') {
+      toast.error(t.settings.googleCalendar.stateError);
+    } else if (gcParam === 'not_configured') {
+      toast.error(t.settings.googleCalendar.notConfigured);
+    } else if (gcParam === 'callback_error' || gcParam === 'connect_error') {
+      toast.error(gcError || t.settings.googleCalendar.callbackError);
+    }
+  }, []);
   useEffect(() => {
     setHasUnsavedChanges(
       smtpHost !== originalValues.smtpHost || smtpPort !== originalValues.smtpPort ||
@@ -166,6 +197,38 @@ export default function SettingsPage() {
         if (cData.linkup?.configured) setLinkupCredits(cData.linkup.credits);
       }
     } catch {} finally { setLoadingCredits(false); }
+  };
+
+  const fetchGoogleCalendarStatus = async () => {
+    try {
+      const r = await fetch('/api/settings/google-calendar');
+      if (r.ok) {
+        const data = await r.json();
+        setGcalAvailable(data.available || false);
+        setGcalConnected(data.connected || false);
+        setGcalEmail(data.email || null);
+        setGcalLastError(data.lastError || null);
+      }
+    } catch {}
+  };
+
+  const handleGcalDisconnect = async () => {
+    setGcalDisconnecting(true);
+    try {
+      const r = await fetch('/api/settings/google-calendar', { method: 'DELETE' });
+      if (r.ok) {
+        setGcalConnected(false);
+        setGcalEmail(null);
+        setGcalLastError(null);
+        toast.success(t.settings.googleCalendar.disconnected);
+      } else {
+        toast.error(t.settings.googleCalendar.disconnectError);
+      }
+    } catch {
+      toast.error(t.settings.googleCalendar.disconnectError);
+    } finally {
+      setGcalDisconnecting(false);
+    }
   };
 
   const handleSaveIntegrations = async () => {
@@ -359,7 +422,7 @@ export default function SettingsPage() {
     { key: 'security', label: t.settings.nav.security, group: 'personal' },
     { key: 'workspace', label: t.settings.nav.workspace, group: 'team' },
     { key: 'members', label: t.settings.nav.members, group: 'team' },
-    { key: 'integrations', label: t.settings.nav.integrations, group: 'team' },
+    { key: 'integrations', label: t.settings.nav.integrations, group: 'personal' },
   ];
 
   return (
@@ -553,6 +616,47 @@ export default function SettingsPage() {
                       {savingIntegrations && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                       {t.common.save}
                     </Button>
+
+                    {/* Google Calendar */}
+                    <div className="border-t pt-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-start gap-3">
+                          <img src="/googlecalendar.png" alt="Google Calendar" className="h-5 w-5 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium">{t.settings.googleCalendar.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{t.settings.googleCalendar.description}</p>
+                            {gcalConnected && gcalEmail && (
+                              <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {t.settings.googleCalendar.connectedAs(gcalEmail)}
+                              </p>
+                            )}
+                            {gcalLastError && (
+                              <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                                <XCircle className="h-3 w-3" />
+                                {gcalLastError}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          {gcalConnected ? (
+                            <Button variant="outline" size="sm" onClick={handleGcalDisconnect} disabled={gcalDisconnecting}>
+                              {gcalDisconnecting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                              {t.settings.googleCalendar.disconnect}
+                            </Button>
+                          ) : gcalAvailable ? (
+                            <a href="/api/settings/google-calendar/connect">
+                              <Button size="sm">
+                                {t.settings.googleCalendar.connect}
+                              </Button>
+                            </a>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">{t.settings.googleCalendar.notConfigured}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
                     {/* AI Prompts — open dialog */}
                     <div className="border-t pt-4">

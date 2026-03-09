@@ -422,12 +422,12 @@ export default function NewSequencePage() {
                   </Select>
                   <Select value={ownerFilter} onValueChange={setOwnerFilter}>
                     <SelectTrigger className="w-[140px] h-8 text-xs">
-                      <SelectValue placeholder={t.contacts.owner} />
+                      <SelectValue placeholder={t.contacts.myContacts} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{t.contacts.allOwners}</SelectItem>
+                      <SelectItem value="all">{t.statuses.allStatuses}</SelectItem>
                       <SelectItem value="me">{t.contacts.myContacts}</SelectItem>
-                      <SelectItem value="unassigned">{t.contacts.unassigned}</SelectItem>
+                      <SelectItem value="unassigned">{t.contacts.unassignedContacts}</SelectItem>
                       {teamMembers.map(member => (
                         <SelectItem key={member.user_id} value={member.user_id} className="text-xs">
                           {member.display_name}

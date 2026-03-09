@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+
+import { getServiceSupabase } from '@/lib/supabase';
 
 // 1x1 transparent GIF
 const TRANSPARENT_GIF = Buffer.from(
@@ -44,28 +45,33 @@ export async function GET(request: Request) {
       });
     }
 
-    // Use service role to update (no auth needed for pixel tracking)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (supabaseUrl && supabaseServiceKey) {
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const supabase = getServiceSupabase();
       const now = new Date().toISOString();
-
-      // Set opened_at only if not already opened
-      await supabase
+      const { data: emailRecord } = await supabase
         .from('emails_sent')
-        .update({ opened_at: now })
+        .select('id, status, opened_at, workspace_id, enrollment_id, step_id')
         .eq('id', statId)
-        .is('opened_at', null);
+        .maybeSingle();
 
-      // Update status to 'opened' only if still 'sent' (don't downgrade 'replied')
-      await supabase
-        .from('emails_sent')
-        .update({ status: 'opened' })
-        .eq('id', statId)
-        .eq('status', 'sent');
+      const wasAlreadyOpened = Boolean(emailRecord?.opened_at);
+
+      if (emailRecord && !wasAlreadyOpened) {
+        await supabase
+          .from('emails_sent')
+          .update({ opened_at: now })
+          .eq('id', statId)
+          .is('opened_at', null);
+
+      }
+
+      if (emailRecord?.status === 'sent') {
+        await supabase
+          .from('emails_sent')
+          .update({ status: 'opened' })
+          .eq('id', statId)
+          .eq('status', 'sent');
+      }
     }
 
     return new NextResponse(TRANSPARENT_GIF, {

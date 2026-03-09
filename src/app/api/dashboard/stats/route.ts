@@ -26,7 +26,8 @@ export async function GET(request: Request) {
     // Get total contacts count (all users)
     const { count: totalContacts } = await supabase
       .from('contacts')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .eq('workspace_id', ctx.workspaceId);
 
     // Get emails sent today (all users)
     const today = new Date();
@@ -34,23 +35,27 @@ export async function GET(request: Request) {
     const { count: emailsSentToday } = await supabase
       .from('emails_sent')
       .select('*', { count: 'exact', head: true })
+      .eq('workspace_id', ctx.workspaceId)
       .gte('sent_at', today.toISOString());
 
     // Get total emails sent (all users)
     const { count: totalEmailsSent } = await supabase
       .from('emails_sent')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .eq('workspace_id', ctx.workspaceId);
 
     // Get opened emails count
     const { count: totalOpened } = await supabase
       .from('emails_sent')
       .select('*', { count: 'exact', head: true })
+      .eq('workspace_id', ctx.workspaceId)
       .not('opened_at', 'is', null);
 
     // Get replied emails count
     const { count: totalReplied } = await supabase
       .from('emails_sent')
       .select('*', { count: 'exact', head: true })
+      .eq('workspace_id', ctx.workspaceId)
       .not('replied_at', 'is', null);
 
     // Get recent sends (last 100 from all users for better pagination)
@@ -74,6 +79,7 @@ export async function GET(request: Request) {
           name
         )
       `)
+      .eq('workspace_id', ctx.workspaceId)
       .order('sent_at', { ascending: false })
       .limit(100);
 
@@ -86,6 +92,7 @@ export async function GET(request: Request) {
     const { data: firstEmail } = await supabase
       .from('emails_sent')
       .select('sent_at')
+      .eq('workspace_id', ctx.workspaceId)
       .order('sent_at', { ascending: true })
       .limit(1)
       .single();
@@ -127,4 +134,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

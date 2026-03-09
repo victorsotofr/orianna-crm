@@ -3,6 +3,8 @@ import { getServiceSupabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 // NO maxDuration constraint for cron jobs
 export const dynamic = 'force-dynamic';
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
     const errors: string[] = [];
 
     // Group by user_id and take only the FIRST pending email per user
-    // This ensures proper 1-minute spacing between emails (via cron running every 5 min)
+    // This ensures proper spacing between emails (via cron running every 5 min)
     const emailsByUser = new Map<string, PendingSequenceEmail>();
     for (const email of (pendingEmails as PendingSequenceEmail[])) {
       if (!emailsByUser.has(email.user_id)) {
@@ -149,9 +151,9 @@ export async function POST(request: Request) {
           throw new Error(insertError?.message || 'Failed to create email record');
         }
 
-        // Build tracking pixel and append to HTML
         const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
         const finalHtml = `${renderedHtml}\n${trackingPixel}`;
+        const plainText = extractPlainText(undefined, renderedHtml);
 
         // Send email via SMTP
         const result = await sendEmail(
@@ -166,7 +168,8 @@ export async function POST(request: Request) {
             to: email.contact_email,
             subject: renderedSubject,
             html: finalHtml,
-            from: email.smtp_user,
+            text: plainText,
+            from: email.user_email || email.smtp_user,
           }
         );
 
@@ -206,20 +209,34 @@ export async function POST(request: Request) {
           }
         }
 
-        // Update record to sent with message_id
-        await supabase
-          .from('emails_sent')
-          .update({ status: 'sent', message_id: result.messageId })
-          .eq('id', emailRecord.id);
-
-        // Log to email_stats with enrollment_id and step_id
-        await supabase.from('email_stats').insert({
-          emails_sent_id: emailRecord.id,
-          event_type: 'sent',
-          enrollment_id: email.enrollment_id,
-          step_id: email.step_id,
-          workspace_id: email.workspace_id,
-        });
+        try {
+          await finalizeSentEmail({
+            supabase,
+            workspaceId: email.workspace_id,
+            userId: email.user_id,
+            contactId: email.contact_id,
+            emailSentId: emailRecord.id,
+            rawMessageId: result.messageId!,
+            subject: renderedSubject,
+            htmlBody: renderedHtml,
+            textBody: plainText,
+            to: email.contact_email,
+            from: {
+              email: email.smtp_user,
+              name: email.user_email || email.smtp_user,
+            },
+            enrollmentId: email.enrollment_id,
+            stepId: email.step_id,
+            metadata: {
+              enrollment_id: email.enrollment_id,
+              step_id: email.step_id,
+              sequence_id: email.sequence_id,
+            },
+          });
+        } catch (finalizeErr) {
+          console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
+          await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
+        }
 
         // Update contact status if this is first email in sequence
         if (email.step_order === 0) {
@@ -229,21 +246,6 @@ export async function POST(request: Request) {
             .eq('id', email.contact_id)
             .in('status', ['new']);
         }
-
-        // Log timeline event
-        await supabase.from('contact_timeline').insert({
-          contact_id: email.contact_id,
-          event_type: 'email_sent',
-          title: `Email de séquence envoyé (étape ${email.step_order + 1})`,
-          description: renderedSubject,
-          metadata: {
-            enrollment_id: email.enrollment_id,
-            step_id: email.step_id,
-            sequence_id: email.sequence_id,
-            message_id: result.messageId,
-          },
-          workspace_id: email.workspace_id,
-        });
 
         // Get next step in sequence
         const { data: nextSteps } = await supabase

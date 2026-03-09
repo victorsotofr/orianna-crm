@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-sender';
 import { renderTemplate } from '@/lib/template-renderer';
+import { buildTrackingPixelHtml } from '@/lib/email-tracking';
+import { extractPlainText } from '@/lib/email-content';
+import { finalizeSentEmail } from '@/lib/outbound-email';
 
 // POST /api/cron/process-sequences - Process pending sequence emails (called by cron)
 export async function POST(request: Request) {
@@ -63,7 +66,26 @@ export async function POST(request: Request) {
           company_name: pending.contact_company_name || '',
         });
 
-        // Send email
+        const { data: emailRecord, error: emailRecordError } = await supabase
+          .from('emails_sent')
+          .insert({
+            workspace_id: pending.workspace_id,
+            contact_id: pending.contact_id,
+            template_id: pending.step_id,
+            user_id: pending.user_id,
+            sent_by: pending.user_id,
+            sent_by_email: pending.user_email,
+            status: 'pending',
+            enrollment_id: pending.enrollment_id,
+            step_id: pending.step_id,
+          })
+          .select('id')
+          .single();
+
+        if (emailRecordError || !emailRecord) {
+          throw new Error(emailRecordError?.message || 'Failed to create email record');
+        }
+
         const emailConfig = {
           host: pending.smtp_host,
           port: pending.smtp_port,
@@ -72,37 +94,57 @@ export async function POST(request: Request) {
           bccEnabled: pending.bcc_enabled,
         };
 
+        const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
+        const finalHtml = `${rendered}\n${trackingPixel}`;
+        const plainText = extractPlainText(undefined, rendered);
+
         const emailData = {
           to: pending.contact_email,
           subject: renderedSubject,
-          html: rendered,
-          from: pending.contact_first_name && pending.contact_last_name
-            ? `${pending.contact_first_name} ${pending.contact_last_name}`
-            : pending.user_email || 'CRM',
+          html: finalHtml,
+          text: plainText,
+          from: pending.user_email || 'CRM',
         };
 
         const result = await sendEmail(emailConfig, emailData);
 
         if (!result.success) {
+          await supabase
+            .from('emails_sent')
+            .update({ status: 'failed', error_message: result.error || 'Failed to send email' })
+            .eq('id', emailRecord.id);
           throw new Error(result.error || 'Failed to send email');
         }
 
         console.log(`[cron] Email sent successfully to ${pending.contact_email}`);
 
-        // Record email sent
-        await supabase.from('emails_sent').insert({
-          workspace_id: pending.workspace_id,
-          contact_id: pending.contact_id,
-          template_id: pending.step_id, // Note: this should be template_id but we don't have it in the RPC
-          user_id: pending.user_id,
-          sent_by: pending.user_id,
-          sent_by_email: pending.user_email,
-          status: 'sent',
-          enrollment_id: pending.enrollment_id,
-          step_id: pending.step_id,
-          message_id: result.messageId,
-          sent_at: new Date().toISOString(),
-        });
+        try {
+          await finalizeSentEmail({
+            supabase,
+            workspaceId: pending.workspace_id,
+            userId: pending.user_id,
+            contactId: pending.contact_id,
+            emailSentId: emailRecord.id,
+            rawMessageId: result.messageId!,
+            subject: renderedSubject,
+            htmlBody: rendered,
+            textBody: plainText,
+            to: pending.contact_email,
+            from: {
+              email: pending.smtp_user,
+              name: pending.user_email || 'CRM',
+            },
+            enrollmentId: pending.enrollment_id,
+            stepId: pending.step_id,
+            metadata: {
+              sequence_id: pending.sequence_id,
+              legacy_cron: true,
+            },
+          });
+        } catch (finalizeErr) {
+          console.error('finalizeSentEmail error (email was still sent):', finalizeErr instanceof Error ? finalizeErr.message : finalizeErr);
+          await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
+        }
 
         // Get sequence info to find next step
         const { data: sequence } = await supabase

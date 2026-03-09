@@ -21,75 +21,94 @@ export async function GET(request: Request) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Total contacts
-    const { count: totalContacts } = await supabase
-      .from('contacts')
-      .select('*', { count: 'exact', head: true });
-
-    // Emails sent today
-    const { count: emailsToday } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .gte('sent_at', today.toISOString());
-
-    // Total emails sent
-    const { count: totalEmails } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true });
-
-    // Opened emails count (from emails_sent tracking)
-    const { count: totalOpened } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .not('opened_at', 'is', null);
-
-    // Replied emails count (from emails_sent tracking)
-    const { count: totalReplied } = await supabase
-      .from('emails_sent')
-      .select('*', { count: 'exact', head: true })
-      .not('replied_at', 'is', null);
-
-    // Hot leads count
-    const { count: hotLeadsCount } = await supabase
-      .from('contacts')
-      .select('*', { count: 'exact', head: true })
-      .eq('ai_score_label', 'HOT');
-
-    // Per-user breakdown
-    const { data: teamMembers } = await supabase
-      .from('workspace_members')
-      .select('user_id, display_name, email')
-      .eq('workspace_id', ctx.workspaceId);
+    // Run all top-level counts in parallel
+    const [
+      { count: totalContacts },
+      { count: emailsToday },
+      { count: totalEmails },
+      { count: totalOpened },
+      { count: totalReplied },
+      { count: hotLeadsCount },
+      { data: teamMembers },
+    ] = await Promise.all([
+      supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .gte('sent_at', today.toISOString()),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .not('opened_at', 'is', null),
+      supabase
+        .from('emails_sent')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .not('replied_at', 'is', null),
+      supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', ctx.workspaceId)
+        .eq('ai_score_label', 'HOT'),
+      supabase
+        .from('workspace_members')
+        .select('user_id, display_name, email')
+        .eq('workspace_id', ctx.workspaceId),
+    ]);
 
     const perUser = await Promise.all(
       (teamMembers || []).map(async (member) => {
-        const { count: contacts } = await supabase
-          .from('contacts')
-          .select('*', { count: 'exact', head: true })
-          .eq('assigned_to', member.user_id);
-
-        const { count: emailsSent } = await supabase
-          .from('emails_sent')
-          .select('*', { count: 'exact', head: true })
-          .eq('sent_by', member.user_id)
-          .gte('sent_at', today.toISOString());
-
-        const { count: opens } = await supabase
-          .from('emails_sent')
-          .select('*', { count: 'exact', head: true })
-          .eq('sent_by', member.user_id)
-          .not('opened_at', 'is', null);
-
-        const { count: replies } = await supabase
-          .from('emails_sent')
-          .select('*', { count: 'exact', head: true })
-          .eq('sent_by', member.user_id)
-          .not('replied_at', 'is', null);
+        const [
+          { count: contacts },
+          { count: totalUserEmails },
+          { count: emailsSent },
+          { count: opens },
+          { count: replies },
+        ] = await Promise.all([
+          supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .eq('workspace_id', ctx.workspaceId)
+            .eq('assigned_to', member.user_id),
+          supabase
+            .from('emails_sent')
+            .select('*', { count: 'exact', head: true })
+            .eq('workspace_id', ctx.workspaceId)
+            .eq('sent_by', member.user_id),
+          supabase
+            .from('emails_sent')
+            .select('*', { count: 'exact', head: true })
+            .eq('workspace_id', ctx.workspaceId)
+            .eq('sent_by', member.user_id)
+            .gte('sent_at', today.toISOString()),
+          supabase
+            .from('emails_sent')
+            .select('*', { count: 'exact', head: true })
+            .eq('workspace_id', ctx.workspaceId)
+            .eq('sent_by', member.user_id)
+            .not('opened_at', 'is', null),
+          supabase
+            .from('emails_sent')
+            .select('*', { count: 'exact', head: true })
+            .eq('workspace_id', ctx.workspaceId)
+            .eq('sent_by', member.user_id)
+            .not('replied_at', 'is', null),
+        ]);
 
         return {
           name: member.display_name,
           email: member.email,
           contacts: contacts || 0,
+          totalEmails: totalUserEmails || 0,
           emailsToday: emailsSent || 0,
           opens: opens || 0,
           replies: replies || 0,
@@ -105,6 +124,7 @@ export async function GET(request: Request) {
         contacts (id, email, first_name, last_name, company_name, status),
         templates (id, name)
       `)
+      .eq('workspace_id', ctx.workspaceId)
       .gte('sent_at', today.toISOString())
       .order('sent_at', { ascending: false });
 

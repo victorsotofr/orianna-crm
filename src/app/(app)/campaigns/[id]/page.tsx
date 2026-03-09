@@ -387,7 +387,7 @@ export default function CampaignDetailPage() {
 
               {/* Contact progress table (only for sequences) */}
               {campaign.is_sequence && contactProgress.length > 0 && (
-                <div className="border rounded-lg overflow-hidden bg-card">
+                <div className="border rounded-lg bg-card">
                   <div className="p-4 border-b">
                     <h3 className="text-sm font-medium">{t.sequences.detail.contacts}</h3>
                   </div>

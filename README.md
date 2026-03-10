@@ -2,16 +2,19 @@
 
 > Your AI-powered outbound sales copilot. Built for teams who'd rather close deals than wrestle with spreadsheets.
 
-Orianna is a full-stack B2B prospecting CRM that combines contact management, email campaigns, and AI-driven personalization into one sleek tool. Import your leads, let Claude score and research them, craft personalized emails at scale, and track everything — all from a single dashboard.
+Orianna is a full-stack B2B prospecting CRM that combines contact management, email sequences, conversations, and AI-driven personalization into one sleek tool. Import your leads, let Claude score and research them, craft personalized emails at scale, automate multi-step follow-ups, and track everything — all from a single dashboard.
 
 ## What Makes It Fun
 
 - **AI Contact Prospecting** — Type what you're looking for in plain language ("Find real estate agency directors in Paris"), and Linkup searches the web for matching contacts. Preview results, pick the ones you want, import in one click.
 - **AI Lead Scoring** — Claude + Linkup scour the web, score your contacts 0–100 across seniority, company fit, growth signals & digital presence, and slap a `HOT` / `WARM` / `COLD` label on them. No more gut feelings.
 - **AI Personalization** — One click generates a tailor-made opening line per contact, backed by real web research. Drop `{{ai_personalized_line}}` into any template and watch your reply rates climb.
+- **Email Sequences** — Build 3-step automated sequences (first contact → first follow-up → last contact) with configurable delays. Enroll contacts, launch, pause, resume — the sequence engine runs every 5 minutes and handles the rest.
+- **Conversations** — Full email inbox with threaded conversations, IMAP sync, and AI-powered reply suggestions. See all inbound and outbound messages in one place, linked to your contacts.
+- **Google Calendar** — Connect via OAuth, view your availability, and create meetings directly from conversation threads.
 - **Contact Enrichment** — FullEnrich finds verified emails and phone numbers for your contacts in the background. Verified data always takes priority over guesses.
 - **Rich Email Templates** — TipTap-powered WYSIWYG editor with 20+ dynamic variables (`{{first_name}}`, `{{company_name}}`, `{{ai_score_label}}`…). Write once, send to thousands.
-- **Campaign Engine** — Bulk send with built-in throttling (45s delay between emails), daily limits, open tracking pixels, and reply detection via IMAP polling.
+- **Follow-Up Tracking** — Dedicated follow-ups page shows which contacts need a first or second follow-up, with bulk send actions.
 - **CSV Import on Steroids** — Auto-detects headers in French or English, normalizes statuses, skips duplicates. Drag, drop, done.
 - **Multi-Tenant Workspaces** — Invite your team, share contacts, and keep data isolated between organizations. Role-based access (admin / member).
 - **Team Dashboard** — Real-time KPIs: total contacts, hot leads, daily sends, reply rate, per-member breakdown. Everyone stays in the loop.
@@ -26,8 +29,9 @@ Orianna is a full-stack B2B prospecting CRM that combines contact management, em
 | **AI** | Claude Sonnet 4.5 via Vercel AI SDK |
 | **Web Research** | Linkup API (agentic web search) |
 | **Enrichment** | FullEnrich API (verified emails & phones) |
+| **Calendar** | Google Calendar API (OAuth 2.0) |
 | **UI** | Tailwind CSS, shadcn/ui, Radix UI, TipTap editor |
-| **Email** | Nodemailer (SMTP send), IMAPFlow (reply detection) |
+| **Email** | Nodemailer (SMTP send), IMAPFlow (sync & reply detection) |
 | **Security** | AES-256 encrypted credentials, Row Level Security, HMAC-signed tracking |
 | **Deployment** | Vercel |
 
@@ -54,6 +58,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ENCRYPTION_KEY=your-encryption-key
 ANTHROPIC_API_KEY=your-anthropic-key
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
 
 ## Project Structure
@@ -62,19 +68,25 @@ ANTHROPIC_API_KEY=your-anthropic-key
 orianna-crm/
 ├── src/
 │   ├── app/                     # Next.js App Router
-│   │   ├── api/                 # REST API routes
+│   │   ├── api/                 # REST API routes (~60 endpoints)
 │   │   │   ├── ai/              # AI scoring, personalization, prospecting
+│   │   │   ├── campaigns/       # Campaign dispatch + sequence automation
 │   │   │   ├── contacts/        # CRUD, bulk ops, CSV import, enrichment
-│   │   │   ├── campaigns/       # Email campaign dispatch
+│   │   │   ├── conversations/   # Threaded inbox, sync, AI reply suggestions
+│   │   │   ├── google-calendar/ # Calendar events, free/busy
 │   │   │   ├── templates/       # Template CRUD
+│   │   │   ├── settings/        # SMTP/IMAP, Google Calendar OAuth, integrations
 │   │   │   ├── webhooks/        # FullEnrich result callbacks
+│   │   │   ├── cron/            # Scheduled jobs (sequence processing)
 │   │   │   └── ...
 │   │   ├── (app)/               # Authenticated app shell
 │   │   │   ├── contacts/        # Contact list, detail, import, new
-│   │   │   ├── campaigns/       # Campaign management
+│   │   │   ├── campaigns/       # Campaigns + email sequences
+│   │   │   ├── conversations/   # Email inbox & threads
 │   │   │   ├── templates/       # Template editor & list
+│   │   │   ├── follow-ups/      # Follow-up tracking & bulk send
 │   │   │   ├── dashboard/       # Analytics & KPIs
-│   │   │   └── settings/        # SMTP/IMAP, integrations, AI prompts
+│   │   │   └── settings/        # SMTP/IMAP, integrations, AI prompts, calendar
 │   │   └── login/               # Auth page
 │   ├── components/              # React components
 │   │   └── ui/                  # shadcn/ui primitives
@@ -86,8 +98,14 @@ orianna-crm/
 │   │   ├── ai-defaults.ts       # Default prompts & query templates
 │   │   ├── linkup.ts            # Linkup web search (company, contact, prospecting)
 │   │   ├── email-sender.ts      # Nodemailer SMTP integration
+│   │   ├── mailbox-sync.ts      # IMAP synchronization (inbox threading)
+│   │   ├── mailbox-store.ts     # Persist synced messages to DB
+│   │   ├── mailbox-utils.ts     # Message parsing, normalization, threading
+│   │   ├── google-calendar.ts   # Google Calendar API wrapper
+│   │   ├── google-oauth.ts      # OAuth 2.0 flow for Google
 │   │   ├── encryption.ts        # AES encrypt/decrypt for credentials
 │   │   ├── workspace.ts         # Multi-tenant workspace context
+│   │   ├── background-jobs.tsx  # Background job UI state tracking
 │   │   ├── i18n/                # FR / EN translations
 │   │   └── template-renderer.ts # {{variable}} replacement engine
 │   ├── types/                   # TypeScript interfaces
@@ -95,7 +113,8 @@ orianna-crm/
 ├── supabase/
 │   ├── migrations/              # SQL migrations
 │   └── functions/               # Edge Functions
-│       └── check-replies/       # IMAP reply detection (cron)
+│       ├── check-replies/       # IMAP reply detection (every 15 min)
+│       └── process-sequences/   # Sequence email sending (every 5 min)
 └── middleware.ts                # Auth middleware
 ```
 
@@ -109,20 +128,44 @@ orianna-crm/
 - Status pipeline: `new` → `contacted` → `replied` → `qualified` / `unqualified`
 - Activity timeline with comments
 - Assign contacts to team members
-- Bulk actions: score, personalize, enrich, assign, delete
+- Bulk actions: score, personalize, enrich, assign, update status, delete
 
 ### AI
 - **Prospecting**: Describe who you're looking for, Linkup finds them on the web, preview & import
 - **Lead Scoring**: 4-axis scoring (seniority, relevance, growth, digital presence) with Linkup web research
 - **Personalization**: Two-pass engine — Linkup researches company & contact, then Claude generates a clean opening line
+- **Reply Suggestions**: AI-generated reply drafts in conversations, based on thread context
+- **Meeting Extraction**: Pull meeting details from conversation threads into calendar events
 - **Customizable prompts**: Fine-tune every AI prompt and search query from Settings
+
+### Email Sequences
+- 3-step automated sequences: Premier Contact → Première Relance → Dernier Contact
+- Configurable delays between steps (default: 0, 3, 7 days)
+- Sequence lifecycle: `draft` → `active` → `paused` → `archived`
+- Per-contact enrollment tracking: `active`, `paused`, `completed`, `bounced`
+- Automatic processing every 5 minutes via Edge Function cron
+- Manual send option for immediate dispatch
+
+### Conversations
+- IMAP-synced inbox with threaded message view
+- Inbound & outbound message tracking
+- Contact association for each thread
+- AI-powered reply suggestions
+- Meeting extraction from thread context
+- Per-user sync state with error tracking
 
 ### Email
 - WYSIWYG template editor with 20+ contact variables
 - Campaign bulk send with throttling & daily limits
+- BCC toggle for campaign sends
 - Open tracking (HMAC-signed pixel)
 - Reply detection via IMAP polling
 - Per-user SMTP/IMAP configuration with encrypted credentials
+
+### Follow-Ups
+- Dedicated page showing contacts due for first and second follow-ups
+- Auto-calculated follow-up dates based on first contact timestamp
+- Bulk send actions for each follow-up stage
 
 ### Dashboard
 - Team & personal views
@@ -134,7 +177,13 @@ orianna-crm/
 - Multi-tenant workspaces with invite system
 - Role-based access: admin / member
 - Shared contacts, templates, and campaigns within a workspace
-- Per-workspace API keys and AI prompts
+- Per-user API keys and AI prompts
+
+### Google Calendar
+- OAuth 2.0 connection flow from Settings
+- View calendars and check availability (free/busy)
+- Create, update, and delete events
+- Link events to contacts and conversation threads
 
 ## How to Use It
 
@@ -146,6 +195,7 @@ After logging in for the first time, head to **Settings**:
 
 - **Email** — Enter your SMTP server credentials (host, port, username, password). This is required to send emails. If your organization uses IMAP for reply tracking, configure that too.
 - **Integrations** — Paste your API keys for **FullEnrich** (contact enrichment) and **Linkup** (AI web search). Both are optional but unlock the best features.
+- **Google Calendar** — Connect your Google account to enable calendar features.
 - **Preferences** — Set your daily send limit and preferred language (French or English).
 
 ### 2. Build Your Contact List
@@ -172,18 +222,21 @@ Go to **Templates** and create your email templates using the rich text editor. 
 - `{{ai_personalized_line}}` — the AI-generated opening line
 - `{{ai_score_label}}` — HOT / WARM / COLD label
 
-### 5. Send Campaigns
+### 5. Send Campaigns or Set Up Sequences
 
-Go to **Campaigns**, create a new campaign, pick a template, select your target contacts, and send. Orianna handles:
+**One-off campaigns**: Go to **Campaigns**, create a new campaign, pick a template, select your target contacts, and send.
 
-- Throttled sending (45-second delay between emails to avoid spam filters)
-- Daily send limit enforcement
-- Open tracking via an invisible pixel
-- Reply detection via IMAP polling
+**Automated sequences**: Create a sequence with 3 email steps and configurable delays. Enroll your contacts, launch the sequence, and Orianna sends each step automatically on schedule.
 
-### 6. Track Results
+Both methods handle throttled sending, daily limits, open tracking, and reply detection.
 
-Your **Dashboard** shows real-time stats: emails sent today, open rate, reply rate, hot leads count, and a per-team-member breakdown.
+### 6. Manage Conversations
+
+Check the **Conversations** page to see threaded email exchanges with your contacts. Orianna syncs your inbox via IMAP and groups messages into threads. Use AI-powered reply suggestions to draft responses quickly.
+
+### 7. Track Results
+
+Your **Dashboard** shows real-time stats: emails sent today, open rate, reply rate, hot leads count, and a per-team-member breakdown. The **Follow-ups** page shows which contacts are due for their next touch.
 
 ### Tips
 

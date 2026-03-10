@@ -136,6 +136,16 @@ export async function DELETE(
       );
     }
 
+    // Detach template from sent emails to avoid FK constraint
+    const { error: unlinkError } = await supabase
+      .from('emails_sent')
+      .update({ template_id: null })
+      .eq('template_id', id);
+
+    if (unlinkError) {
+      throw unlinkError;
+    }
+
     // Hard delete the template
     const { error } = await supabase
       .from('templates')

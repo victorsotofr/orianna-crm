@@ -9,7 +9,7 @@ export async function PUT(
   try {
     // Await params for Next.js 15
     const { id } = await params;
-    
+
     // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
@@ -23,6 +23,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Resolve workspace context
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
     const body = await request.json();
     const { name, subject, html_content } = body;
 
@@ -34,12 +39,13 @@ export async function PUT(
       );
     }
 
-    // First, check if template exists and is active
+    // First, check if template exists in this workspace
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
       .select('*')
       .eq('id', id)
-      .maybeSingle(); // Use maybeSingle to avoid error if not found
+      .eq('workspace_id', ctx.workspaceId)
+      .maybeSingle();
 
     if (checkError) {
       return NextResponse.json(
@@ -64,8 +70,9 @@ export async function PUT(
         html_content,
       })
       .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId)
       .select()
-      .maybeSingle(); // Use maybeSingle instead of single
+      .maybeSingle();
 
     if (error) {
       throw error;
@@ -95,7 +102,7 @@ export async function DELETE(
   try {
     // Await params for Next.js 15
     const { id } = await params;
-    
+
     // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
@@ -109,11 +116,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if template exists
+    // Resolve workspace context
+    const wsId = request.headers.get('x-workspace-id');
+    const ctx = await getWorkspaceContext(supabase, user.id, wsId);
+    if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+
+    // Check if template exists in this workspace
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
       .select('id')
       .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId)
       .single();
 
     if (checkError || !existingTemplate) {
@@ -127,7 +140,8 @@ export async function DELETE(
     const { error } = await supabase
       .from('templates')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('workspace_id', ctx.workspaceId);
 
     if (error) {
       throw error;

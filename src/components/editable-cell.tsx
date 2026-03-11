@@ -17,10 +17,11 @@ interface EditableCellProps {
   value: string | null;
   type: 'text' | 'status' | 'owner' | 'date' | 'readonly-date';
   teamMembers?: TeamMember[];
+  emailBounced?: boolean;
   onUpdate: (contactId: string, field: string, value: string | null) => void;
 }
 
-export function EditableCell({ contactId, field, value, type, teamMembers, onUpdate }: EditableCellProps) {
+export function EditableCell({ contactId, field, value, type, teamMembers, emailBounced, onUpdate }: EditableCellProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState(value || '');
@@ -160,7 +161,7 @@ export function EditableCell({ contactId, field, value, type, teamMembers, onUpd
     }
     return (
       <div className={`cursor-pointer rounded ${feedbackClass}`} onClick={() => setEditing(true)}>
-        <ContactStatusBadge status={value || 'new'} />
+        <ContactStatusBadge status={value || 'new'} emailBounced={emailBounced} />
       </div>
     );
   }

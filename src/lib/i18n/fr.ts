@@ -844,7 +844,6 @@ export const fr = {
     syncNoChanges: 'Aucun nouveau message importé.',
     syncError: 'Erreur lors de la synchronisation de la boîte email.',
     loadError: 'Erreur lors du chargement des conversations.',
-    directReply: 'Répondre depuis Orianna',
     replyPlaceholder: 'Rédigez votre réponse...',
     suggestReply: 'Suggérer une réponse',
     suggestingReply: 'Génération...',
@@ -876,10 +875,49 @@ export const fr = {
       success: 'RDV créé avec succès !',
       error: 'Erreur lors de la création du RDV.',
       meetLink: 'Lien Google Meet',
+      proposalReady: 'Un RDV a été proposé par l\'IA — vérifiez les détails et confirmez.',
+    },
+    meetingPrep: {
+      button: 'Préparer le meeting',
+      title: 'Brief de préparation',
+      loading: 'Analyse du contact et recherche web en cours...',
+      backgroundNotice: 'Préparation du brief en cours — vous pouvez continuer à travailler.',
+      ready: 'Le brief de préparation est prêt !',
+      error: 'Erreur lors de la génération du brief.',
+      company: 'Entreprise',
+      role: 'Poste',
+      engagement: 'Engagement',
+      signals: 'Signaux récents',
+      talkingPoints: 'Points de discussion',
+      questions: 'Questions suggérées',
+      redFlags: 'Points de vigilance',
+      copy: 'Copier',
+      copied: 'Copié !',
+      download: 'Télécharger',
+      regenerate: 'Régénérer',
+      regenerating: 'Régénération...',
+      webResearchNote: 'Enrichi avec des données web via Linkup',
     },
   },
   timeline: {
     emptyState: 'Aucun événement pour le moment',
+    viewBrief: 'Voir le brief',
+    download: 'Télécharger',
+    generatedOn: 'Généré le',
+  },
+  bounce: {
+    detected: 'Email bounce détecté',
+    detectedDesc: 'L\'email {email} a été rejeté : {reason}',
+    recovering: 'Recherche d\'un nouvel email en cours...',
+    recovered: 'Email récupéré ! Nouvel email : {email}. Email renvoyé automatiquement.',
+    recoveredNoResend: 'Email récupéré ! Nouvel email : {email}.',
+    recoveryFailed: 'Bounce détecté pour {name}. Aucun email valide trouvé.',
+    recoverButton: 'Chercher un nouvel email',
+    recovering_btn: 'Recherche en cours...',
+    maxAttempts: 'Maximum de tentatives atteint',
+    viewContact: 'Voir le contact',
+    bounced: 'Bounce',
+    softBounce: 'Bounce temporaire',
   },
   variables: {
     title: 'Variables',
@@ -1013,9 +1051,9 @@ export const fr = {
 type DeepStringify<T> = T extends (...args: infer A) => any
   ? (...args: A) => string
   : T extends object
-    ? { [K in keyof T]: DeepStringify<T[K]> }
-    : T extends string
-      ? string
-      : T;
+  ? { [K in keyof T]: DeepStringify<T[K]> }
+  : T extends string
+  ? string
+  : T;
 
 export type Translations = DeepStringify<typeof fr>;

@@ -1,5 +1,6 @@
 "use client"
 
+import { AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useTranslation } from "@/lib/i18n"
 
@@ -15,7 +16,7 @@ const statusStyles: Record<string, { variant: "default" | "secondary" | "outline
   do_not_contact: { variant: "destructive", className: "" },
 }
 
-export function ContactStatusBadge({ status }: { status: string }) {
+export function ContactStatusBadge({ status, emailBounced }: { status: string; emailBounced?: boolean }) {
   const { t } = useTranslation()
 
   const statusLabels: Record<string, string> = {
@@ -34,8 +35,16 @@ export function ContactStatusBadge({ status }: { status: string }) {
   const label = statusLabels[status] || status
 
   return (
-    <Badge variant={style.variant} className={style.className}>
-      {label}
-    </Badge>
+    <div className="flex items-center gap-1.5">
+      <Badge variant={style.variant} className={style.className}>
+        {label}
+      </Badge>
+      {emailBounced && (
+        <Badge variant="outline" className="border-red-500 text-red-500 text-[10px] px-1.5 py-0 gap-0.5">
+          <AlertTriangle className="h-3 w-3" />
+          {t.bounce.bounced}
+        </Badge>
+      )}
+    </div>
   )
 }

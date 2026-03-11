@@ -10,6 +10,7 @@ import {
   addressesFromEnvelope,
   createMessageSnippet,
   detectAutoReply,
+  detectBounce,
   extractPrimaryEmail,
   formatMessageId,
   normalizeEmail,
@@ -34,7 +35,18 @@ export interface MailboxSyncResult {
   scanned: number;
   stored: number;
   repliesDetected: number;
+  bouncesDetected: number;
+  detectedBounces: DetectedBounce[];
   lastSeenUid: number;
+}
+
+export interface DetectedBounce {
+  contactId: string;
+  workspaceId: string;
+  failedEmail: string;
+  bounceReason: string;
+  isHardBounce: boolean;
+  emailSentId?: string;
 }
 
 interface SentEmailRow {
@@ -248,6 +260,73 @@ async function markEmailReplied(
   if (timelineError) throw timelineError;
 }
 
+async function markEmailBounced(
+  supabase: SupabaseClient,
+  {
+    contactId,
+    workspaceId,
+    failedEmail,
+    bounceReason,
+    isHardBounce,
+    emailSentId,
+    threadId,
+    mailboxMessageId,
+  }: {
+    contactId: string;
+    workspaceId: string;
+    failedEmail: string;
+    bounceReason: string;
+    isHardBounce: boolean;
+    emailSentId?: string;
+    threadId: string;
+    mailboxMessageId: string;
+  }
+) {
+  // Mark contact as bounced
+  await supabase
+    .from('contacts')
+    .update({
+      email_bounced: true,
+      bounce_reason: bounceReason,
+      bounced_at: new Date().toISOString(),
+    })
+    .eq('id', contactId);
+
+  // Mark the original sent email as bounced (if we can identify it)
+  if (emailSentId) {
+    await supabase
+      .from('emails_sent')
+      .update({ status: 'bounced', error_message: `Bounce: ${bounceReason}` })
+      .eq('id', emailSentId);
+  }
+
+  // Pause any active sequence enrollments for this contact
+  if (isHardBounce) {
+    await supabase
+      .from('campaign_enrollments')
+      .update({ status: 'bounced' })
+      .eq('contact_id', contactId)
+      .eq('status', 'active');
+  }
+
+  // Create timeline event
+  await supabase.from('contact_timeline').insert({
+    contact_id: contactId,
+    workspace_id: workspaceId,
+    event_type: isHardBounce ? 'email_bounced' : 'email_soft_bounce',
+    title: isHardBounce ? 'Email bounce détecté' : 'Bounce temporaire détecté',
+    description: `${failedEmail} — ${bounceReason}`,
+    metadata: {
+      failed_email: failedEmail,
+      bounce_reason: bounceReason,
+      is_hard_bounce: isHardBounce,
+      emails_sent_id: emailSentId || null,
+      thread_id: threadId,
+      mailbox_message_id: mailboxMessageId,
+    },
+  });
+}
+
 function buildMailboxIdentitySet(settings: MailboxSyncUserSettings): Set<string> {
   return new Set(
     [settings.user_email, settings.smtp_user, settings.imap_user]
@@ -294,6 +373,8 @@ export async function syncMailboxForUser(
   let scanned = 0;
   let stored = 0;
   let repliesDetected = 0;
+  let bouncesDetected = 0;
+  const detectedBounces: DetectedBounce[] = [];
   let lastSeenUid = 0;
 
   try {
@@ -328,6 +409,8 @@ export async function syncMailboxForUser(
         scanned,
         stored,
         repliesDetected,
+        bouncesDetected,
+        detectedBounces,
         lastSeenUid,
       };
     }
@@ -479,6 +562,9 @@ export async function syncMailboxForUser(
       // Re-check auto-reply with body content
       const isAutoReply = matched.isAutoReply || detectAutoReply(matched.subject, {}, plainText);
 
+      // Check for bounce/NDR messages
+      const bounceResult = detectBounce(matched.subject, matched.senderEmail, plainText, {});
+
       const persisted = await persistInboundMailboxMessage({
         supabase,
         userId: settings.user_id,
@@ -511,7 +597,66 @@ export async function syncMailboxForUser(
 
       stored++;
 
-      if (matched.matchedSentEmail && !matched.matchedSentEmail.replied_at) {
+      // Handle bounce detection — takes priority over reply detection
+      if (bounceResult.isBounce && matched.contactId) {
+        const failedEmail = bounceResult.originalRecipient || matched.contactId;
+        console.log(`[mailbox-sync] UID=${matched.uid} BOUNCE detected: ${failedEmail} reason="${bounceResult.bounceReason}" hard=${bounceResult.isHardBounce}`);
+
+        // Find the contact whose email bounced (may be different from the NDR sender)
+        let bounceContactId = matched.contactId;
+        let bounceWorkspaceId = matched.workspaceId;
+        let bounceEmailSentId = matched.matchedSentEmail?.id;
+
+        if (bounceResult.originalRecipient) {
+          // Try to find the contact by the bounced email
+          const { data: bouncedContact } = await supabase
+            .from('contacts')
+            .select('id, workspace_id')
+            .ilike('email', bounceResult.originalRecipient)
+            .limit(1)
+            .maybeSingle();
+
+          if (bouncedContact) {
+            bounceContactId = bouncedContact.id;
+            bounceWorkspaceId = bouncedContact.workspace_id || matched.workspaceId;
+          }
+
+          // Find the most recent sent email to this address
+          if (!bounceEmailSentId) {
+            const { data: sentEmail } = await supabase
+              .from('emails_sent')
+              .select('id')
+              .eq('contact_id', bounceContactId)
+              .in('status', ['sent', 'pending'])
+              .order('sent_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            bounceEmailSentId = sentEmail?.id;
+          }
+        }
+
+        await markEmailBounced(supabase, {
+          contactId: bounceContactId,
+          workspaceId: bounceWorkspaceId,
+          failedEmail: bounceResult.originalRecipient || 'unknown',
+          bounceReason: bounceResult.bounceReason || 'Unknown bounce',
+          isHardBounce: bounceResult.isHardBounce,
+          emailSentId: bounceEmailSentId,
+          threadId: persisted.threadId,
+          mailboxMessageId: persisted.messageId,
+        });
+
+        detectedBounces.push({
+          contactId: bounceContactId,
+          workspaceId: bounceWorkspaceId,
+          failedEmail: bounceResult.originalRecipient || 'unknown',
+          bounceReason: bounceResult.bounceReason || 'Unknown bounce',
+          isHardBounce: bounceResult.isHardBounce,
+          emailSentId: bounceEmailSentId,
+        });
+        bouncesDetected++;
+      } else if (matched.matchedSentEmail && !matched.matchedSentEmail.replied_at) {
         await markEmailReplied(supabase, {
           email: matched.matchedSentEmail,
           workspaceId: matched.workspaceId,
@@ -541,7 +686,7 @@ export async function syncMailboxForUser(
       }
     }
 
-    console.log(`[mailbox-sync] Done: scanned=${scanned} stored=${stored} replies=${repliesDetected} lastSeenUid=${lastSeenUid}`);
+    console.log(`[mailbox-sync] Done: scanned=${scanned} stored=${stored} replies=${repliesDetected} bounces=${bouncesDetected} lastSeenUid=${lastSeenUid}`);
 
     await upsertSyncState(supabase, {
       userId: settings.user_id,
@@ -574,6 +719,8 @@ export async function syncMailboxForUser(
     scanned,
     stored,
     repliesDetected,
+    bouncesDetected,
+    detectedBounces,
     lastSeenUid,
   };
 }

@@ -9,8 +9,10 @@ Orianna is a full-stack B2B prospecting CRM that combines contact management, em
 - **AI Contact Prospecting** — Type what you're looking for in plain language ("Find real estate agency directors in Paris"), and Linkup searches the web for matching contacts. Preview results, pick the ones you want, import in one click.
 - **AI Lead Scoring** — Claude + Linkup scour the web, score your contacts 0–100 across seniority, company fit, growth signals & digital presence, and slap a `HOT` / `WARM` / `COLD` label on them. No more gut feelings.
 - **AI Personalization** — One click generates a tailor-made opening line per contact, backed by real web research. Drop `{{ai_personalized_line}}` into any template and watch your reply rates climb.
+- **AI Meeting Prep** — Before any call, generate a comprehensive briefing with company summary, talking points, suggested questions, and red flags — powered by CRM data + Linkup web research + Claude.
 - **Email Sequences** — Build 3-step automated sequences (first contact → first follow-up → last contact) with configurable delays. Enroll contacts, launch, pause, resume — the sequence engine runs every 5 minutes and handles the rest.
 - **Conversations** — Full email inbox with threaded conversations, IMAP sync, and AI-powered reply suggestions. See all inbound and outbound messages in one place, linked to your contacts.
+- **Auto Bounce Recovery** — Automatically detect email bounces (NDR/DSN), mark contacts, and recover with FullEnrich email finder. Found a new email? The original message is auto-resent.
 - **Google Calendar** — Connect via OAuth, view your availability, and create meetings directly from conversation threads.
 - **Contact Enrichment** — FullEnrich finds verified emails and phone numbers for your contacts in the background. Verified data always takes priority over guesses.
 - **Rich Email Templates** — TipTap-powered WYSIWYG editor with 20+ dynamic variables (`{{first_name}}`, `{{company_name}}`, `{{ai_score_label}}`…). Write once, send to thousands.
@@ -125,7 +127,8 @@ orianna-crm/
 - CSV bulk import (auto-detect headers, skip dupes)
 - AI-powered prospecting: search for new contacts with natural language
 - FullEnrich integration: find verified emails & phone numbers
-- Status pipeline: `new` → `contacted` → `replied` → `qualified` / `unqualified`
+- Status pipeline: `new` → `contacted` → `engaged` → `qualified` → `meeting_scheduled` → `opportunity` → `customer` / `lost`
+- Auto bounce detection: bounced emails flagged, contacts marked, recovery via FullEnrich
 - Activity timeline with comments
 - Assign contacts to team members
 - Bulk actions: score, personalize, enrich, assign, update status, delete
@@ -135,6 +138,7 @@ orianna-crm/
 - **Lead Scoring**: 4-axis scoring (seniority, relevance, growth, digital presence) with Linkup web research
 - **Personalization**: Two-pass engine — Linkup researches company & contact, then Claude generates a clean opening line
 - **Reply Suggestions**: AI-generated reply drafts in conversations, based on thread context
+- **Meeting Prep**: Generate AI-powered briefings before calls with company summary, engagement recap, talking points, questions, and red flags. Stored in contact timeline for reuse.
 - **Meeting Extraction**: Pull meeting details from conversation threads into calendar events
 - **Customizable prompts**: Fine-tune every AI prompt and search query from Settings
 
@@ -151,8 +155,11 @@ orianna-crm/
 - Inbound & outbound message tracking
 - Contact association for each thread
 - AI-powered reply suggestions
+- Meeting prep briefings (per-thread or per-contact)
+- Auto bounce detection with email recovery flow
 - Meeting extraction from thread context
 - Per-user sync state with error tracking
+- Auto-refresh polling (60s)
 
 ### Email
 - WYSIWYG template editor with 20+ contact variables

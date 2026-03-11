@@ -6,7 +6,6 @@ import { z } from 'zod';
 
 import { stripQuotedReplyHistory } from '@/lib/email-content';
 import {
-  createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
   listGoogleCalendarEvents,
   queryGoogleCalendarFreeBusy,
@@ -152,7 +151,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const calendarCreateMeeting = tool({
       description:
-        'Create a Google Calendar event with a Google Meet link. Always check availability first before creating.',
+        'Propose a Google Calendar event with a Google Meet link. This will NOT create the event immediately — it returns a proposal for the user to review and confirm. Always check availability first.',
       inputSchema: z.object({
         summary: z.string().describe('Meeting title (e.g. "Call with Jean Dupont - Orianna")'),
         start: z.string().describe('Start time in ISO 8601 format (e.g. 2026-03-10T14:00:00+01:00)'),
@@ -161,78 +160,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         attendeeEmail: z.string().optional().describe("The prospect's email to invite"),
       }),
       execute: async ({ summary, start, end, description, attendeeEmail }) => {
-        const attendees = attendeeEmail ? [attendeeEmail] : [];
-        const event = await createGoogleCalendarEvent(userId, {
+        // Return a proposal instead of creating the event — user must confirm
+        return {
+          proposal: true,
           summary,
           start,
           end,
-          description,
-          timeZone: tz,
-          attendees,
-          createMeet: true,
-          sendUpdates: attendeeEmail ? 'all' : 'none',
-          metadata: {
-            source: 'orianna',
-            workspace_id: workspaceId,
-            ...(contactId ? { contact_id: contactId } : {}),
-            thread_id: threadId,
-          },
-        });
-
-        if (contactId) {
-          await supabase.from('calendar_events').upsert(
-            {
-              user_id: userId,
-              workspace_id: workspaceId,
-              contact_id: contactId,
-              thread_id: threadId,
-              google_event_id: event.id,
-              calendar_id: event.calendarId,
-              summary,
-              description: description || null,
-              starts_at: event.start.dateTime || start,
-              ends_at: event.end.dateTime || end,
-              meet_url: event.meetUrl,
-              google_event_url: event.htmlLink || null,
-              status: 'confirmed',
-              metadata: { attendees, time_zone: tz },
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'user_id,google_event_id' }
-          );
-
-          await supabase.from('contact_timeline').insert({
-            contact_id: contactId,
-            workspace_id: workspaceId,
-            event_type: 'meeting_scheduled',
-            title: 'RDV Google Meet créé',
-            description: summary,
-            metadata: {
-              google_event_id: event.id,
-              calendar_id: event.calendarId,
-              meet_url: event.meetUrl,
-              google_event_url: event.htmlLink || null,
-              thread_id: threadId,
-            },
-            created_by: userId,
-          });
-
-          await supabase
-            .from('contacts')
-            .update({ status: 'meeting_scheduled', updated_at: new Date().toISOString() })
-            .eq('id', contactId)
-            .eq('workspace_id', workspaceId)
-            .in('status', ['new', 'contacted', 'engaged', 'qualified']);
-        }
-
-        return {
-          eventId: event.id,
-          meetUrl: event.meetUrl,
-          htmlLink: event.htmlLink,
-          summary,
-          start: event.start,
-          end: event.end,
-          message: `Meeting "${summary}" created. Meet link: ${event.meetUrl || 'N/A'}`,
+          description: description || null,
+          attendeeEmail: attendeeEmail || null,
+          message: `Meeting "${summary}" proposed. The user will review and confirm before it is created.`,
         };
       },
     });
@@ -285,8 +221,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ? `\n\nTu as accès au Google Calendar de l'utilisateur via des outils. Si le prospect mentionne un rendez-vous, un call, une disponibilité ou veut planifier un meeting :
 1. Utilise calendar_check_availability pour vérifier les disponibilités
 2. Propose des créneaux libres dans ta réponse
-3. Si le prospect confirme un créneau ou si tu peux inférer un créneau clair, utilise calendar_create_meeting pour le booker
-4. Inclus toujours le lien Google Meet dans ta réponse quand un meeting est créé
+3. Si le prospect confirme un créneau ou si tu peux inférer un créneau clair, utilise calendar_create_meeting pour proposer le RDV (l'utilisateur devra confirmer avant que le RDV ne soit réellement créé)
+4. Quand tu utilises calendar_create_meeting, inclus le placeholder {{meet_link}} dans ta réponse à l'endroit où le lien Google Meet doit apparaître. Ce placeholder sera automatiquement remplacé par le vrai lien une fois le RDV confirmé. N'écris PAS "je vous envoie le lien" — écris directement le placeholder.
 5. La timezone de l'utilisateur est ${tz}
 6. Aujourd'hui c'est ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: tz })}.
 
@@ -323,8 +259,8 @@ Historique:
 ${promptMessages}`,
     });
 
-    // Extract any meeting created from tool results
-    let meetingCreated: Record<string, unknown> | null = null;
+    // Extract any meeting proposal from tool results
+    let meetingProposal: Record<string, unknown> | null = null;
     for (const step of result.steps) {
       for (const tc of step.toolResults) {
         if (
@@ -332,9 +268,9 @@ ${promptMessages}`,
           'output' in tc &&
           typeof tc.output === 'object' &&
           tc.output !== null &&
-          'eventId' in tc.output
+          'proposal' in tc.output
         ) {
-          meetingCreated = tc.output as Record<string, unknown>;
+          meetingProposal = tc.output as Record<string, unknown>;
         }
       }
     }
@@ -342,7 +278,7 @@ ${promptMessages}`,
     return NextResponse.json({
       draft: result.text.trim(),
       subject: ensureReplySubject(thread.subject),
-      ...(meetingCreated ? { meetingCreated } : {}),
+      ...(meetingProposal ? { meetingProposal } : {}),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to suggest a reply';

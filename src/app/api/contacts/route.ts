@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
       query = query.eq('workspace_id', ctx!.workspaceId);
       if (status === 'hot_leads') {
         query = query.eq('ai_score_label', 'HOT');
+      } else if (status === 'bounced') {
+        query = query.eq('email_bounced', true);
       } else if (status) {
         query = query.eq('status', status);
       }

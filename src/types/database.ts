@@ -39,6 +39,13 @@ export interface Contact {
   email_verified_status: 'DELIVERABLE' | 'HIGH_PROBABILITY' | 'CATCH_ALL' | 'INVALID' | null;
   enriched_at: string | null;
   enrichment_source: string | null;
+  // Bounce tracking
+  email_bounced: boolean;
+  bounce_reason: string | null;
+  bounced_at: string | null;
+  original_email: string | null;
+  email_recovery_attempted: boolean;
+  email_recovery_count: number;
 }
 
 export interface Template {

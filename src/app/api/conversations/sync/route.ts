@@ -42,7 +42,17 @@ export async function POST(request: Request) {
     }
 
     const result = await syncMailboxForUser(serviceSupabase, settings);
-    return NextResponse.json({ success: true, result });
+    return NextResponse.json({
+      success: true,
+      result: {
+        scanned: result.scanned,
+        stored: result.stored,
+        repliesDetected: result.repliesDetected,
+        bouncesDetected: result.bouncesDetected,
+        detectedBounces: result.detectedBounces,
+        lastSeenUid: result.lastSeenUid,
+      },
+    });
   } catch (error: any) {
     console.error('Conversation sync error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: error.message || 'Failed to sync conversations' }, { status: 500 });

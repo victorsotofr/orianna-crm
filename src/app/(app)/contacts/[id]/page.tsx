@@ -16,7 +16,7 @@ import { SiteHeader } from '@/components/site-header';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Trash2, ThumbsUp, ThumbsDown, Search, MessageSquareText } from 'lucide-react';
+import { ArrowLeft, Loader2, MailSearch, Trash2, ThumbsUp, ThumbsDown, Search, MessageSquareText } from 'lucide-react';
 import { EmailVerifiedBadge } from '@/components/email-verified-badge';
 import {
   AlertDialog,
@@ -43,6 +43,7 @@ export default function ContactDetailPage() {
   const [saving, setSaving] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [recoveringEmail, setRecoveringEmail] = useState(false);
 
   // Editable fields
   const [firstName, setFirstName] = useState('');
@@ -257,6 +258,30 @@ export default function ContactDetailPage() {
     }
   };
 
+  const handleRecoverEmail = async () => {
+    setRecoveringEmail(true);
+    toast.info(t.bounce.recovering, { duration: 5000 });
+    try {
+      const response = await apiFetch(`/api/contacts/${contactId}/recover-email`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Recovery failed');
+
+      if (data.recovered) {
+        const msg = data.resent
+          ? t.bounce.recovered.replace('{email}', data.newEmail)
+          : t.bounce.recoveredNoResend.replace('{email}', data.newEmail);
+        toast.success(msg, { duration: 10000 });
+        fetchAll();
+      } else {
+        toast.error(data.message || t.bounce.recoveryFailed.replace('{name}', contact?.first_name || ''), { duration: 8000 });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Recovery failed');
+    } finally {
+      setRecoveringEmail(false);
+    }
+  };
+
   const handleReplyAction = async (type: 'hot' | 'cold') => {
     try {
       const response = await apiFetch(`/api/contacts/${contactId}/reply-action`, {
@@ -311,7 +336,19 @@ export default function ContactDetailPage() {
                 <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
                 {t.common.back}
               </Button>
-              <ContactStatusBadge status={status} />
+              <ContactStatusBadge status={status} emailBounced={contact?.email_bounced} />
+              {contact?.email_bounced && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                  onClick={handleRecoverEmail}
+                  disabled={recoveringEmail}
+                >
+                  {recoveringEmail ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <MailSearch className="mr-1 h-3 w-3" />}
+                  {recoveringEmail ? t.bounce.recovering_btn : t.bounce.recoverButton}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -505,7 +542,7 @@ export default function ContactDetailPage() {
               />
               <div className="border rounded-lg bg-card p-3">
                 <h3 className="text-sm font-medium mb-2">{t.contacts.detail.labels.timeline}</h3>
-                <ContactDetailTimeline events={timeline as any} />
+                <ContactDetailTimeline events={timeline as any} contactId={contactId} />
               </div>
             </div>
           </div>

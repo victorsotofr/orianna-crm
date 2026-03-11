@@ -159,6 +159,115 @@ export function createMessageSnippet(textBody?: string | null, htmlBody?: string
   return buildSnippet(extractPlainText(textBody, htmlBody));
 }
 
+export interface BounceDetectionResult {
+  isBounce: boolean;
+  originalRecipient?: string;
+  bounceReason?: string;
+  isHardBounce: boolean;
+}
+
+export function detectBounce(
+  subject: string | null | undefined,
+  from: string | null | undefined,
+  textBody: string | null | undefined,
+  headers: Record<string, string>
+): BounceDetectionResult {
+  const subjectLower = (subject || '').toLowerCase();
+  const fromLower = (from || '').toLowerCase();
+  const bodyLower = (textBody || '').toLowerCase();
+
+  // Check sender patterns (NDR senders)
+  const bounceSenders = [
+    'postmaster@',
+    'mailer-daemon@',
+    'mail delivery subsystem',
+    'microsoft outlook',
+    'postmaster',
+  ];
+  const isBounceFrom = bounceSenders.some((s) => fromLower.includes(s));
+
+  // Check subject patterns
+  const bounceSubjects = [
+    'undeliverable',
+    'undelivered',
+    'delivery status notification',
+    'returned mail',
+    'failure notice',
+    'delivery failure',
+    'non remis',
+    'échec de remise',
+    'non distribuable',
+    "couldn't be delivered",
+  ];
+  const isBounceSubject = bounceSubjects.some((p) => subjectLower.includes(p));
+
+  // Check body patterns (hard bounce indicators)
+  const hardBouncePatterns = [
+    "couldn't be delivered",
+    "wasn't found",
+    'recipient unknown',
+    'address not found',
+    'user unknown',
+    'mailbox unavailable',
+    'mailbox not found',
+    'no such user',
+    'does not exist',
+    'account disabled',
+    'account has been disabled',
+    'permanent failure',
+    'permanently rejected',
+    '550 5.1.1',
+    '550 5.1.10',
+    '550 5.4.1',
+    'adresse introuvable',
+    'destinataire inconnu',
+    'utilisateur inconnu',
+    'boîte aux lettres introuvable',
+  ];
+
+  // Soft bounce patterns (temporary issues)
+  const softBouncePatterns = [
+    'mailbox full',
+    'over quota',
+    'quota exceeded',
+    'temporarily rejected',
+    'try again later',
+    'temporary failure',
+    '452 4.2.2',
+    'boîte pleine',
+  ];
+
+  const hardMatch = hardBouncePatterns.find((p) => bodyLower.includes(p));
+  const softMatch = softBouncePatterns.find((p) => bodyLower.includes(p));
+  const bounceMatch = hardMatch || softMatch;
+
+  const isBounce = (isBounceFrom || isBounceSubject) && !!bounceMatch;
+
+  // Extract original recipient email from bounce message body
+  let originalRecipient: string | undefined;
+  if (isBounce) {
+    const emailRegex = /([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/gi;
+    const emails = (textBody || '').match(emailRegex);
+    if (emails) {
+      // Filter out known system emails
+      originalRecipient = emails.find(
+        (e) =>
+          !e.toLowerCase().startsWith('postmaster@') &&
+          !e.toLowerCase().startsWith('mailer-daemon@') &&
+          !e.toLowerCase().includes('noreply') &&
+          !e.toLowerCase().includes('no-reply')
+      );
+    }
+  }
+
+  return {
+    isBounce,
+    originalRecipient,
+    bounceReason: bounceMatch,
+    isHardBounce: !!hardMatch,
+  };
+}
+
 export function detectAutoReply(
   subject: string | null | undefined,
   headers: Record<string, string>,

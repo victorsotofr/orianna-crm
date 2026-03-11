@@ -592,6 +592,7 @@ export default function ContactsPage() {
                   <SelectItem value="customer">{t.statuses.customer}</SelectItem>
                   <SelectItem value="lost">{t.statuses.lost}</SelectItem>
                   <SelectItem value="do_not_contact">{t.statuses.do_not_contact}</SelectItem>
+                  <SelectItem value="bounced">{t.bounce.bounced}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={ownerFilter} onValueChange={setOwnerFilter}>
@@ -745,6 +746,7 @@ export default function ContactsPage() {
                                 value={(contact as any)[col.key]}
                                 type={col.type}
                                 teamMembers={col.type === 'owner' ? teamMembers : undefined}
+                                emailBounced={col.type === 'status' ? (contact as any).email_bounced : undefined}
                                 onUpdate={handleCellUpdate}
                               />
                             )}

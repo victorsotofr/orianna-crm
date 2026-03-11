@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit, CheckCircle2, XCircle, Send, Copy, Bell, BellOff } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DEFAULT_PERSONALIZATION_PROMPT, DEFAULT_SCORING_PROMPT, DEFAULT_LINKUP_COMPANY_QUERY, DEFAULT_LINKUP_CONTACT_QUERY, DEFAULT_LINKUP_PROSPECTING_QUERY } from '@/lib/ai-defaults';
@@ -65,6 +65,14 @@ export default function SettingsPage() {
   const [gcalEmail, setGcalEmail] = useState<string | null>(null);
   const [gcalLastError, setGcalLastError] = useState<string | null>(null);
   const [gcalDisconnecting, setGcalDisconnecting] = useState(false);
+  // Telegram state
+  const [tgAvailable, setTgAvailable] = useState(false);
+  const [tgConnected, setTgConnected] = useState(false);
+  const [tgConnectedAt, setTgConnectedAt] = useState<string | null>(null);
+  const [tgGenerating, setTgGenerating] = useState(false);
+  const [tgLinkCode, setTgLinkCode] = useState<string | null>(null);
+  const [tgDisconnecting, setTgDisconnecting] = useState(false);
+  const [tgNotifications, setTgNotifications] = useState({ enabled: true, replies: true, bounces: true, meetings: true });
   // AI Prompts state
   const [aiPersonalizationPrompt, setAiPersonalizationPrompt] = useState('');
   const [aiScoringPrompt, setAiScoringPrompt] = useState('');
@@ -102,7 +110,7 @@ export default function SettingsPage() {
     dailySendLimit: '50', bccEnabled: true,
   });
 
-  useEffect(() => { fetchSettings(); fetchIntegrations(); fetchGoogleCalendarStatus(); }, []);
+  useEffect(() => { fetchSettings(); fetchIntegrations(); fetchGoogleCalendarStatus(); fetchTelegramStatus(); }, []);
   // Handle Google Calendar OAuth callback query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -229,6 +237,72 @@ export default function SettingsPage() {
     } finally {
       setGcalDisconnecting(false);
     }
+  };
+
+  const fetchTelegramStatus = async () => {
+    try {
+      const r = await fetch('/api/settings/telegram');
+      if (r.ok) {
+        const data = await r.json();
+        setTgAvailable(data.available || false);
+        setTgConnected(data.connected || false);
+        setTgConnectedAt(data.connectedAt || null);
+        if (data.notifications) setTgNotifications(data.notifications);
+        if (data.pendingToken) setTgLinkCode(data.pendingToken);
+      }
+    } catch {}
+  };
+
+  const handleTgGenerateCode = async () => {
+    setTgGenerating(true);
+    try {
+      const r = await fetch('/api/settings/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate_token' }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setTgLinkCode(data.token);
+      } else {
+        toast.error(t.settings.telegram.notConfigured);
+      }
+    } catch {
+      toast.error(t.settings.toasts.networkError);
+    } finally {
+      setTgGenerating(false);
+    }
+  };
+
+  const handleTgDisconnect = async () => {
+    setTgDisconnecting(true);
+    try {
+      const r = await fetch('/api/settings/telegram', { method: 'DELETE' });
+      if (r.ok) {
+        setTgConnected(false);
+        setTgConnectedAt(null);
+        setTgLinkCode(null);
+        toast.success(t.settings.telegram.disconnected);
+      } else {
+        toast.error(t.settings.telegram.disconnectError);
+      }
+    } catch {
+      toast.error(t.settings.telegram.disconnectError);
+    } finally {
+      setTgDisconnecting(false);
+    }
+  };
+
+  const handleTgNotifToggle = async (key: string, value: boolean) => {
+    const updated = { ...tgNotifications, [key]: value };
+    setTgNotifications(updated);
+    try {
+      await fetch('/api/settings/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_notifications', [key]: value }),
+      });
+    } catch {}
   };
 
   const handleSaveIntegrations = async () => {
@@ -656,6 +730,75 @@ export default function SettingsPage() {
                           )}
                         </div>
                       </div>
+                    </div>
+
+                    {/* Telegram */}
+                    <div className="border-t pt-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-start gap-3">
+                          <Send className="h-5 w-5 mt-0.5 shrink-0 text-blue-500" />
+                          <div>
+                            <p className="text-sm font-medium">{t.settings.telegram.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{t.settings.telegram.description}</p>
+                            {tgConnected && tgConnectedAt && (
+                              <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {t.settings.telegram.connectedSince(new Date(tgConnectedAt).toLocaleDateString())}
+                              </p>
+                            )}
+                            {tgLinkCode && !tgConnected && (
+                              <div className="mt-2 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <code className="text-xs bg-muted px-2 py-1 rounded font-mono">/start {tgLinkCode}</code>
+                                  <button
+                                    type="button"
+                                    onClick={() => { navigator.clipboard.writeText(`/start ${tgLinkCode}`); toast.success('Copied!'); }}
+                                    className="text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{t.settings.telegram.codeExpires}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          {tgConnected ? (
+                            <Button variant="outline" size="sm" onClick={handleTgDisconnect} disabled={tgDisconnecting}>
+                              {tgDisconnecting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                              {t.settings.telegram.disconnect}
+                            </Button>
+                          ) : tgAvailable ? (
+                            <Button size="sm" onClick={handleTgGenerateCode} disabled={tgGenerating}>
+                              {tgGenerating && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                              {tgLinkCode ? t.settings.telegram.generateCode : t.settings.telegram.connect}
+                            </Button>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">{t.settings.telegram.notConfigured}</p>
+                          )}
+                        </div>
+                      </div>
+                      {tgConnected && (
+                        <div className="mt-3 ml-8 space-y-2">
+                          <p className="text-xs font-medium flex items-center gap-1.5">
+                            <Bell className="h-3.5 w-3.5" />
+                            {t.settings.telegram.notifications}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">{t.settings.telegram.notifyReplies}</span>
+                            <Switch checked={tgNotifications.replies} onCheckedChange={v => handleTgNotifToggle('replies', v)} />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">{t.settings.telegram.notifyBounces}</span>
+                            <Switch checked={tgNotifications.bounces} onCheckedChange={v => handleTgNotifToggle('bounces', v)} />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">{t.settings.telegram.notifyMeetings}</span>
+                            <Switch checked={tgNotifications.meetings} onCheckedChange={v => handleTgNotifToggle('meetings', v)} />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* AI Prompts — open dialog */}

@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { extractReplyText } from '@/lib/email-content';
 import { decrypt } from '@/lib/encryption';
 import { persistInboundMailboxMessage } from '@/lib/mailbox-store';
+import { notifyReply, notifyBounce } from '@/lib/telegram-notifications';
 import {
   addressesFromEnvelope,
   createMessageSnippet,
@@ -656,6 +657,8 @@ export async function syncMailboxForUser(
           emailSentId: bounceEmailSentId,
         });
         bouncesDetected++;
+        // Fire-and-forget Telegram notification
+        notifyBounce(settings.user_id, bounceResult.originalRecipient || 'unknown', bounceResult.originalRecipient || '', bounceResult.bounceReason || 'Email bounced').catch(() => {});
       } else if (matched.matchedSentEmail && !matched.matchedSentEmail.replied_at) {
         await markEmailReplied(supabase, {
           email: matched.matchedSentEmail,
@@ -668,6 +671,10 @@ export async function syncMailboxForUser(
         });
         matched.matchedSentEmail.replied_at = matched.receivedAt;
         repliesDetected++;
+        // Fire-and-forget Telegram notification
+        const replySnippet = createMessageSnippet(plainText, htmlBody) || '';
+        const replyFrom = matched.senderEmail || 'Unknown';
+        notifyReply(settings.user_id, replyFrom, matched.subject || '(no subject)', replySnippet).catch(() => {});
       } else if (matched.contactId) {
         const { error } = await supabase.from('contact_timeline').insert({
           contact_id: matched.contactId,

@@ -507,6 +507,33 @@ export async function syncMailboxForUser(
         contactId = contactId || matchedContact?.id || null;
       }
 
+      // For bounce/NDR messages that couldn't match via references or sender,
+      // use the user's primary workspace so they're not silently dropped
+      if (!workspaceId) {
+        const fromLower = senderEmail.toLowerCase();
+        const subjectLower = (message.envelope?.subject || '').toLowerCase();
+        const bounceSenders = ['postmaster@', 'mailer-daemon@', 'mail delivery subsystem', 'microsoft outlook'];
+        const bounceSubjects = ['undeliverable', 'undelivered', 'delivery status notification', 'returned mail',
+          'failure notice', 'delivery failure', 'non remis', 'échec de remise', 'non distribuable',
+          "couldn't be delivered", 'warning: could not send message'];
+        const looksLikeBounce = bounceSenders.some(s => fromLower.includes(s)) ||
+          bounceSubjects.some(s => subjectLower.includes(s));
+
+        if (looksLikeBounce) {
+          // Get user's primary workspace as fallback
+          const { data: membership } = await supabase
+            .from('workspace_members')
+            .select('workspace_id')
+            .eq('user_id', settings.user_id)
+            .limit(1)
+            .maybeSingle();
+          if (membership) {
+            workspaceId = membership.workspace_id;
+            console.log(`[mailbox-sync] UID=${message.uid} BOUNCE sender detected, using fallback workspace=${workspaceId}`);
+          }
+        }
+      }
+
       if (!workspaceId) {
         console.log(`[mailbox-sync] UID=${message.uid} SKIPPED: no workspace found`);
         continue;
@@ -599,11 +626,8 @@ export async function syncMailboxForUser(
       stored++;
 
       // Handle bounce detection — takes priority over reply detection
-      if (bounceResult.isBounce && matched.contactId) {
-        const failedEmail = bounceResult.originalRecipient || matched.contactId;
-        console.log(`[mailbox-sync] UID=${matched.uid} BOUNCE detected: ${failedEmail} reason="${bounceResult.bounceReason}" hard=${bounceResult.isHardBounce}`);
-
-        // Find the contact whose email bounced (may be different from the NDR sender)
+      if (bounceResult.isBounce) {
+        // Resolve contact from bounce body even if contactId is null
         let bounceContactId = matched.contactId;
         let bounceWorkspaceId = matched.workspaceId;
         let bounceEmailSentId = matched.matchedSentEmail?.id;
@@ -627,7 +651,7 @@ export async function syncMailboxForUser(
             const { data: sentEmail } = await supabase
               .from('emails_sent')
               .select('id')
-              .eq('contact_id', bounceContactId)
+              .eq('contact_id', bounceContactId || '')
               .in('status', ['sent', 'pending'])
               .order('sent_at', { ascending: false })
               .limit(1)
@@ -637,25 +661,39 @@ export async function syncMailboxForUser(
           }
         }
 
-        await markEmailBounced(supabase, {
-          contactId: bounceContactId,
-          workspaceId: bounceWorkspaceId,
-          failedEmail: bounceResult.originalRecipient || 'unknown',
-          bounceReason: bounceResult.bounceReason || 'Unknown bounce',
-          isHardBounce: bounceResult.isHardBounce,
-          emailSentId: bounceEmailSentId,
-          threadId: persisted.threadId,
-          mailboxMessageId: persisted.messageId,
-        });
+        // Also try matching via the sent email lookup if we still don't have a contact
+        if (!bounceContactId && matched.matchedSentEmail) {
+          bounceContactId = matched.matchedSentEmail.contact_id;
+        }
 
-        detectedBounces.push({
-          contactId: bounceContactId,
-          workspaceId: bounceWorkspaceId,
-          failedEmail: bounceResult.originalRecipient || 'unknown',
-          bounceReason: bounceResult.bounceReason || 'Unknown bounce',
-          isHardBounce: bounceResult.isHardBounce,
-          emailSentId: bounceEmailSentId,
-        });
+        if (!bounceContactId) {
+          console.log(`[mailbox-sync] UID=${matched.uid} BOUNCE detected but no contact found for recipient="${bounceResult.originalRecipient}"`);
+        }
+
+        const failedEmail = bounceResult.originalRecipient || 'unknown';
+        console.log(`[mailbox-sync] UID=${matched.uid} BOUNCE detected: ${failedEmail} reason="${bounceResult.bounceReason}" hard=${bounceResult.isHardBounce} contact=${bounceContactId}`);
+
+        if (bounceContactId) {
+          await markEmailBounced(supabase, {
+            contactId: bounceContactId,
+            workspaceId: bounceWorkspaceId,
+            failedEmail: bounceResult.originalRecipient || 'unknown',
+            bounceReason: bounceResult.bounceReason || 'Unknown bounce',
+            isHardBounce: bounceResult.isHardBounce,
+            emailSentId: bounceEmailSentId,
+            threadId: persisted.threadId,
+            mailboxMessageId: persisted.messageId,
+          });
+
+          detectedBounces.push({
+            contactId: bounceContactId,
+            workspaceId: bounceWorkspaceId,
+            failedEmail: bounceResult.originalRecipient || 'unknown',
+            bounceReason: bounceResult.bounceReason || 'Unknown bounce',
+            isHardBounce: bounceResult.isHardBounce,
+            emailSentId: bounceEmailSentId,
+          });
+        }
         bouncesDetected++;
         // Fire-and-forget Telegram notification
         notifyBounce(settings.user_id, bounceResult.originalRecipient || 'unknown', bounceResult.originalRecipient || '', bounceResult.bounceReason || 'Email bounced').catch(() => {});

@@ -53,8 +53,24 @@ export function AppSidebar({
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [followUpCount, setFollowUpCount] = useState(0)
+  const [unreadConversations, setUnreadConversations] = useState(0)
   const { t } = useTranslation()
   const { workspace, workspaces, switchWorkspace } = useWorkspace()
+
+  useEffect(() => {
+    const fetchUnreadConversations = async () => {
+      const { count } = await supabase
+        .from('mailbox_threads')
+        .select('id', { count: 'exact', head: true })
+        .gt('unread_count', 0)
+
+      setUnreadConversations(count ?? 0)
+    }
+
+    fetchUnreadConversations()
+    const interval = setInterval(fetchUnreadConversations, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     const fetchFollowUpCount = async () => {
@@ -106,6 +122,7 @@ export function AppSidebar({
       title: t.sidebar.conversations,
       url: "/conversations",
       icon: MessageSquareText,
+      badge: unreadConversations,
     },
     {
       title: t.sidebar.followUps,
@@ -118,7 +135,7 @@ export function AppSidebar({
       url: "/templates",
       icon: FileText,
     },
-  ], [t, followUpCount])
+  ], [t, followUpCount, unreadConversations])
 
   const showSwitcher = workspaces.length > 1
 

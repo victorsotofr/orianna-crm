@@ -198,6 +198,9 @@ export function detectBounce(
     'échec de remise',
     'non distribuable',
     "couldn't be delivered",
+    'warning: could not send message',
+    'could not be delivered',
+    'mail delivery failed',
   ];
   const isBounceSubject = bounceSubjects.some((p) => subjectLower.includes(p));
 
@@ -241,7 +244,10 @@ export function detectBounce(
   const softMatch = softBouncePatterns.find((p) => bodyLower.includes(p));
   const bounceMatch = hardMatch || softMatch;
 
-  const isBounce = (isBounceFrom || isBounceSubject) && !!bounceMatch;
+  // A bounce is confirmed if sender/subject match AND body has bounce patterns,
+  // OR if both sender AND subject match (strong signal even without body patterns)
+  const isBounce = ((isBounceFrom || isBounceSubject) && !!bounceMatch) ||
+    (isBounceFrom && isBounceSubject);
 
   // Extract original recipient email from bounce message body
   let originalRecipient: string | undefined;
@@ -249,13 +255,15 @@ export function detectBounce(
     const emailRegex = /([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/gi;
     const emails = (textBody || '').match(emailRegex);
     if (emails) {
-      // Filter out known system emails
+      // Filter out known system emails and the sender's own address
       originalRecipient = emails.find(
         (e) =>
           !e.toLowerCase().startsWith('postmaster@') &&
           !e.toLowerCase().startsWith('mailer-daemon@') &&
           !e.toLowerCase().includes('noreply') &&
-          !e.toLowerCase().includes('no-reply')
+          !e.toLowerCase().includes('no-reply') &&
+          !e.toLowerCase().includes('mail-delivery-subsystem') &&
+          e.toLowerCase() !== fromLower
       );
     }
   }
@@ -263,7 +271,7 @@ export function detectBounce(
   return {
     isBounce,
     originalRecipient,
-    bounceReason: bounceMatch,
+    bounceReason: bounceMatch || (isBounce ? 'bounce detected from sender/subject' : undefined),
     isHardBounce: !!hardMatch,
   };
 }

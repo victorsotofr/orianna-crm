@@ -104,12 +104,16 @@ export default function CampaignsPage() {
         if (templatesRes.data) setTemplates(templatesRes.data);
         if (teamRes.data) setTeamMembers(teamRes.data);
       } else {
-        // Fetch sequences
-        const response = await apiFetch('/api/campaigns/sequences');
-        if (response.ok) {
-          const data = await response.json();
+        // Fetch sequences + team members
+        const [seqResponse, teamRes] = await Promise.all([
+          apiFetch('/api/campaigns/sequences'),
+          supabase.from('workspace_members').select('user_id, display_name, email'),
+        ]);
+        if (seqResponse.ok) {
+          const data = await seqResponse.json();
           setCampaigns(data.sequences || []);
         }
+        if (teamRes.data) setTeamMembers(teamRes.data);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -189,7 +193,7 @@ export default function CampaignsPage() {
     const tmpl = templates.find(t => t.id === selectedTemplate);
     if (!tmpl) return false;
     return (tmpl.html_content || '').includes('ai_personalized_line') ||
-           (tmpl.subject || '').includes('ai_personalized_line');
+      (tmpl.subject || '').includes('ai_personalized_line');
   }, [selectedTemplate, templates]);
 
   const contactsNeedingEnrichment = useMemo(() => {
@@ -392,6 +396,7 @@ export default function CampaignsPage() {
             <thead className="bg-muted/50 sticky top-0 z-10">
               <tr className="border-b">
                 <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.name}</th>
+                <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.owner}</th>
                 <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.contacts}</th>
                 <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.status}</th>
                 <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.created}</th>
@@ -412,6 +417,9 @@ export default function CampaignsPage() {
                         <div className="text-xs text-muted-foreground line-clamp-1">{campaign.description}</div>
                       )}
                     </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant="secondary" className="text-xs">{getOwnerName(campaign.created_by) || '—'}</Badge>
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant="outline" className="text-xs">{campaign.contact_count || 0}</Badge>
@@ -725,7 +733,7 @@ export default function CampaignsPage() {
                         <Checkbox
                           checked={selectedContacts.has(contact.id)}
                           className="pointer-events-none"
-                          onCheckedChange={() => {}}
+                          onCheckedChange={() => { }}
                         />
                       </td>
                       <td className="px-3 py-1">

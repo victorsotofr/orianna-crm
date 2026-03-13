@@ -375,6 +375,7 @@ export const fr = {
       contacts: 'Contacts',
       status: 'Statut',
       created: 'Créé le',
+      owner: 'Propriétaire',
       actions: 'Actions',
       manual: 'Manuelle',
       sequence: 'Séquence',

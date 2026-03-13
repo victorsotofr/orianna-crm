@@ -377,6 +377,7 @@ export const en: Translations = {
       contacts: 'Contacts',
       status: 'Status',
       created: 'Created',
+      owner: 'Owner',
       actions: 'Actions',
       manual: 'Manual',
       sequence: 'Sequence',

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { format, formatDistanceToNow } from "date-fns"
-import { BriefcaseBusiness, CalendarPlus, Check, Copy, Download, Loader2, RefreshCw, Send, Sparkles, Trash2, UserRound } from "lucide-react"
+import { AlertTriangle, BriefcaseBusiness, CalendarPlus, Check, Copy, Download, Loader2, MailSearch, RefreshCw, Send, Sparkles, Trash2, UserRound } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,9 @@ interface ConversationContact {
   last_name: string | null
   company_name: string | null
   status: string | null
+  email_bounced: boolean | null
+  bounce_reason: string | null
+  email_recovery_count: number | null
 }
 
 interface ConversationThread extends MailboxThread {
@@ -646,6 +649,30 @@ export function ConversationsPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Bounce alert banner */}
+                  {selectedThread.contacts?.email_bounced && (
+                    <div className="mx-4 mt-3 flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5">
+                      <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-destructive">{t.bounce.detected}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {selectedThread.contacts.bounce_reason || selectedThread.contacts.email}
+                        </p>
+                      </div>
+                      {(selectedThread.contacts.email_recovery_count || 0) < 3 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+                          onClick={() => selectedThread.contact_id && triggerBounceRecovery(selectedThread.contact_id)}
+                        >
+                          <MailSearch className="mr-1.5 h-3.5 w-3.5" />
+                          {t.bounce.recoverButton}
+                        </Button>
+                      )}
+                    </div>
+                  )}
 
                   <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                     {detailLoading ? (

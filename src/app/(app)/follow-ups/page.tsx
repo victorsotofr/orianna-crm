@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -39,6 +39,7 @@ interface Template {
   name: string;
   subject: string;
   html_content: string;
+  created_by: string | null;
 }
 
 interface TeamMember {
@@ -63,9 +64,16 @@ export default function FollowUpsPage() {
   const [search, setSearch] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('all');
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const { addJob, completeJob, failJob, updateJobProgress } = useBackgroundJobs();
 
   const lastClickedIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then((res: any) => {
+      if (res.data?.user) setUserId(res.data.user.id);
+    });
+  }, []);
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -92,7 +100,7 @@ export default function FollowUpsPage() {
         contactsQuery.order('created_at', { ascending: false }),
         supabase
           .from('templates')
-          .select('id, name, subject, html_content')
+          .select('id, name, subject, html_content, created_by')
           .eq('is_active', true)
           .order('created_at', { ascending: false }),
         supabase
@@ -425,11 +433,30 @@ export default function FollowUpsPage() {
                   <SelectValue placeholder={t.campaigns.selectTemplate} />
                 </SelectTrigger>
                 <SelectContent>
-                  {templates.map(tmpl => (
-                    <SelectItem key={tmpl.id} value={tmpl.id}>
-                      {tmpl.name}
-                    </SelectItem>
-                  ))}
+                  {(() => {
+                    const mine = templates.filter(tmpl => tmpl.created_by === userId);
+                    const team = templates.filter(tmpl => tmpl.created_by !== userId);
+                    return (
+                      <>
+                        {mine.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t.templates.myTemplates}</SelectLabel>
+                            {mine.map(tmpl => (
+                              <SelectItem key={tmpl.id} value={tmpl.id}>{tmpl.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {team.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t.templates.teamTemplates}</SelectLabel>
+                            {team.map(tmpl => (
+                              <SelectItem key={tmpl.id} value={tmpl.id}>{tmpl.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                      </>
+                    );
+                  })()}
                 </SelectContent>
               </Select>
               <Button

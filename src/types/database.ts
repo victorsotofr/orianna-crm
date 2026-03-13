@@ -56,6 +56,7 @@ export interface Template {
   html_content: string;
   variables: string[];
   is_active: boolean;
+  created_by: string | null;
   created_at: string;
 }
 

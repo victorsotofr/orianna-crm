@@ -327,6 +327,8 @@ export const fr = {
     manualCampaigns: 'Campagnes manuelles',
     sequenceCampaigns: 'Séquences automatiques',
     newSequence: 'Nouvelle séquence',
+    mySequences: 'Mes séquences',
+    teamSequences: "Séquences de l'équipe",
     stepNumber: (n: number) => `Étape ${n}`,
     initialEmail: 'Email initial',
     followUp: (n: number) => `Relance ${n}`,
@@ -424,11 +426,15 @@ export const fr = {
   templates: {
     title: 'Templates',
     new: 'Nouveau',
+    searchPlaceholder: 'Rechercher des templates...',
+    myTemplates: 'Mes templates',
+    teamTemplates: "Templates de l'équipe",
     emptyState: {
       title: 'Aucun template',
       description: "Créez votre premier template d'email",
       button: 'Créer un template',
     },
+    noResults: 'Aucun template ne correspond à votre recherche',
     tableHeaders: {
       name: 'Nom',
       subject: 'Sujet',

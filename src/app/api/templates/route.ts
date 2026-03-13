@@ -71,6 +71,7 @@ export async function POST(request: Request) {
         subject,
         html_content,
         workspace_id: ctx.workspaceId,
+        created_by: user.id,
       })
       .select()
       .single();

@@ -6,16 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SiteHeader } from '@/components/site-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { ArrowLeft, Pause, Play, Trash2, Mail, Users, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
@@ -263,13 +254,14 @@ export default function CampaignDetailPage() {
                       </Button>
                     )}
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => setShowDeleteDialog(true)}
                       disabled={actionLoading}
+                      className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                      {t.sequences.detail.delete}
+                      {t.common.delete}
                     </Button>
                   </div>
                 )}
@@ -474,25 +466,23 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t.sequences.deleteDialog.title}</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.sequences.deleteDialog.title}</DialogTitle>
+            <DialogDescription>
               {t.sequences.deleteDialog.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={actionLoading}>
-              {actionLoading ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} disabled={actionLoading}>{t.common.cancel}</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={actionLoading}>
+              {actionLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
               {t.common.delete}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

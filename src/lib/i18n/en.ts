@@ -329,6 +329,8 @@ export const en: Translations = {
     manualCampaigns: 'Manual campaigns',
     sequenceCampaigns: 'Automated sequences',
     newSequence: 'New sequence',
+    mySequences: 'My sequences',
+    teamSequences: 'Team sequences',
     stepNumber: (n: number) => `Step ${n}`,
     initialEmail: 'Initial email',
     followUp: (n: number) => `Follow-up ${n}`,
@@ -426,11 +428,15 @@ export const en: Translations = {
   templates: {
     title: 'Templates',
     new: 'New',
+    searchPlaceholder: 'Search templates...',
+    myTemplates: 'My templates',
+    teamTemplates: 'Team templates',
     emptyState: {
       title: 'No templates',
       description: 'Create your first email template',
       button: 'Create a template',
     },
+    noResults: 'No templates match your search',
     tableHeaders: {
       name: 'Name',
       subject: 'Subject',

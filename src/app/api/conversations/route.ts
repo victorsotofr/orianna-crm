@@ -49,7 +49,10 @@ export async function GET(request: NextRequest) {
           first_name,
           last_name,
           company_name,
-          status
+          status,
+          email_bounced,
+          bounce_reason,
+          email_recovery_count
         ),
         inbound_messages:mailbox_messages!mailbox_messages_thread_id_fkey!inner (
           id,

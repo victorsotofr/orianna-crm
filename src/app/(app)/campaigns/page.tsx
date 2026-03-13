@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -10,7 +10,9 @@ import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { ContactStatusBadge } from '@/components/contact-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Layers } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Layers, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -38,6 +40,7 @@ interface Template {
   name: string;
   subject: string;
   html_content: string;
+  created_by: string | null;
 }
 
 interface TeamMember {
@@ -65,8 +68,18 @@ export default function CampaignsPage() {
   const [ownerFilter, setOwnerFilter] = useState('all');
   const { addJob, completeJob, failJob, updateJobProgress } = useBackgroundJobs();
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [seqDeleteOpen, setSeqDeleteOpen] = useState(false);
+  const [seqToDelete, setSeqToDelete] = useState<any | null>(null);
+  const [seqDeleting, setSeqDeleting] = useState(false);
 
   const lastClickedIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then((res: any) => {
+      if (res.data?.user) setUserId(res.data.user.id);
+    });
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -79,7 +92,7 @@ export default function CampaignsPage() {
             .order('created_at', { ascending: false }),
           supabase
             .from('templates')
-            .select('id, name, subject, html_content')
+            .select('id, name, subject, html_content, created_by')
             .eq('is_active', true)
             .order('created_at', { ascending: false }),
           supabase
@@ -346,6 +359,103 @@ export default function CampaignsPage() {
     });
   };
 
+  const handleDeleteSequence = async () => {
+    if (!seqToDelete) return;
+    setSeqDeleting(true);
+    try {
+      const response = await apiFetch(`/api/campaigns/sequences/${seqToDelete.id}`, { method: 'DELETE' });
+      if (response.ok) {
+        toast.success(t.sequences.toasts.deleted);
+        setCampaigns(prev => prev.filter(c => c.id !== seqToDelete.id));
+        setSeqDeleteOpen(false);
+        setSeqToDelete(null);
+      } else {
+        toast.error(t.sequences.toasts.deleteError);
+      }
+    } catch {
+      toast.error(t.sequences.toasts.deleteError);
+    } finally {
+      setSeqDeleting(false);
+    }
+  };
+
+  const renderSequenceSection = (title: string, items: any[], count: number) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</h3>
+          <span className="text-xs text-muted-foreground">({count})</span>
+        </div>
+        <div className="overflow-auto rounded-lg border bg-card">
+          <table className="w-full text-sm border-collapse">
+            <thead className="bg-muted/50 sticky top-0 z-10">
+              <tr className="border-b">
+                <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.name}</th>
+                <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.contacts}</th>
+                <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.status}</th>
+                <th className="h-9 px-3 text-left text-xs font-medium">{t.sequences.list.created}</th>
+                <th className="h-9 px-3 w-[50px]" />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((campaign) => (
+                <tr
+                  key={campaign.id}
+                  className="border-b hover:bg-muted/30 transition-colors cursor-pointer group"
+                  onClick={() => router.push(`/campaigns/${campaign.id}`)}
+                >
+                  <td className="px-3 py-2">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-medium">{campaign.name}</div>
+                      {campaign.description && (
+                        <div className="text-xs text-muted-foreground line-clamp-1">{campaign.description}</div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant="outline" className="text-xs">{campaign.contact_count || 0}</Badge>
+                  </td>
+                  <td className="px-3 py-2">
+                    {campaign.is_active ? (
+                      <Badge variant="default" className="text-xs">{t.sequences.status.active}</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">{t.sequences.status.paused}</Badge>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{formatDate(campaign.created_at)}</td>
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}`)}>
+                          <Pencil className="mr-2 h-3.5 w-3.5" />
+                          {t.sequences.edit}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => { setSeqToDelete(campaign); setSeqDeleteOpen(true); }}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          {t.common.delete}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <SiteHeader title={t.campaigns.title} />
@@ -430,11 +540,30 @@ export default function CampaignsPage() {
                   <SelectValue placeholder={t.campaigns.selectTemplate} />
                 </SelectTrigger>
                 <SelectContent>
-                  {templates.map(tmpl => (
-                    <SelectItem key={tmpl.id} value={tmpl.id}>
-                      {tmpl.name}
-                    </SelectItem>
-                  ))}
+                  {(() => {
+                    const mine = templates.filter(tmpl => tmpl.created_by === userId);
+                    const team = templates.filter(tmpl => tmpl.created_by !== userId);
+                    return (
+                      <>
+                        {mine.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t.templates.myTemplates}</SelectLabel>
+                            {mine.map(tmpl => (
+                              <SelectItem key={tmpl.id} value={tmpl.id}>{tmpl.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {team.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t.templates.teamTemplates}</SelectLabel>
+                            {team.map(tmpl => (
+                              <SelectItem key={tmpl.id} value={tmpl.id}>{tmpl.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                      </>
+                    );
+                  })()}
                 </SelectContent>
               </Select>
               <Button
@@ -511,80 +640,17 @@ export default function CampaignsPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="flex-1 min-h-0 overflow-auto rounded-lg border bg-card">
-                  <table className="w-full text-sm border-collapse">
-                    <thead className="bg-muted/50 sticky top-0 z-10">
-                      <tr className="border-b">
-                        <th className="h-9 px-3 text-left text-xs font-medium">
-                          {t.sequences.list.name}
-                        </th>
-                        <th className="h-9 px-3 text-left text-xs font-medium">
-                          {t.sequences.list.contacts}
-                        </th>
-                        <th className="h-9 px-3 text-left text-xs font-medium">
-                          {t.sequences.list.status}
-                        </th>
-                        <th className="h-9 px-3 text-left text-xs font-medium">
-                          {t.sequences.list.created}
-                        </th>
-                        <th className="h-9 px-3 text-left text-xs font-medium">
-                          {t.sequences.list.actions}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {campaigns.map((campaign) => (
-                        <tr
-                          key={campaign.id}
-                          className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
-                          onClick={() => router.push(`/campaigns/${campaign.id}`)}
-                        >
-                          <td className="px-3 py-2">
-                            <div className="space-y-0.5">
-                              <div className="text-xs font-medium">{campaign.name}</div>
-                              {campaign.description && (
-                                <div className="text-xs text-muted-foreground line-clamp-1">
-                                  {campaign.description}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <Badge variant="outline" className="text-xs">
-                              {campaign.contact_count || 0}
-                            </Badge>
-                          </td>
-                          <td className="px-3 py-2">
-                            {campaign.is_active ? (
-                              <Badge variant="default" className="text-xs">
-                                {t.sequences.status.active}
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">
-                                {t.sequences.status.paused}
-                              </Badge>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">
-                            {formatDate(campaign.created_at)}
-                          </td>
-                          <td className="px-3 py-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(`/campaigns/${campaign.id}`);
-                              }}
-                            >
-                              {t.common.edit}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-8">
+                  {renderSequenceSection(
+                    t.sequences.mySequences,
+                    campaigns.filter(c => c.created_by === userId),
+                    campaigns.filter(c => c.created_by === userId).length
+                  )}
+                  {renderSequenceSection(
+                    t.sequences.teamSequences,
+                    campaigns.filter(c => c.created_by !== userId),
+                    campaigns.filter(c => c.created_by !== userId).length
+                  )}
                 </div>
               )}
             </>
@@ -692,6 +758,25 @@ export default function CampaignsPage() {
           ))}
         </div>
       </div>
+
+      {/* Sequence delete confirmation */}
+      <Dialog open={seqDeleteOpen} onOpenChange={setSeqDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.sequences.deleteDialog.title}</DialogTitle>
+            <DialogDescription>
+              {t.sequences.deleteDialog.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSeqDeleteOpen(false)} disabled={seqDeleting}>{t.common.cancel}</Button>
+            <Button variant="destructive" onClick={handleDeleteSequence} disabled={seqDeleting}>
+              {seqDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+              {t.common.delete}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -39,11 +39,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace' }, { status: 403 });
     }
 
-    const { query, depth: requestedDepth } = await request.json();
+    const { query, depth: requestedDepth, outputType: requestedOutputType } = await request.json();
     if (!query || typeof query !== 'string' || !query.trim()) {
       return NextResponse.json({ error: 'query is required' }, { status: 400 });
     }
     const depth: 'standard' | 'deep' = requestedDepth === 'deep' ? 'deep' : 'standard';
+    const outputType: 'sourcedAnswer' | 'searchResults' = requestedOutputType === 'searchResults' ? 'searchResults' : 'sourcedAnswer';
 
     // Fetch user's Linkup API key
     const serviceSupabase = getServiceSupabase();
@@ -64,35 +65,33 @@ export async function POST(request: NextRequest) {
       .eq('id', ctx.workspaceId)
       .maybeSingle();
 
-    // Run Linkup search
+    // Run Linkup search — returns free-text research results
     const rawResults = await searchProspecting(
       userSettings.linkup_api_key_encrypted,
       query.trim(),
       workspace?.linkup_prospecting_query,
-      depth
+      depth,
+      outputType
     );
 
-    // Extract structured contacts with Claude
+    // Extract structured contacts with Claude Haiku (fast, cheap, sufficient for JSON extraction)
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
-      system: `You extract structured contact data from web research results.
-
-Given raw search results, extract a JSON array of contacts found. Each contact object must have exactly these fields:
-- first_name (string)
-- last_name (string)
-- company_name (string)
-- job_title (string)
-- email (string, empty if not found)
-- location (string, empty if not found)
-- linkedin_url (string, empty if not found)
-- company_domain (string, empty if not found)
+      model: anthropic('claude-haiku-4-5'),
+      system: `You are a data extraction specialist. Extract structured contact records from web research results.
 
 Rules:
-- Only include real people clearly identified in the results
-- Do not invent or guess any data — use empty string for unknown fields
-- first_name and last_name are required — skip contacts without a clear name
-- Return ONLY a valid JSON array, no markdown code blocks, no commentary`,
-      prompt: `Extract contacts from these search results:\n\n${rawResults}`,
+- Only extract people explicitly named in the research results
+- first_name and last_name are required — skip anyone without a clear full name
+- Do not invent, infer, or guess any field — use empty string "" for anything not explicitly stated
+- If the same person appears multiple times, include them only once
+- Return ONLY a valid JSON array, no markdown, no commentary, no explanation`,
+      prompt: `Extract all named professionals from these research results and return them as a JSON array.
+
+Each object must have exactly these fields:
+{"first_name":"","last_name":"","company_name":"","job_title":"","email":"","location":"","linkedin_url":"","company_domain":""}
+
+Research results:
+${rawResults}`,
     });
 
     // Parse contacts
@@ -101,12 +100,10 @@ Rules:
       const cleaned = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleaned);
       if (Array.isArray(parsed)) {
-        contacts = parsed.filter(
-          (c: any) => c.first_name && c.last_name
-        );
+        contacts = parsed.filter((c: any) => c.first_name && c.last_name);
       }
     } catch {
-      console.error('Failed to parse AI contacts response:', text.substring(0, 500));
+      console.error('Failed to parse extraction response:', text.substring(0, 200));
       return NextResponse.json({ contacts: [], existingEmails: [] });
     }
 

@@ -105,20 +105,18 @@ export async function searchProspecting(
   apiKeyEncrypted: string,
   userQuery: string,
   customTemplate?: string | null,
-  depth: 'standard' | 'deep' = 'standard'
+  depth: 'standard' | 'deep' = 'deep',
+  outputType: 'sourcedAnswer' | 'searchResults' = 'sourcedAnswer'
 ): Promise<string> {
   const apiKey = decrypt(apiKeyEncrypted);
   const client = new LinkupClient({ apiKey });
 
-  // Keep the search query concise — Linkup works best with focused queries.
-  // The user's query IS the search; the template just adds output format instructions.
-  const instructions = customTemplate
-    || `Find real professionals matching this criteria. For each person found, extract: full name, company, job title, email (if visible), location, LinkedIn URL, company domain. Only include real people with verifiable data.`;
-
-  const searchQuery = `${instructions}\n\n${userQuery}`;
+  // If the query is already a full enhanced prompt, use it as-is to avoid conflicting instructions
+  const isFullPrompt = userQuery.trimStart().startsWith('You are an expert B2B prospecting researcher');
+  const searchQuery = isFullPrompt ? userQuery : `${customTemplate || DEFAULT_LINKUP_PROSPECTING_QUERY}\n\n${userQuery}`;
 
   const response = await withRetry(
-    () => client.search({ query: searchQuery, depth, outputType: 'sourcedAnswer' }),
+    () => client.search({ query: searchQuery, depth, outputType }),
     `searchProspecting(${depth})`
   );
 

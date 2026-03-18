@@ -48,24 +48,19 @@ Return a structured summary with:
 - Recent news and developments
 - Growth signals (hiring, funding, expansion)`;
 
-export const DEFAULT_LINKUP_PROSPECTING_QUERY = `You are an expert B2B contact researcher.
+export const DEFAULT_LINKUP_PROSPECTING_QUERY = `You are an expert B2B sales intelligence researcher.
 
-Objective: Find real people matching the user's search criteria.
+Objective: Find up to 8 real professionals matching the search criteria below. Quality over quantity — only include people you can verify.
 
-Instructions:
-1. Run several searches with adjacent keywords to find professionals matching the described criteria
-2. For each result, scrape the source page to extract: full name, company, job title, email (if visible), location, LinkedIn URL, company domain
-3. Only include people who clearly match the criteria — do not invent or guess data
-4. Focus on LinkedIn profiles, company team pages, and professional directories
-5. Use company name and title to disambiguate common names — flag low-confidence matches
+Step-by-step research sequence:
+1. Search LinkedIn and professional directories for people matching the role, sector, and geography described
+2. For each candidate found, scrape their LinkedIn profile or the company team page to confirm: exact title, company name, company domain, location
+3. Search the company website to verify the company domain and extract any visible contact info
+4. If an email is publicly visible on LinkedIn, the company site, or a professional directory, include it — otherwise leave empty
+5. Use name + company + title together to disambiguate — skip anyone you cannot confidently identify
 
-Return a JSON array of objects with these exact fields:
-[{"first_name": "...", "last_name": "...", "company_name": "...", "job_title": "...", "email": "...", "location": "...", "linkedin_url": "...", "company_domain": "..."}]
-
-Rules:
-- Only include fields where you found actual data (use empty string "" for unknown)
-- Do not include fictional people or made-up emails
-- Return ONLY the JSON array, no other text`;
+Do not fabricate or assume any detail. If a field is not publicly available, return an empty string.
+Only include people whose identity and role you can verify from at least one public source.`;
 
 export const DEFAULT_LINKUP_CONTACT_QUERY = `You are an expert professional researcher.
 

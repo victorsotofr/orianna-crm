@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EditableCell } from '@/components/editable-cell';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { SiteHeader } from '@/components/site-header';
-import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search, ArrowLeft, ListChecks } from 'lucide-react';
+import { Plus, Upload, Loader2, Trash2, X, UserCheck, ArrowUpDown, ArrowUp, ArrowDown, Brain, Sparkles, Users, Search, ArrowLeft, ArrowRight, Check, ListChecks } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,27 +31,99 @@ import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { useBackgroundJobs } from '@/lib/background-jobs';
 
+// ── Step indicator component ──────────────────────────────────────────────────
+function SearchStep({
+  number, completed, active, title, summary, onEdit, children,
+}: {
+  number: number; completed: boolean; active: boolean; title: string;
+  summary?: string; onEdit?: () => void; children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex flex-col items-center shrink-0">
+        <div className={cn(
+          'h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
+          completed ? 'bg-primary text-primary-foreground' :
+            active ? 'border-2 border-primary text-primary bg-background' :
+              'border border-border text-muted-foreground bg-background',
+        )}>
+          {completed ? <Check className="h-3 w-3" /> : number}
+        </div>
+      </div>
+      <div className="flex-1 min-w-0 pb-5">
+        <div className="flex items-center justify-between gap-2 min-h-6">
+          <p className={cn(
+            'text-sm font-medium leading-6',
+            !active && !completed && 'text-muted-foreground',
+          )}>{title}</p>
+          {completed && onEdit && (
+            <button onClick={onEdit} className="text-[11px] text-muted-foreground hover:text-foreground shrink-0 transition-colors">
+              modifier
+            </button>
+          )}
+        </div>
+        {completed && summary && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{summary}</p>
+        )}
+        {active && children}
+      </div>
+    </div>
+  );
+}
+
+// ── AI Search Dialog ──────────────────────────────────────────────────────────
 function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onOpenChange: (open: boolean) => void; onImported: () => void }) {
   const { t } = useTranslation();
   const { addJob, completeJob, failJob } = useBackgroundJobs();
-  const [query, setQuery] = useState('');
-  const [step, setStep] = useState<'query' | 'results'>('query');
+
+  const [rawQuery, setRawQuery] = useState('');
+  const [enhancedQuery, setEnhancedQuery] = useState('');
+  const [depth, setDepth] = useState<'standard' | 'deep'>('deep');
+  const [outputType, setOutputType] = useState<'sourcedAnswer' | 'searchResults'>('sourcedAnswer');
+  const [step, setStep] = useState<'query' | 'configure' | 'enhanced' | 'results'>('query');
   const [results, setResults] = useState<any[]>([]);
   const [existingEmails, setExistingEmails] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
 
-  const handleSearch = async (depth: 'standard' | 'deep' = 'standard') => {
-    if (!query.trim()) return;
-    setLoading(true);
-    const jobId = addJob('ai_search', { label: query.trim().slice(0, 50) });
+  const resetDialog = () => {
+    setRawQuery(''); setEnhancedQuery(''); setDepth('deep'); setOutputType('sourcedAnswer');
+    setStep('query'); setResults([]); setExistingEmails([]);
+    setSelected(new Set()); setSearching(false); setEnhancing(false);
+  };
+
+  const handleContinue = () => { if (rawQuery.trim()) setStep('configure'); };
+
+  const handleOptimize = async () => {
+    setEnhancing(true);
+    try {
+      const r = await apiFetch('/api/ai/enhance-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: rawQuery, type: 'prospecting' }),
+      });
+      const enhanced = r.ok ? (await r.json()).enhanced : rawQuery;
+      setEnhancedQuery(enhanced || rawQuery);
+    } catch {
+      setEnhancedQuery(rawQuery);
+    } finally {
+      setEnhancing(false);
+      setStep('enhanced');
+    }
+  };
+
+  const handleSearch = async () => {
+    const queryToSend = enhancedQuery.trim() || rawQuery.trim();
+    if (!queryToSend) return;
+    setSearching(true);
+    const jobId = addJob('ai_search', { label: rawQuery.trim().slice(0, 50) });
     try {
       const r = await apiFetch('/api/ai/search-contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), depth }),
+        body: JSON.stringify({ query: queryToSend, depth, outputType }),
       });
       if (r.ok) {
         const data = await r.json();
@@ -76,25 +149,8 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
       toast.error('Network error');
       failJob(jobId, 'Network error');
     } finally {
-      setLoading(false);
+      setSearching(false);
     }
-  };
-
-  const handleEnhance = async () => {
-    if (!query.trim()) return;
-    setEnhancing(true);
-    try {
-      const r = await apiFetch('/api/ai/enhance-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: query, type: 'prospecting' }),
-      });
-      if (r.ok) {
-        const { enhanced } = await r.json();
-        setQuery(enhanced);
-      }
-    } catch {}
-    finally { setEnhancing(false); }
   };
 
   const handleImport = async () => {
@@ -111,10 +167,7 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
         const { imported } = await r.json();
         toast.success(t.contacts.aiSearch.imported(imported));
         onOpenChange(false);
-        setStep('query');
-        setQuery('');
-        setResults([]);
-        setSelected(new Set());
+        resetDialog();
         onImported();
       } else {
         const d = await r.json();
@@ -127,59 +180,148 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
     }
   };
 
+  const isWide = step === 'results';
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setStep('query'); }}>
-      <DialogContent className="sm:max-w-4xl max-h-[80vh] flex flex-col">
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetDialog(); }}>
+      <DialogContent className={cn(
+        'max-h-[85vh] flex flex-col transition-all',
+        isWide ? 'sm:max-w-4xl' : 'sm:max-w-3xl',
+      )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
-            <Search className="h-4 w-4" />
+            <Sparkles className="h-4 w-4" />
             {t.contacts.aiSearch.title}
           </DialogTitle>
         </DialogHeader>
 
-        {step === 'query' && !loading && (
-          <div className="flex flex-col gap-3 flex-1">
-            <p className="text-xs text-muted-foreground">{t.contacts.aiSearch.hint}</p>
-            <Textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t.contacts.aiSearch.placeholder}
-              className="text-sm resize-none min-h-[120px] max-h-[40vh]"
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={handleEnhance} disabled={enhancing || !query.trim()}>
-                {enhancing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                {enhancing ? t.contacts.aiSearch.enhancing : t.contacts.aiSearch.enhance}
-              </Button>
-              <Button size="sm" onClick={() => handleSearch('standard')} disabled={!query.trim()}>
-                <Search className="mr-1.5 h-3.5 w-3.5" />
-                {t.contacts.aiSearch.search}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleSearch('deep')} disabled={!query.trim()}>
-                <Search className="mr-1.5 h-3.5 w-3.5" />
-                {t.contacts.aiSearch.deepSearch}
-              </Button>
-            </div>
+        {/* ── Wizard steps ── */}
+        {!isWide && (
+          <div className="flex flex-col flex-1 overflow-y-auto pt-1">
+            {/* Step 1 — Query */}
+            <SearchStep
+              number={1}
+              completed={step !== 'query'}
+              active={step === 'query'}
+              title={t.contacts.aiSearch.step1}
+              summary={rawQuery.trim()}
+              onEdit={step !== 'query' ? () => setStep('query') : undefined}
+            >
+              <div className="mt-2 flex flex-col gap-3">
+                <Textarea
+                  value={rawQuery}
+                  onChange={(e) => setRawQuery(e.target.value)}
+                  onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleContinue(); }}
+                  placeholder={t.contacts.aiSearch.placeholder}
+                  className="text-sm resize-none min-h-[100px]"
+                  autoFocus
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-muted-foreground">⌘ + Enter {t.contacts.aiSearch.toContinue}</span>
+                  <Button size="sm" onClick={handleContinue} disabled={!rawQuery.trim()}>
+                    {t.contacts.aiSearch.continue}
+                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </SearchStep>
+
+            {/* connector */}
+            <div className="ml-3 w-px h-3 bg-border shrink-0" />
+
+            {/* Step 2 — Depth */}
+            <SearchStep
+              number={2}
+              completed={step === 'enhanced'}
+              active={step === 'configure'}
+              title={t.contacts.aiSearch.step2}
+              summary={`${depth === 'deep' ? t.contacts.aiSearch.deep : t.contacts.aiSearch.standard} · ${outputType === 'sourcedAnswer' ? t.contacts.aiSearch.sourcedAnswer : t.contacts.aiSearch.searchResults}`}
+              onEdit={step === 'enhanced' ? () => setStep('configure') : undefined}
+            >
+              <div className="mt-3 flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {(['standard', 'deep'] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setDepth(d)}
+                      className={cn(
+                        'flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition-colors',
+                        depth === d ? 'border-primary bg-primary/5' : 'border-border hover:border-foreground/20',
+                      )}
+                    >
+                      <span className="text-sm font-medium">
+                        {d === 'standard' ? t.contacts.aiSearch.standard : t.contacts.aiSearch.deep}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {d === 'standard' ? t.contacts.aiSearch.standardHint : t.contacts.aiSearch.deepHint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t.contacts.aiSearch.outputTypeLabel}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['sourcedAnswer', 'searchResults'] as const).map((ot) => (
+                    <button
+                      key={ot}
+                      onClick={() => setOutputType(ot)}
+                      className={cn(
+                        'flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition-colors',
+                        outputType === ot ? 'border-primary bg-primary/5' : 'border-border hover:border-foreground/20',
+                      )}
+                    >
+                      <span className="text-sm font-medium">
+                        {ot === 'sourcedAnswer' ? t.contacts.aiSearch.sourcedAnswer : t.contacts.aiSearch.searchResults}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {ot === 'sourcedAnswer' ? t.contacts.aiSearch.sourcedAnswerHint : t.contacts.aiSearch.searchResultsHint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <Button onClick={handleOptimize} disabled={enhancing} className="w-full">
+                  {enhancing
+                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t.contacts.aiSearch.optimizing}</>
+                    : <><Sparkles className="mr-1.5 h-3.5 w-3.5" />{t.contacts.aiSearch.optimizePrompt}</>
+                  }
+                </Button>
+              </div>
+            </SearchStep>
+
+            {/* connector */}
+            <div className="ml-3 w-px h-3 bg-border shrink-0" />
+
+            {/* Step 3 — Enhanced prompt */}
+            <SearchStep
+              number={3}
+              completed={false}
+              active={step === 'enhanced'}
+              title={t.contacts.aiSearch.step3}
+            >
+              <div className="mt-2 flex flex-col gap-3">
+                <p className="text-[11px] text-muted-foreground">{t.contacts.aiSearch.promptHint}</p>
+                <Textarea
+                  value={enhancedQuery}
+                  onChange={(e) => setEnhancedQuery(e.target.value)}
+                  className="text-xs resize-none min-h-[220px] font-mono leading-relaxed"
+                />
+                <div className="flex justify-end">
+                  <Button onClick={handleSearch} disabled={searching || !enhancedQuery.trim()}>
+                    {searching
+                      ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t.contacts.aiSearch.searching}</>
+                      : <><Search className="mr-1.5 h-3.5 w-3.5" />{t.contacts.aiSearch.launchSearch}</>
+                    }
+                  </Button>
+                </div>
+              </div>
+            </SearchStep>
           </div>
         )}
 
-        {step === 'query' && loading && (
-          <div className="flex flex-col items-center justify-center gap-4 py-12 flex-1">
-            <div className="relative">
-              <div className="h-10 w-10 rounded-full border-2 border-muted" />
-              <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-t-primary animate-spin" />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium">{t.contacts.aiSearch.searching}</p>
-              <p className="text-xs text-muted-foreground mt-1">{t.contacts.aiSearch.searchingHint}</p>
-            </div>
-          </div>
-        )}
-
-        {step === 'results' && (
+        {/* ── Results ── */}
+        {isWide && (
           <div className="flex flex-col gap-3 flex-1 min-h-0">
             <div className="flex items-center justify-between">
-              <button onClick={() => setStep('query')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <button onClick={() => setStep('enhanced')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
                 <ArrowLeft className="h-3 w-3" />
                 {t.contacts.aiSearch.back}
               </button>
@@ -648,130 +790,130 @@ export default function ContactsPage() {
             </div>
           ) : (
             <div className="table-scroll-wrapper">
-            <div className="h-full overflow-auto rounded-lg border bg-card" onScroll={(e) => {
-              const el = e.currentTarget;
-              const wrapper = el.parentElement;
-              if (wrapper) {
-                const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10;
-                if (atRight) wrapper.setAttribute('data-scrolled-right', '');
-                else wrapper.removeAttribute('data-scrolled-right');
-              }
-            }}>
-              <table className="text-sm border-collapse" style={{ minWidth: '2200px' }}>
-                <thead className="bg-muted/50 sticky top-0 z-10">
-                  <tr className="border-b">
-                    <th className="h-9 px-2 text-left text-xs font-medium w-10 sticky left-0 bg-muted/50 z-20">
-                      <Checkbox
-                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    </th>
-                    {COLUMNS.map(col => {
-                      const sortIndex = sortKeys.findIndex(s => s.column === col.key);
-                      return (
-                        <th
-                          key={col.key}
-                          className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
-                          onClick={() => handleSort(col.key)}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {col.label}
-                            {sortIndex >= 0 ? (
-                              <span className="inline-flex items-center gap-0.5">
-                                {sortKeys[sortIndex].direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                                {sortKeys.length > 1 && <span className="text-[10px] opacity-60">{sortIndex + 1}</span>}
-                              </span>
-                            ) : (
-                              <ArrowUpDown className="h-3 w-3 opacity-30" />
-                            )}
-                          </span>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length > 0 ? (
-                    filtered.map((contact, index) => (
-                      <tr key={contact.id} className="border-b hover:bg-muted/30 transition-colors">
-                        <td
-                          className="px-2 py-1 sticky left-0 bg-card z-10 cursor-pointer select-none"
-                          onClick={(e) => handleRowSelect(contact.id, index, e)}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <Checkbox
-                              checked={selectedIds.has(contact.id)}
-                              className="pointer-events-none"
-                              onCheckedChange={() => {}}
-                            />
-                            {enrichingIds.has(contact.id) && (
-                              <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                            )}
+              <div className="h-full overflow-auto rounded-lg border bg-card" onScroll={(e) => {
+                const el = e.currentTarget;
+                const wrapper = el.parentElement;
+                if (wrapper) {
+                  const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 10;
+                  if (atRight) wrapper.setAttribute('data-scrolled-right', '');
+                  else wrapper.removeAttribute('data-scrolled-right');
+                }
+              }}>
+                <table className="text-sm border-collapse" style={{ minWidth: '2200px' }}>
+                  <thead className="bg-muted/50 sticky top-0 z-10">
+                    <tr className="border-b">
+                      <th className="h-9 px-2 text-left text-xs font-medium w-10 sticky left-0 bg-muted/50 z-20">
+                        <Checkbox
+                          checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </th>
+                      {COLUMNS.map(col => {
+                        const sortIndex = sortKeys.findIndex(s => s.column === col.key);
+                        return (
+                          <th
+                            key={col.key}
+                            className="h-9 px-3 text-left text-xs font-medium whitespace-nowrap cursor-pointer select-none hover:bg-muted/80 transition-colors"
+                            onClick={() => handleSort(col.key)}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {col.label}
+                              {sortIndex >= 0 ? (
+                                <span className="inline-flex items-center gap-0.5">
+                                  {sortKeys[sortIndex].direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                                  {sortKeys.length > 1 && <span className="text-[10px] opacity-60">{sortIndex + 1}</span>}
+                                </span>
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-30" />
+                              )}
+                            </span>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length > 0 ? (
+                      filtered.map((contact, index) => (
+                        <tr key={contact.id} className="border-b hover:bg-muted/30 transition-colors">
+                          <td
+                            className="px-2 py-1 sticky left-0 bg-card z-10 cursor-pointer select-none"
+                            onClick={(e) => handleRowSelect(contact.id, index, e)}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Checkbox
+                                checked={selectedIds.has(contact.id)}
+                                className="pointer-events-none"
+                                onCheckedChange={() => { }}
+                              />
+                              {enrichingIds.has(contact.id) && (
+                                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                              )}
+                            </div>
+                          </td>
+                          {COLUMNS.map(col => (
+                            <td key={col.key} className="px-3 py-1">
+                              {col.type === 'ai_score' ? (
+                                scoringIds.has(contact.id) ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                                ) : (
+                                  <AIScoreBadge
+                                    score={contact.ai_score}
+                                    label={contact.ai_score_label}
+                                    reasoning={contact.ai_score_reasoning}
+                                    compact
+                                  />
+                                )
+                              ) : col.type === 'ai_personalized' ? (
+                                personalizingIds.has(contact.id) ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+                                ) : contact.ai_personalized_line ? (
+                                  <button
+                                    type="button"
+                                    className="text-xs max-w-[200px] truncate block text-left cursor-pointer hover:text-primary transition-colors"
+                                    onClick={() => setPreviewLine({
+                                      name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email || '',
+                                      text: contact.ai_personalized_line!,
+                                    })}
+                                  >
+                                    {contact.ai_personalized_line}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )
+                              ) : (
+                                <EditableCell
+                                  contactId={contact.id}
+                                  field={col.key}
+                                  value={(contact as any)[col.key]}
+                                  type={col.type}
+                                  teamMembers={col.type === 'owner' ? teamMembers : undefined}
+                                  emailBounced={col.type === 'status' ? (contact as any).email_bounced : undefined}
+                                  onUpdate={handleCellUpdate}
+                                />
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={COLUMNS.length + 1} className="h-48">
+                          <div className="flex flex-col items-center justify-center text-center py-8">
+                            <Users className="h-10 w-10 text-muted-foreground mb-3" />
+                            <h3 className="text-sm font-medium mb-1">{t.contacts.emptyState.title}</h3>
+                            <p className="text-xs text-muted-foreground mb-4">{t.contacts.emptyState.description}</p>
+                            <Button size="sm" onClick={() => router.push('/contacts/new')}>
+                              <Plus className="mr-1.5 h-3.5 w-3.5" />
+                              {t.contacts.newButton}
+                            </Button>
                           </div>
                         </td>
-                        {COLUMNS.map(col => (
-                          <td key={col.key} className="px-3 py-1">
-                            {col.type === 'ai_score' ? (
-                              scoringIds.has(contact.id) ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
-                              ) : (
-                                <AIScoreBadge
-                                  score={contact.ai_score}
-                                  label={contact.ai_score_label}
-                                  reasoning={contact.ai_score_reasoning}
-                                  compact
-                                />
-                              )
-                            ) : col.type === 'ai_personalized' ? (
-                              personalizingIds.has(contact.id) ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
-                              ) : contact.ai_personalized_line ? (
-                                <button
-                                  type="button"
-                                  className="text-xs max-w-[200px] truncate block text-left cursor-pointer hover:text-primary transition-colors"
-                                  onClick={() => setPreviewLine({
-                                    name: [contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email || '',
-                                    text: contact.ai_personalized_line!,
-                                  })}
-                                >
-                                  {contact.ai_personalized_line}
-                                </button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )
-                            ) : (
-                              <EditableCell
-                                contactId={contact.id}
-                                field={col.key}
-                                value={(contact as any)[col.key]}
-                                type={col.type}
-                                teamMembers={col.type === 'owner' ? teamMembers : undefined}
-                                emailBounced={col.type === 'status' ? (contact as any).email_bounced : undefined}
-                                onUpdate={handleCellUpdate}
-                              />
-                            )}
-                          </td>
-                        ))}
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={COLUMNS.length + 1} className="h-48">
-                        <div className="flex flex-col items-center justify-center text-center py-8">
-                          <Users className="h-10 w-10 text-muted-foreground mb-3" />
-                          <h3 className="text-sm font-medium mb-1">{t.contacts.emptyState.title}</h3>
-                          <p className="text-xs text-muted-foreground mb-4">{t.contacts.emptyState.description}</p>
-                          <Button size="sm" onClick={() => router.push('/contacts/new')}>
-                            <Plus className="mr-1.5 h-3.5 w-3.5" />
-                            {t.contacts.newButton}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

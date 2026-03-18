@@ -44,11 +44,62 @@ Focus on: role, career history, recent activity, publications — data useful fo
   scoring_linkup_company: LINKUP_QUERY_GUIDANCE + `\n\nThis query is used to research a COMPANY for lead scoring (evaluating business potential).
 Template variables to preserve exactly: {companyName}, {domainPart}
 Focus on: company size, funding, growth signals, hiring activity, market position — data useful for scoring a lead 0-100.`,
-  prospecting: LINKUP_QUERY_GUIDANCE + `\n\nThis is a prospecting query template used to find new contacts/people on the web.
-The user's natural language request will be appended after this template.
-Focus on: finding real professionals matching criteria, extracting structured contact data (name, company, title, email, LinkedIn).
-Use sequential search: first find companies matching criteria, then find key people at those companies.
-Include instructions to scrape LinkedIn profiles and company team pages.`,
+  prospecting: `You are rewriting a short natural language prospecting request into a detailed, Linkup-optimized research prompt following Linkup's official 4-step pattern.
+
+The user will type something like "5 bailleurs ile de france" or "CMOs SaaS Paris" or "directeurs généraux logement social".
+
+**Parse the user's input to extract:**
+- Target count: if the user states a number (e.g. "5 bailleurs"), set the research target to 2x that number (e.g. "attempt at least 10 organizations") to ensure quality matches. If no number is given, use 20-30.
+- Target role: infer the decision-maker level (CEO, DG, DGA, CMO, etc.). Default to C-level / Directeur Général if not specified.
+- Target sector: extract the industry/sector with both French and English variants where applicable.
+- Geography: extract region, city, or country. If missing, use "France".
+- ICP reference: if the user names a person or company as a reference, note it.
+
+**Write the output prompt in English** (Linkup performs best in English), but preserve any French sector terms, titles, and proper nouns exactly as the user wrote them (e.g. "bailleur social", "office HLM", "Île-de-France").
+
+**Structure the output using this exact 4-step Linkup pattern:**
+
+---
+You are an expert B2B prospecting researcher. Your objective is to identify and research [target count] high-quality prospects matching the specified profile.
+
+**Step 1: Identify Target Organizations**
+Run several searches to find [2x target count] [sector] organizations in [geography] using these search terms:
+- [generate 5-8 specific search strings using French AND English variants of the sector/role, e.g. "bailleur social France directeur général", "office HLM CEO", "ESH logement social directeur"]
+Filter for organizations matching: [size/scale criteria derived from sector — e.g. 200+ housing units for HLM, €10M+ revenue, or 50+ employees generically].
+
+**Step 2: Extract Leadership Information**
+For each identified organization:
+1. Find and scrape their official website, focusing on pages named "équipe dirigeante", "direction", "gouvernance", "leadership", or "management"
+2. Extract the [target role] and any deputy/adjoint: full name, exact title, and any contact info visible
+3. Note organization metrics: size, revenue signals, employee count, and any 2024-2025 strategic announcements
+
+**Step 3: LinkedIn Profile Research**
+For each identified leader:
+1. Search for their LinkedIn profile using full name + organization name
+2. Scrape the LinkedIn profile to confirm: current title, time in current role, recent activity
+3. Extract professional email if listed in LinkedIn contact info
+
+**Step 4: Email Verification**
+For any prospect missing an email, search the organization's contact or management pages for visible email addresses or format patterns.
+
+**ICP Qualification Criteria:**
+- Decision-maker level: [target role(s)] only — skip junior or non-decision-maker profiles
+- Sector: [sector with French/English variants]
+- Geography: [geography]
+- Size: [size filter]
+[If ICP reference given: "Use [reference person/company] as a benchmark for org size and role seniority."]
+
+**Quality Standards:**
+- Verify each prospect is currently active in their role
+- Cross-reference at least two sources per person
+- Do not fabricate or assume any detail — return empty string for any field not found in a public source
+- Use full name + organization + title together to disambiguate — skip unverifiable matches
+- Do not stop until you have attempted to research at least [2x target count] organizations
+
+For each prospect, include a 1-sentence ICP fit explanation.
+---
+
+Output ONLY the filled-in prompt following the pattern above. No explanations, no commentary, no markdown wrapper around the whole response.`,
 };
 
 export async function POST(request: NextRequest) {
@@ -87,7 +138,7 @@ export async function POST(request: NextRequest) {
       system: `You are an expert prompt engineer. Your job is to improve a user-drafted prompt/query while preserving their intent and language.
 
 Core rules:
-1. PRESERVE the user's language (if French, respond in French; if English, in English)
+1. PRESERVE the user's language (if French, respond in French; if English, in English) — UNLESS the type-specific instructions below override this
 2. PRESERVE the user's core intent, domain references, and industry-specific terms
 3. PRESERVE all template variables exactly as written (e.g. {companyName}, {contactName})
 4. Make the prompt clearer, more structured, and more effective

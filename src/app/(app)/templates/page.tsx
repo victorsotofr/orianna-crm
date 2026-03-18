@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SiteHeader } from '@/components/site-header';
 import { toast } from 'sonner';
-import { Plus, Loader2, FileText, Trash2, MoreHorizontal, Braces, Search, Mail, Pencil, LayoutGrid, List } from 'lucide-react';
+import { Plus, Loader2, FileText, Trash2, MoreHorizontal, Braces, Search, Mail, Pencil, LayoutGrid, List, Copy } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Template } from '@/types/database';
 import { extractTemplateVariables } from '@/lib/template-renderer';
@@ -40,6 +40,7 @@ export default function TemplatesPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTemplates();
@@ -85,6 +86,31 @@ export default function TemplatesPage() {
       teamTemplates: filtered.filter((t) => t.created_by !== userId),
     };
   }, [filtered, userId]);
+
+  const handleDuplicate = async (template: Template) => {
+    setDuplicating(template.id);
+    try {
+      const response = await apiFetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `${template.name} (copie)`,
+          subject: template.subject,
+          html_content: template.html_content,
+        }),
+      });
+      if (response.ok) {
+        toast.success(t.templates.toasts.duplicated);
+        fetchTemplates();
+      } else {
+        toast.error(t.templates.toasts.duplicateError);
+      }
+    } catch {
+      toast.error(t.templates.toasts.duplicateError);
+    } finally {
+      setDuplicating(null);
+    }
+  };
 
   const handleDelete = async () => {
     if (!templateToDelete) return;
@@ -208,6 +234,15 @@ export default function TemplatesPage() {
           <DropdownMenuItem onClick={() => router.push(`/templates/${template.id}`)}>
             <Pencil className="mr-2 h-3.5 w-3.5" />
             {t.templates.viewEdit}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleDuplicate(template)}
+            disabled={duplicating === template.id}
+          >
+            {duplicating === template.id
+              ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              : <Copy className="mr-2 h-3.5 w-3.5" />}
+            {t.templates.duplicate}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

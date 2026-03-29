@@ -88,11 +88,11 @@ export default function SettingsPage() {
   const [aiTargetIndustry, setAiTargetIndustry] = useState('');
   const [aiTargetRoles, setAiTargetRoles] = useState('');
   const [aiGeographicFocus, setAiGeographicFocus] = useState('');
-  const [smtpHost, setSmtpHost] = useState('webmail.polytechnique.fr');
+  const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState('587');
   const [smtpUser, setSmtpUser] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
-  const [imapHost, setImapHost] = useState('webmail.polytechnique.fr');
+  const [imapHost, setImapHost] = useState('');
   const [imapPort, setImapPort] = useState('993');
   const [imapUser, setImapUser] = useState('');
   const [imapPassword, setImapPassword] = useState('');
@@ -105,8 +105,8 @@ export default function SettingsPage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [bccEnabled, setBccEnabled] = useState(true);
   const [originalValues, setOriginalValues] = useState({
-    smtpHost: 'webmail.polytechnique.fr', smtpPort: '587', smtpUser: '', smtpPassword: '',
-    imapHost: 'webmail.polytechnique.fr', imapPort: '993', imapUser: '', imapPassword: '',
+    smtpHost: '', smtpPort: '587', smtpUser: '', smtpPassword: '',
+    imapHost: '', imapPort: '993', imapUser: '', imapPassword: '',
     dailySendLimit: '50', bccEnabled: true,
   });
 
@@ -158,9 +158,9 @@ export default function SettingsPage() {
         const { settings } = await r.json();
         if (settings) {
           const v = {
-            smtpHost: settings.smtp_host || 'webmail.polytechnique.fr', smtpPort: String(settings.smtp_port || '587'),
+            smtpHost: settings.smtp_host || '', smtpPort: String(settings.smtp_port || '587'),
             smtpUser: settings.smtp_user || '', smtpPassword: settings.smtp_password || '',
-            imapHost: settings.imap_host || 'webmail.polytechnique.fr', imapPort: String(settings.imap_port || '993'),
+            imapHost: settings.imap_host || '', imapPort: String(settings.imap_port || '993'),
             imapUser: settings.imap_user || '', imapPassword: settings.imap_password || '',
             dailySendLimit: String(settings.daily_send_limit || '50'),
             bccEnabled: settings.bcc_enabled !== false,

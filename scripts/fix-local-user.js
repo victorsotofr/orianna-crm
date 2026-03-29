@@ -74,7 +74,7 @@ async function fixUser() {
     console.log('');
     console.log('Credentials:');
     console.log(`   📧 Email: ${email}`);
-    console.log(`   🔑 Password: TestLocal123!`);
+    console.log(`   🔑 Password: [the password set during user creation]`);
     console.log('');
 
   } catch (error) {

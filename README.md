@@ -269,4 +269,4 @@ npm run lint      # ESLint
 
 ## License
 
-Private — all rights reserved.
+MIT

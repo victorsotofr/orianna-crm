@@ -27,13 +27,13 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function createUser() {
-  const email = 'test@local.dev';
-  const password = 'TestLocal123!';
+  const email = process.env.TEST_USER_EMAIL || 'test@local.dev';
+  const password = process.env.TEST_USER_PASSWORD || 'ChangeMe!LocalDev1';
   const fullName = 'Test Local';
 
   console.log('\n🔐 Création d\'un compte test local...\n');
   console.log(`📧 Email: ${email}`);
-  console.log(`🔑 Mot de passe: ${password}`);
+  console.log(`🔑 Mot de passe: [set via TEST_USER_PASSWORD env var]`);
   console.log('');
 
   try {

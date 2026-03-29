@@ -1093,7 +1093,7 @@ export const en: Translations = {
       forgotPassword: 'Forgot password?',
     },
     placeholders: {
-      email: 'you@polytechnique.edu',
+      email: 'you@example.com',
     },
     button: 'Sign in',
     loading: 'Signing in...',

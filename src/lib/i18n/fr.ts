@@ -1091,7 +1091,7 @@ export const fr = {
       forgotPassword: 'Mot de passe oublié?',
     },
     placeholders: {
-      email: 'vous@polytechnique.edu',
+      email: 'vous@example.com',
     },
     button: 'Se connecter',
     loading: 'Connexion...',

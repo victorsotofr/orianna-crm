@@ -16,15 +16,15 @@ export function GET() {
     paths: {
       '/api/gtm/status': {
         get: {
-          summary: 'Get GTM autopilot status for the active workspace',
+          summary: 'Get outbound automation status for the active workspace',
           security: [{ supabaseSession: [] }],
           responses: {
-            '200': { description: 'Workspace GTM configuration and metrics' },
+            '200': { description: 'Workspace outbound configuration and metrics' },
             '401': { description: 'Unauthorized' },
           },
         },
         post: {
-          summary: 'Update GTM autopilot settings for the active workspace',
+          summary: 'Update outbound automation settings for the active workspace',
           security: [{ supabaseSession: [] }],
           requestBody: {
             required: true,
@@ -42,7 +42,7 @@ export function GET() {
       },
       '/api/gtm/run': {
         post: {
-          summary: 'Run GTM prospecting for the active workspace',
+          summary: 'Run outbound prospecting for the active workspace',
           security: [{ supabaseSession: [] }],
           requestBody: {
             required: false,
@@ -53,14 +53,14 @@ export function GET() {
             },
           },
           responses: {
-            '200': { description: 'GTM run result' },
+            '200': { description: 'Outbound run result' },
             '500': { description: 'Run failed' },
           },
         },
       },
       '/api/gtm/review': {
         get: {
-          summary: 'List the isimple GTM review queue for the active workspace',
+          summary: 'List the outbound review queue for the active workspace',
           security: [{ supabaseSession: [] }],
           parameters: [
             {
@@ -78,7 +78,7 @@ export function GET() {
           },
         },
         post: {
-          summary: 'Approve, reject, hold, or re-enrich GTM prospects',
+          summary: 'Approve, reject, hold, or re-enrich outbound prospects',
           security: [{ supabaseSession: [] }],
           requestBody: {
             required: true,
@@ -96,7 +96,7 @@ export function GET() {
       },
       '/api/gtm/isimple-workspace': {
         post: {
-          summary: 'Ensure the dedicated isimple GTM workspace exists',
+          summary: 'Ensure the dedicated isimple workspace exists',
           security: [{ supabaseSession: [] }],
           responses: {
             '200': { description: 'Workspace id returned' },
@@ -105,7 +105,7 @@ export function GET() {
       },
       '/api/cron/daily-prospecting': {
         get: {
-          summary: 'Run daily GTM prospecting for enabled workspaces',
+          summary: 'Run daily outbound prospecting for enabled workspaces',
           security: [{ serviceKey: [] }],
           responses: {
             '200': { description: 'Cron run results' },
@@ -113,7 +113,7 @@ export function GET() {
           },
         },
         post: {
-          summary: 'Run daily GTM prospecting for enabled or specified workspace',
+          summary: 'Run daily outbound prospecting for enabled or specified workspace',
           security: [{ serviceKey: [] }],
           requestBody: {
             required: false,
@@ -149,7 +149,7 @@ export function GET() {
       },
       '/api/webhooks/telegram': {
         post: {
-          summary: 'Telegram bot webhook for CRM and GTM commands',
+          summary: 'Telegram bot webhook for CRM and outbound commands',
           responses: {
             '200': { description: 'Webhook accepted' },
           },

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const mode = parseMode(body.mode) || (body.dryRun === true ? 'dry_run' : 'import_prepare');
     if (body.mode && !parseMode(body.mode)) {
-      return NextResponse.json({ error: 'Invalid GTM run mode' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid outbound run mode' }, { status: 400 });
     }
 
     const result = await runDailyProspecting({
@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
     const status = result.error ? 500 : 200;
     return NextResponse.json(result, { status });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to run GTM prospecting';
-    console.error('GTM run error:', message);
+    const message = error instanceof Error ? error.message : 'Failed to run outbound prospecting';
+    console.error('Outbound run error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

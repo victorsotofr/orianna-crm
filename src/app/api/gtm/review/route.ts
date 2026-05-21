@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(queue);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch GTM review queue';
-    console.error('GTM review queue error:', message);
+    const message = error instanceof Error ? error.message : 'Failed to fetch outbound review queue';
+    console.error('Outbound review queue error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     const contactIds = body.contactIds || body.contact_ids;
 
     if (!action || !VALID_ACTIONS.includes(action)) {
-      return NextResponse.json({ error: 'Invalid GTM review action' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid outbound review action' }, { status: 400 });
     }
 
     if (!Array.isArray(contactIds) || contactIds.length === 0 || contactIds.some((id) => typeof id !== 'string')) {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (contactIds.length > 100) {
-      return NextResponse.json({ error: 'Maximum 100 GTM prospects per review action' }, { status: 400 });
+      return NextResponse.json({ error: 'Maximum 100 outbound prospects per review action' }, { status: 400 });
     }
 
     const result = await applyGtmReviewAction({
@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update GTM review queue';
-    console.error('GTM review action error:', message);
+    const message = error instanceof Error ? error.message : 'Failed to update outbound review queue';
+    console.error('Outbound review action error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

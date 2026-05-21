@@ -249,8 +249,8 @@ export async function applyGtmReviewAction(input: {
     note: input.note,
     contacts,
     eventType: input.action === 'reject' ? 'gtm_review_rejected' : 'gtm_review_hold',
-    title: input.action === 'reject' ? 'GTM prospect rejected' : 'GTM prospect held for review',
-    description: input.action === 'reject' ? 'Rejected from isimple GTM outreach.' : 'Returned to pending review.',
+    title: input.action === 'reject' ? 'Outbound prospect rejected' : 'Outbound prospect held for review',
+    description: input.action === 'reject' ? 'Rejected from outbound outreach.' : 'Returned to pending review.',
     metadata: { review_status: reviewStatus },
   });
 
@@ -352,8 +352,8 @@ async function approveAndQueue(
     note: input.note,
     contacts,
     eventType: 'gtm_review_approved_queued',
-    title: 'GTM approved and queued',
-    description: `Approved for isimple GTM outreach. First email queued through "${sequence.sequenceName || 'active sequence'}".`,
+    title: 'Outbound approved and queued',
+    description: `Approved for outbound outreach. First email queued through "${sequence.sequenceName || 'active sequence'}".`,
     metadata: {
       review_status: 'approved',
       sequence_id: sequence.sequenceId,
@@ -448,8 +448,8 @@ async function startReviewEnrichment(
     note: input.note,
     contacts: enrichable,
     eventType: 'gtm_review_reenrich_started',
-    title: 'GTM enrichment restarted',
-    description: 'FullEnrich lookup started from the isimple review queue.',
+    title: 'Outbound enrichment restarted',
+    description: 'FullEnrich lookup started from the outbound review queue.',
     metadata: { enrichment_id: enrichmentId },
   });
 
@@ -479,7 +479,7 @@ async function getSequenceContext(db: SupabaseClient, workspaceId: string): Prom
   if (workspaceError) throw workspaceError;
 
   const sequenceId = (workspace as { gtm_active_sequence_id?: string | null } | null)?.gtm_active_sequence_id || null;
-  if (!sequenceId) return emptySequence('No active GTM sequence configured');
+  if (!sequenceId) return emptySequence('No active outbound sequence configured');
 
   const { data: sequence, error: sequenceError } = await db
     .from('campaign_sequences')
@@ -490,10 +490,10 @@ async function getSequenceContext(db: SupabaseClient, workspaceId: string): Prom
 
   if (sequenceError) throw sequenceError;
   const sequenceRow = sequence as { id: string; name: string | null; status: string | null } | null;
-  if (!sequenceRow) return emptySequence('Configured GTM sequence was not found');
+  if (!sequenceRow) return emptySequence('Configured outbound sequence was not found');
   if (sequenceRow.status !== 'active') {
     return {
-      ...emptySequence('Configured GTM sequence is not active'),
+      ...emptySequence('Configured outbound sequence is not active'),
       sequenceId: sequenceRow.id,
       sequenceName: sequenceRow.name,
       sequenceStatus: sequenceRow.status,
@@ -512,7 +512,7 @@ async function getSequenceContext(db: SupabaseClient, workspaceId: string): Prom
   const stepRow = firstStep as { id: string; template_id: string | null; delay_days: number | null } | null;
   if (!stepRow?.id || !stepRow.template_id) {
     return {
-      ...emptySequence('Active GTM sequence has no first email step'),
+      ...emptySequence('Active outbound sequence has no first email step'),
       sequenceId: sequenceRow.id,
       sequenceName: sequenceRow.name,
       sequenceStatus: sequenceRow.status,
@@ -530,7 +530,7 @@ async function getSequenceContext(db: SupabaseClient, workspaceId: string): Prom
   const templateRow = template as { name: string | null; subject: string | null; html_content: string | null } | null;
   if (!templateRow) {
     return {
-      ...emptySequence('First GTM sequence template was not found'),
+      ...emptySequence('First outbound sequence template was not found'),
       sequenceId: sequenceRow.id,
       sequenceName: sequenceRow.name,
       sequenceStatus: sequenceRow.status,

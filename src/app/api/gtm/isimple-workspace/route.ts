@@ -23,7 +23,7 @@ export async function POST() {
 
     return NextResponse.json({ workspaceId });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to ensure isimple GTM workspace';
+    const message = error instanceof Error ? error.message : 'Failed to ensure isimple workspace';
     console.error('Ensure isimple workspace error:', message);
     return NextResponse.json({ error: message }, { status: error instanceof GtmWorkspaceAccessError ? 403 : 500 });
   }

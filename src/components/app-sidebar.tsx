@@ -8,7 +8,7 @@ import {
   FileText,
   Send,
   Settings,
-  BriefcaseBusiness,
+  Bot,
   GalleryVerticalEnd,
   MessageSquarePlus,
   ChevronsUpDown,
@@ -116,9 +116,9 @@ export function AppSidebar({
 
   const navMain = useMemo(() => [
     {
-      title: t.sidebar.isimple,
-      url: "/isimple",
-      icon: BriefcaseBusiness,
+      title: t.sidebar.outbound,
+      url: "/outbound",
+      icon: Bot,
     },
     {
       title: t.sidebar.dashboard,
@@ -154,7 +154,7 @@ export function AppSidebar({
     },
   ], [t, followUpCount, unreadConversations])
 
-  const showSwitcher = workspaces.length > 1
+  const showSwitcher = workspaces.length > 0
 
   return (
     <>

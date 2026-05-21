@@ -16,7 +16,8 @@ import type { Contact } from '@/types/database';
 export const ISIMPLE_GTM_WORKSPACE_NAME = 'isimple';
 export const ISIMPLE_GTM_WORKSPACE_SLUG = 'isimple';
 export const LEGACY_ISIMPLE_GTM_WORKSPACE_SLUG = 'isimple-gtm-france-pms';
-export const ISIMPLE_GTM_SEQUENCE_NAME = 'isimple GTM - France PMs - 3 touches';
+export const ISIMPLE_GTM_SEQUENCE_NAME = 'isimple - France PMs - 3 touches';
+const LEGACY_ISIMPLE_GTM_SEQUENCE_NAME = 'isimple GTM - France PMs - 3 touches';
 export const ISIMPLE_GTM_OWNER_EMAIL = 'victor.soto@polytechnique.edu';
 export const DEFAULT_GTM_DAILY_LIMIT = 20;
 
@@ -35,7 +36,8 @@ export const ISIMPLE_ICP_QUERIES = [
 
 const ISIMPLE_SEQUENCE_TEMPLATES = [
   {
-    name: 'isimple GTM - Intro syndic / gestion locative',
+    name: 'isimple - Intro syndic / gestion locative',
+    legacyName: 'isimple GTM - Intro syndic / gestion locative',
     subject: 'Simplifier le suivi des demandes chez {{ company_name }}',
     delayDays: 0,
     htmlContent: `<p>Bonjour {{ first_name }},</p>
@@ -47,7 +49,8 @@ const ISIMPLE_SEQUENCE_TEMPLATES = [
 <p style="font-size:12px;color:#6b7280">Si ce n'est pas pertinent, répondez simplement STOP et je ne vous recontacterai pas.</p>`,
   },
   {
-    name: 'isimple GTM - Relance bénéfice opérationnel',
+    name: 'isimple - Relance bénéfice opérationnel',
+    legacyName: 'isimple GTM - Relance bénéfice opérationnel',
     subject: 'Re: demandes locataires et suivi maintenance',
     delayDays: 3,
     htmlContent: `<p>Bonjour {{ first_name }},</p>
@@ -59,7 +62,8 @@ const ISIMPLE_SEQUENCE_TEMPLATES = [
 <p style="font-size:12px;color:#6b7280">Répondez STOP si vous préférez ne plus recevoir de message.</p>`,
   },
   {
-    name: 'isimple GTM - Dernière relance',
+    name: 'isimple - Dernière relance',
+    legacyName: 'isimple GTM - Dernière relance',
     subject: 'Dernier message - isimple',
     delayDays: 7,
     htmlContent: `<p>Bonjour {{ first_name }},</p>
@@ -141,9 +145,23 @@ function pickQuery(workspace: WorkspaceConfig, inputQuery?: string) {
   const configured = Array.isArray(workspace.gtm_icp_queries)
     ? workspace.gtm_icp_queries.filter((query) => typeof query === 'string' && query.trim())
     : [];
-  const queries = configured.length > 0 ? configured : ISIMPLE_ICP_QUERIES;
+  const queries = configured.length > 0 ? configured : defaultWorkspaceIcpQueries(workspace);
   const dayIndex = Math.floor(Date.now() / 86400000) % queries.length;
   return queries[dayIndex];
+}
+
+function defaultWorkspaceIcpQueries(workspace: WorkspaceConfig) {
+  if (workspace.name?.toLowerCase() === ISIMPLE_GTM_WORKSPACE_SLUG) {
+    return ISIMPLE_ICP_QUERIES;
+  }
+
+  const industry = workspace.ai_target_industry || `companies relevant to ${workspace.name || 'this workspace'}`;
+  const roles = workspace.ai_target_roles || 'founders, CEOs, COOs, operations leaders, sales leaders, and relevant decision makers';
+  const geography = workspace.ai_geographic_focus || 'France';
+
+  return [
+    `Find 20 high-fit B2B prospects for ${workspace.name || 'this workspace'} in ${geography}. Target ${roles} at ${industry}. Return named people with company, role, location, LinkedIn, direct professional email when available, source URL, and a short ICP fit reason.`,
+  ];
 }
 
 function cleanJson(text: string) {
@@ -274,9 +292,9 @@ function buildBusinessContext(workspace: WorkspaceConfig): BusinessContext | und
     !workspace.ai_geographic_focus
   ) {
     return {
-      companyDescription: 'isimple automates property-management workflows for real estate operators with a lean AI-native interface.',
-      targetIndustry: 'French real estate agencies, syndic firms, administrateurs de biens, and property managers',
-      targetRoles: 'Founder, CEO, COO, property management director, syndic director, operations manager',
+      companyDescription: `${workspace.name || 'This workspace'} is the project represented by this CRM workspace. Use configured templates, contact context, and user instructions to keep outreach specific and truthful.`,
+      targetIndustry: 'B2B organizations relevant to this workspace',
+      targetRoles: 'Founder, CEO, COO, operations leader, sales leader, and relevant decision maker',
       geographicFocus: 'France',
     };
   }
@@ -610,7 +628,7 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       .maybeSingle<UserAutomationSettings>();
 
     if (!settings?.linkup_api_key_encrypted) {
-      throw new Error('Linkup API key is not configured for the GTM owner.');
+      throw new Error('Linkup API key is not configured for the outbound owner.');
     }
 
     const query = pickQuery(workspace, input.query);
@@ -688,6 +706,7 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       };
     }
 
+    const isIsimpleWorkspace = workspace.name?.trim().toLowerCase() === ISIMPLE_GTM_WORKSPACE_NAME;
     const rows = newProspects.map((contact) => ({
       workspace_id: input.workspaceId,
       user_id: input.userId,
@@ -706,8 +725,8 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       source: 'gtm_autopilot',
       source_query: query,
       source_url: contact.source_url || null,
-      segment: 'property_manager_france',
-      persona: 'property_manager',
+      segment: isIsimpleWorkspace ? 'property_manager_france' : 'outbound_prospect',
+      persona: isIsimpleWorkspace ? 'property_manager' : 'decision_maker',
       gtm_review_status: 'pending',
       gtm_send_approved_at: null,
       gtm_send_approved_by: null,
@@ -763,7 +782,7 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       contact,
       input.userId,
       'gtm_sourced',
-      'Contact sourced by GTM autopilot',
+      'Contact sourced by outbound agent',
       contact.raw_data?.icp_fit ? String(contact.raw_data.icp_fit) : null,
       { source_query: query, source_url: contact.source_url || null }
     )));
@@ -814,14 +833,14 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       .eq('id', input.workspaceId);
 
     await notifyGtm(input.userId, [
-      '<b>GTM autopilot completed</b>',
+      '<b>Outbound agent completed</b>',
       '',
       `Imported: ${insertedContacts.length}`,
       `Prepared with AI: ${preparedCount}`,
       enrichmentStartedCount > 0 ? `Enrichment started: ${enrichmentStartedCount}` : '',
       `Enrolled: ${enrolledCount}`,
       `Skipped/duplicates: ${skippedCount}`,
-      workspace.gtm_active_sequence_id ? '' : 'No active GTM sequence is configured yet.',
+      workspace.gtm_active_sequence_id ? '' : 'No active outbound sequence is configured yet.',
     ].filter(Boolean));
 
     return {
@@ -833,7 +852,7 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       skippedCount,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'GTM prospecting failed';
+    const message = err instanceof Error ? err.message : 'Outbound prospecting failed';
 
     if (runId) {
       await db
@@ -856,7 +875,7 @@ export async function runDailyProspecting(input: RunDailyProspectingInput): Prom
       .eq('id', input.workspaceId);
 
     await notifyGtm(input.userId, [
-      '<b>GTM autopilot failed</b>',
+      '<b>Outbound agent failed</b>',
       '',
       message,
     ]);
@@ -961,7 +980,7 @@ export async function ensureIsimpleGtmWorkspace(input: {
     if (error) throw error;
   }
 
-  if (!workspaceId) throw new Error('Failed to resolve isimple GTM workspace');
+  if (!workspaceId) throw new Error('Failed to resolve isimple workspace');
   await ensureIsimpleGtmSequence(workspaceId, input.userId);
 
   return workspaceId;
@@ -972,19 +991,20 @@ async function ensureIsimpleGtmSequence(workspaceId: string, userId: string) {
   const templateIds: string[] = [];
 
   for (const template of ISIMPLE_SEQUENCE_TEMPLATES) {
-    const { data: existingTemplate, error: templateLookupError } = await db
+    const { data: existingTemplates, error: templateLookupError } = await db
       .from('templates')
       .select('id')
       .eq('workspace_id', workspaceId)
-      .eq('name', template.name)
-      .maybeSingle();
+      .in('name', [template.name, template.legacyName]);
 
     if (templateLookupError) throw templateLookupError;
 
+    const existingTemplate = existingTemplates?.[0];
     if (existingTemplate?.id) {
       const { error: updateTemplateError } = await db
         .from('templates')
         .update({
+          name: template.name,
           subject: template.subject,
           html_content: template.htmlContent,
           variables: ['first_name', 'last_name', 'company_name', 'job_title', 'ai_personalized_line'],
@@ -1019,7 +1039,8 @@ async function ensureIsimpleGtmSequence(workspaceId: string, userId: string) {
     .from('campaign_sequences')
     .select('id, status')
     .eq('workspace_id', workspaceId)
-    .eq('name', ISIMPLE_GTM_SEQUENCE_NAME)
+    .in('name', [ISIMPLE_GTM_SEQUENCE_NAME, LEGACY_ISIMPLE_GTM_SEQUENCE_NAME])
+    .limit(1)
     .maybeSingle();
 
   if (sequenceLookupError) throw sequenceLookupError;
@@ -1043,10 +1064,17 @@ async function ensureIsimpleGtmSequence(workspaceId: string, userId: string) {
   } else if (existingSequence?.status !== 'active') {
     const { error: activateError } = await db
       .from('campaign_sequences')
-      .update({ status: 'active' })
+      .update({ name: ISIMPLE_GTM_SEQUENCE_NAME, status: 'active' })
       .eq('id', sequenceId);
 
     if (activateError) throw activateError;
+  } else {
+    const { error: renameError } = await db
+      .from('campaign_sequences')
+      .update({ name: ISIMPLE_GTM_SEQUENCE_NAME })
+      .eq('id', sequenceId);
+
+    if (renameError) throw renameError;
   }
 
   const { data: existingSteps, error: stepsLookupError } = await db

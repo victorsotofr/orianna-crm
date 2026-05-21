@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 
 import { aiModel } from '@/lib/ai-provider';
-import { ISIMPLE_GTM_WORKSPACE_SLUG, runDailyProspecting, type GtmRunMode } from '@/lib/gtm-automation';
+import { runDailyProspecting, type GtmRunMode } from '@/lib/gtm-automation';
 import { applyGtmReviewAction, getGtmReviewQueue, type GtmReviewAction } from '@/lib/gtm-review';
 import { getServiceSupabase } from '@/lib/supabase';
 import { answerCallbackQuery, sendMessage, isTelegramConfigured, inlineKeyboard } from '@/lib/telegram';
@@ -21,6 +21,14 @@ export const maxDuration = 300;
 interface UserContext {
   user_id: string;
   telegram_pending_action: Record<string, unknown> | null;
+  telegram_active_workspace_id: string | null;
+}
+
+interface TelegramWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  gtm_enabled: boolean | null;
 }
 
 interface TelegramAudioFile {
@@ -82,6 +90,10 @@ export async function POST(request: NextRequest) {
       await handleHelp(chatId);
     } else if (text === '/status') {
       await handleStatus(chatId);
+    } else if (text === '/workspace' || text === '/workspaces') {
+      await handleWorkspaceList(chatId);
+    } else if (text.startsWith('/workspace ')) {
+      await handleWorkspaceSelect(chatId, text.slice(11).trim());
     } else if (text === '/contacts') {
       await handleContacts(chatId);
     } else if (text === '/hot') {
@@ -137,12 +149,22 @@ export async function POST(request: NextRequest) {
 const supabase = () => getServiceSupabase();
 
 async function getUserByChatId(chatId: number): Promise<UserContext | null> {
-  const { data } = await supabase()
+  const { data, error } = await supabase()
+    .from('user_settings')
+    .select('user_id, telegram_pending_action, telegram_active_workspace_id')
+    .eq('telegram_chat_id', chatId)
+    .single();
+
+  if (!error) return data;
+  if (!isMissingColumnError(error, 'telegram_active_workspace_id')) return null;
+
+  const { data: fallback } = await supabase()
     .from('user_settings')
     .select('user_id, telegram_pending_action')
     .eq('telegram_chat_id', chatId)
     .single();
-  return data;
+
+  return fallback ? { ...fallback, telegram_active_workspace_id: null } : null;
 }
 
 async function requireUser(chatId: number): Promise<UserContext | null> {
@@ -151,48 +173,74 @@ async function requireUser(chatId: number): Promise<UserContext | null> {
   return user;
 }
 
-async function getWorkspaceForUser(userId: string): Promise<string | null> {
-  const { data } = await supabase()
+async function listWorkspacesForUser(userId: string): Promise<TelegramWorkspace[]> {
+  const { data: memberships } = await supabase()
     .from('workspace_members')
     .select('workspace_id')
     .eq('user_id', userId)
-    .limit(1)
-    .single();
-  return data?.workspace_id ?? null;
+    .order('joined_at', { ascending: true });
+
+  const ids = (memberships || [])
+    .map((membership: { workspace_id: string | null }) => membership.workspace_id)
+    .filter((id): id is string => Boolean(id));
+
+  if (!ids.length) return [];
+
+  const { data: workspaces } = await supabase()
+    .from('workspaces')
+    .select('id, name, slug, gtm_enabled')
+    .in('id', ids);
+
+  const byId = new Map((workspaces || []).map((workspace: TelegramWorkspace) => [workspace.id, workspace]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((workspace): workspace is TelegramWorkspace => Boolean(workspace));
 }
 
-async function getIsimpleWorkspaceForUser(userId: string): Promise<string | null> {
-  const { data: workspace } = await supabase()
-    .from('workspaces')
-    .select('id')
-    .eq('slug', ISIMPLE_GTM_WORKSPACE_SLUG)
-    .maybeSingle();
+async function resolveWorkspaceForUser(userId: string, preferredWorkspaceId?: string | null): Promise<TelegramWorkspace | null> {
+  const workspaces = await listWorkspacesForUser(userId);
+  if (!workspaces.length) return null;
 
-  if (!workspace?.id) return null;
+  if (preferredWorkspaceId) {
+    const preferred = workspaces.find((workspace) => workspace.id === preferredWorkspaceId);
+    if (preferred) return preferred;
+  }
 
-  const { data: membership } = await supabase()
-    .from('workspace_members')
-    .select('id')
-    .eq('workspace_id', workspace.id)
+  return workspaces.find((workspace) => workspace.gtm_enabled) || workspaces[0];
+}
+
+async function getActiveTelegramWorkspace(userId: string): Promise<TelegramWorkspace | null> {
+  const { data: settings, error } = await supabase()
+    .from('user_settings')
+    .select('telegram_active_workspace_id')
     .eq('user_id', userId)
     .maybeSingle();
 
-  return membership ? workspace.id : null;
+  if (error && isMissingColumnError(error, 'telegram_active_workspace_id')) {
+    return resolveWorkspaceForUser(userId, null);
+  }
+
+  return resolveWorkspaceForUser(userId, settings?.telegram_active_workspace_id || null);
+}
+
+async function getWorkspaceForUser(userId: string): Promise<string | null> {
+  const workspace = await getActiveTelegramWorkspace(userId);
+  return workspace?.id ?? null;
 }
 
 async function requireWorkspace(chatId: number, userId: string): Promise<string | null> {
-  const wsId = await getWorkspaceForUser(userId);
-  if (!wsId) { await sendMessage(chatId, 'No workspace found.'); return null; }
-  return wsId;
+  const workspace = await getActiveTelegramWorkspace(userId);
+  if (!workspace) { await sendMessage(chatId, 'No workspace found.'); return null; }
+  return workspace.id;
 }
 
 async function requireGtmWorkspace(chatId: number, userId: string): Promise<string | null> {
-  const wsId = await getIsimpleWorkspaceForUser(userId);
-  if (!wsId) {
-    await sendMessage(chatId, 'No isimple workspace found for this Telegram user.');
+  const workspace = await getActiveTelegramWorkspace(userId);
+  if (!workspace) {
+    await sendMessage(chatId, 'No workspace found for this Telegram user.');
     return null;
   }
-  return wsId;
+  return workspace.id;
 }
 
 async function findContact(wsId: string, query: string) {
@@ -297,7 +345,7 @@ async function transcribeTelegramAudio(message: TelegramMessage): Promise<string
   form.append('model', 'gpt-4o-mini-transcribe');
   form.append('language', 'fr');
   form.append('response_format', 'text');
-  form.append('prompt', 'Commandes CRM Orianna et isimple GTM: statut, lancer, test, prospects, validation, valider, approuver, rejeter, enrichir, pause, reprendre, limite.');
+  form.append('prompt', 'Commandes CRM Orianna outbound: workspace, statut, lancer, test, prospects, validation, valider, approuver, rejeter, enrichir, pause, reprendre, limite.');
 
   const transcriptionRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -336,7 +384,12 @@ function parseNaturalLimit(text: string): number | undefined {
 
 async function routeNaturalCommand(chatId: number, text: string): Promise<boolean> {
   const lower = text.toLowerCase();
-  const mentionsGtm = /\b(gtm|autopilot|isimple|prospects?)\b/.test(lower);
+  const mentionsGtm = /\b(gtm|outbound|autopilot|prospects?)\b/.test(lower);
+
+  if (/\b(workspace|org|organisation|espace|projet)\b/.test(lower)) {
+    await handleWorkspaceList(chatId);
+    return true;
+  }
 
   if (mentionsGtm && /\b(status|statut|où|etat|état|resume|résumé)\b/.test(lower)) {
     await handleGtmStatus(chatId);
@@ -432,12 +485,13 @@ async function handleHelp(chatId: number) {
     '<b>Orianna CRM Bot</b>',
     '',
     '<b>Data</b>',
+    '/workspace — Choose the active workspace',
     '/contacts — Recent contacts',
     '/hot — Hot leads',
     '/digest — Daily stats',
-    '/gtm — GTM autopilot status',
+    '/gtm — Outbound agent status',
     '/run_gtm [20] — Import and prepare prospects for review',
-    '/gtm_review — Pending isimple GTM prospects',
+    '/gtm_review — Pending outbound prospects',
     '/summarize — AI daily summary with insights',
     'Voice messages work for the same commands.',
     '',
@@ -454,9 +508,9 @@ async function handleHelp(chatId: number) {
     '',
     '<b>Settings</b>',
     '/status — Connection status',
-    '/pause_gtm — Pause GTM autopilot',
-    '/resume_gtm — Resume GTM in review mode',
-    '/limit &lt;number&gt; — Set daily GTM contact target',
+    '/pause_gtm — Pause outbound automation',
+    '/resume_gtm — Resume outbound in review mode',
+    '/limit &lt;number&gt; — Set daily outbound contact target',
     '/disconnect — Unlink account',
   ].join('\n'));
 }
@@ -483,6 +537,91 @@ async function handleStatus(chatId: number) {
     `  Bounces: ${on(settings.telegram_notify_bounces)}`,
     `  Meetings: ${on(settings.telegram_notify_meetings)}`,
   ].join('\n'));
+}
+
+async function handleWorkspaceList(chatId: number) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+
+  const [workspaces, active] = await Promise.all([
+    listWorkspacesForUser(user.user_id),
+    getActiveTelegramWorkspace(user.user_id),
+  ]);
+
+  if (!workspaces.length) {
+    await sendMessage(chatId, 'No workspace found.');
+    return;
+  }
+
+  const rows = workspaces.map((workspace) => [{
+    text: `${workspace.id === active?.id ? '✓ ' : ''}${workspace.name}`,
+    callback_data: `workspace:${workspace.id}`,
+  }]);
+
+  const lines = workspaces.map((workspace, index) => {
+    const activeMark = workspace.id === active?.id ? 'active' : 'available';
+    const outboundMark = workspace.gtm_enabled ? 'outbound on' : 'outbound off';
+    return `${index + 1}. <b>${esc(workspace.name)}</b> · ${activeMark} · ${outboundMark}`;
+  });
+
+  await sendMessage(chatId, [
+    '<b>Workspaces</b>',
+    '',
+    lines.join('\n'),
+    '',
+    'Tap one to make Telegram commands and voice approvals operate on that workspace.',
+  ].join('\n'), {
+    replyMarkup: inlineKeyboard(rows),
+  });
+}
+
+async function handleWorkspaceSelect(chatId: number, input: string) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+
+  const workspaces = await listWorkspacesForUser(user.user_id);
+  const normalized = input.trim().toLowerCase();
+  const workspace = workspaces.find((candidate) =>
+    candidate.id === input.trim()
+    || candidate.slug.toLowerCase() === normalized
+    || candidate.name.toLowerCase().includes(normalized)
+  );
+
+  if (!workspace) {
+    await sendMessage(chatId, 'Workspace not found. Use /workspace to list available workspaces.');
+    return;
+  }
+
+  await setTelegramActiveWorkspace(chatId, user.user_id, workspace.id);
+}
+
+async function setTelegramActiveWorkspace(chatId: number, userId: string, workspaceId: string) {
+  const workspace = await resolveWorkspaceForUser(userId, workspaceId);
+  if (!workspace || workspace.id !== workspaceId) {
+    await sendMessage(chatId, 'Workspace not found for this Telegram user.');
+    return;
+  }
+
+  const { error } = await supabase()
+    .from('user_settings')
+    .update({ telegram_active_workspace_id: workspaceId })
+    .eq('user_id', userId);
+
+  if (error && isMissingColumnError(error, 'telegram_active_workspace_id')) {
+    await sendMessage(chatId, 'Workspace found, but Telegram workspace persistence needs the latest database migration.');
+    return;
+  }
+
+  if (error) {
+    await sendMessage(chatId, `Could not save active workspace: ${esc(error.message)}`);
+    return;
+  }
+
+  await sendMessage(chatId, `Active Telegram workspace set to <b>${esc(workspace.name)}</b>.`);
+}
+
+function isMissingColumnError(error: { message?: string; code?: string }, column: string) {
+  return error.code === '42703' || Boolean(error.message?.includes(column));
 }
 
 async function handleContacts(chatId: number) {
@@ -564,7 +703,7 @@ async function handleDigest(chatId: number) {
   ].join('\n'));
 }
 
-// ─── GTM Autopilot Commands ─────────────────────────────
+// ─── Outbound Agent Commands ────────────────────────────
 
 async function handleGtmStatus(chatId: number) {
   const user = await requireUser(chatId);
@@ -586,18 +725,18 @@ async function handleGtmStatus(chatId: number) {
       .from('contacts')
       .select('id', { count: 'exact', head: true })
       .eq('workspace_id', wsId)
-      .eq('segment', 'property_manager_france'),
+      .eq('source', 'gtm_autopilot'),
     db
       .from('contacts')
       .select('id', { count: 'exact', head: true })
       .eq('workspace_id', wsId)
-      .eq('segment', 'property_manager_france')
+      .eq('source', 'gtm_autopilot')
       .gte('created_at', today.toISOString()),
     db
       .from('contacts')
       .select('id', { count: 'exact', head: true })
       .eq('workspace_id', wsId)
-      .eq('segment', 'property_manager_france')
+      .eq('source', 'gtm_autopilot')
       .eq('ai_score_label', 'HOT'),
     db
       .from('campaign_enrollments')
@@ -615,14 +754,14 @@ async function handleGtmStatus(chatId: number) {
   ]);
 
   if (workspaceResult.error) {
-    await sendMessage(chatId, `GTM migration not available yet: ${esc(workspaceResult.error.message)}`);
+    await sendMessage(chatId, `Outbound migration not available yet: ${esc(workspaceResult.error.message)}`);
     return;
   }
 
   const ws = workspaceResult.data;
   const lastRun = lastRunResult.data;
   await sendMessage(chatId, [
-    '<b>GTM Autopilot</b>',
+    '<b>Outbound Agent</b>',
     '',
     `Workspace: ${esc(ws.name)}`,
     `Status: ${ws.gtm_enabled ? 'ON' : 'OFF'}`,
@@ -630,7 +769,7 @@ async function handleGtmStatus(chatId: number) {
     `Approval mode: ${ws.gtm_requires_approval ? 'manual enrollment' : 'full auto enrollment'}`,
     `Active sequence: ${ws.gtm_active_sequence_id ? 'configured' : 'missing'}`,
     '',
-    `Sourced ICP contacts: ${sourcedResult.count ?? 0}`,
+    `Outbound contacts: ${sourcedResult.count ?? 0}`,
     `Added today: ${todayResult.count ?? 0}`,
     `Hot sourced leads: ${hotResult.count ?? 0}`,
     `Review: ${reviewQueue.counts.ready} ready · ${reviewQueue.counts.blocked} blocked · ${reviewQueue.counts.queued} queued`,
@@ -650,8 +789,8 @@ async function handleRunGtm(chatId: number, options: { limit?: number; mode?: Gt
 
   const mode = options.mode || 'import_prepare';
   await sendMessage(chatId, mode === 'dry_run'
-    ? 'Testing GTM prospecting without importing...'
-    : 'Running GTM prospecting in review mode...');
+    ? 'Testing outbound prospecting without importing...'
+    : 'Running outbound prospecting in review mode...');
 
   try {
     const result = await runDailyProspecting({
@@ -665,7 +804,7 @@ async function handleRunGtm(chatId: number, options: { limit?: number; mode?: Gt
     });
 
     await sendMessage(chatId, [
-      '<b>GTM run complete</b>',
+      '<b>Outbound run complete</b>',
       '',
       `Mode: ${mode}`,
       `Imported: ${result.importedCount}`,
@@ -675,8 +814,8 @@ async function handleRunGtm(chatId: number, options: { limit?: number; mode?: Gt
       result.error ? `Error: ${esc(result.error)}` : '',
     ].filter(Boolean).join('\n'));
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'GTM run failed';
-    await sendMessage(chatId, `GTM run failed: ${esc(message)}`);
+    const message = err instanceof Error ? err.message : 'Outbound run failed';
+    await sendMessage(chatId, `Outbound run failed: ${esc(message)}`);
   }
 }
 
@@ -691,7 +830,7 @@ async function handlePauseGtm(chatId: number) {
     .update({ gtm_enabled: false })
     .eq('id', wsId);
 
-  await sendMessage(chatId, 'GTM autopilot paused.');
+  await sendMessage(chatId, 'Outbound automation paused.');
 }
 
 async function handleResumeGtm(chatId: number) {
@@ -705,7 +844,7 @@ async function handleResumeGtm(chatId: number) {
     .update({ gtm_enabled: true, gtm_requires_approval: true })
     .eq('id', wsId);
 
-  await sendMessage(chatId, 'GTM autopilot resumed in review mode. New prospects still need approval before outreach.');
+  await sendMessage(chatId, 'Outbound automation resumed in review mode. New prospects still need approval before outreach.');
 }
 
 async function handleGtmLimit(chatId: number, input: string) {
@@ -725,7 +864,7 @@ async function handleGtmLimit(chatId: number, input: string) {
     .update({ gtm_daily_contact_limit: limit })
     .eq('id', wsId);
 
-  await sendMessage(chatId, `Daily GTM target set to ${limit}.`);
+  await sendMessage(chatId, `Daily outbound target set to ${limit}.`);
 }
 
 async function handleGtmReviewQueue(chatId: number) {
@@ -742,7 +881,7 @@ async function handleGtmReviewQueue(chatId: number) {
   });
 
   if (!queue.items.length) {
-    await sendMessage(chatId, 'No pending isimple GTM prospects to review.');
+    await sendMessage(chatId, 'No pending outbound prospects to review.');
     return;
   }
 
@@ -757,7 +896,7 @@ async function handleGtmReviewQueue(chatId: number) {
   const firstReady = queue.items.find((item) => item.readyForApproval);
   const firstPending = queue.items[0];
   await sendMessage(chatId, [
-    '<b>isimple GTM review queue</b>',
+    '<b>Outbound review queue</b>',
     `Ready: ${queue.counts.ready} · Blocked: ${queue.counts.blocked} · Queued: ${queue.counts.queued}`,
     '',
     lines.join('\n\n'),
@@ -798,8 +937,8 @@ async function handleNaturalGtmBatchReview(chatId: number, action: GtmReviewActi
   const selected = queue.items.slice(0, limit);
   if (!selected.length) {
     await sendMessage(chatId, action === 'approve_queue'
-      ? 'No ready isimple GTM prospects to approve.'
-      : 'No matching isimple GTM prospects found.');
+      ? 'No ready outbound prospects to approve.'
+      : 'No matching outbound prospects found.');
     return;
   }
 
@@ -817,7 +956,7 @@ async function handleNaturalGtmBatchReview(chatId: number, action: GtmReviewActi
       : 're-enrich';
   const names = selected.map((item) => `• ${item.name} · ${item.companyName || 'No company'}`).join('\n');
   await sendMessage(chatId, [
-    `<b>Confirm GTM batch action</b>`,
+    `<b>Confirm outbound batch action</b>`,
     '',
     `Action: ${esc(verb)}`,
     `Prospects: ${selected.length}`,
@@ -1361,7 +1500,7 @@ async function executeGtmBatchReview(chatId: number, userId: string, pending: Re
     : [];
 
   if (!contactIds.length) {
-    await sendMessage(chatId, 'No GTM prospects selected. Cancelled.');
+    await sendMessage(chatId, 'No outbound prospects selected. Cancelled.');
     return;
   }
 
@@ -1504,6 +1643,10 @@ async function handleCallbackQuery(query: { id: string; message?: { chat: { id: 
     await sendMessage(chatId, 'Disconnected. Reconnect anytime from Settings.');
   } else if (query.data === 'disconnect_cancel') {
     await sendMessage(chatId, 'Cancelled.');
+  } else if (query.data.startsWith('workspace:')) {
+    const user = await requireUser(chatId);
+    if (!user) return;
+    await setTelegramActiveWorkspace(chatId, user.user_id, query.data.slice('workspace:'.length));
   } else if (query.data.startsWith('gtm:')) {
     await handleGtmCallback(chatId, query.data);
   }
@@ -1517,7 +1660,7 @@ async function handleGtmCallback(chatId: number, data: string) {
 
   const [, rawAction, contactId] = data.split(':');
   if (!contactId) {
-    await sendMessage(chatId, 'Invalid GTM action.');
+    await sendMessage(chatId, 'Invalid outbound action.');
     return;
   }
 
@@ -1530,7 +1673,7 @@ async function handleGtmCallback(chatId: number, data: string) {
     });
     const item = queue.items.find((candidate) => candidate.id === contactId);
     if (!item) {
-      await sendMessage(chatId, 'GTM prospect not found.');
+      await sendMessage(chatId, 'Outbound prospect not found.');
       return;
     }
 
@@ -1563,7 +1706,7 @@ async function handleGtmCallback(chatId: number, data: string) {
   };
   const action = actionMap[rawAction];
   if (!action) {
-    await sendMessage(chatId, 'Unknown GTM action.');
+    await sendMessage(chatId, 'Unknown outbound action.');
     return;
   }
 
@@ -1600,7 +1743,7 @@ function formatGtmReviewResult(result: {
   );
 
   return [
-    `<b>GTM review updated</b>`,
+    `<b>Outbound review updated</b>`,
     '',
     `Action: ${actionLabel}`,
     `Updated: ${result.updated}`,

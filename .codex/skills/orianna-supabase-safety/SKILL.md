@@ -1,6 +1,6 @@
 ---
 name: orianna-supabase-safety
-description: Safely inspect and modify the Orianna CRM Supabase database, with project-ref checks, migration discipline, workspace isolation checks, and GTM safety verification.
+description: Safely inspect and modify the Orianna CRM Supabase database, with project-ref checks, migration discipline, workspace isolation checks, and outbound automation safety verification.
 ---
 
 # Orianna Supabase Safety
@@ -20,17 +20,17 @@ Use this skill before applying migrations, running SQL, or debugging database st
 - If using the CLI, verify the linked project before applying SQL.
 - Never run destructive workspace/contact operations unless the user explicitly asks.
 
-## GTM Data Checks
+## Outbound Data Checks
 
-- `workspaces.slug = 'isimple'` is the dedicated isimple workspace.
-- Orianna contacts must remain in their original workspace.
-- GTM contacts should have `source = 'gtm_autopilot'`.
+- Each workspace is a separate outbound project/org.
+- Contacts must remain in their original workspace.
+- Outbound-sourced contacts currently have `source = 'gtm_autopilot'`.
 - Review fields are `gtm_review_status`, `gtm_send_approved_at`, and `gtm_send_approved_by`.
 - Sequence queueing lives in `campaign_enrollments`.
 
 ## Safety Queries To Prefer
 
 - Count contacts by workspace before and after GTM changes.
-- Verify isimple members before enabling automation.
-- Check pending/approved/rejected GTM counts before processing sequences.
-- Confirm no generic inbox or missing-email GTM contact is approved and queued.
+- Verify workspace members before enabling automation.
+- Check pending/approved/rejected outbound counts before processing sequences.
+- Confirm no generic inbox or missing-email outbound contact is approved and queued.

@@ -47,18 +47,18 @@ export async function GET(request: NextRequest) {
         .from('contacts')
         .select('id', { count: 'exact', head: true })
         .eq('workspace_id', ctx.workspaceId)
-        .eq('segment', 'property_manager_france'),
+        .eq('source', 'gtm_autopilot'),
       supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true })
         .eq('workspace_id', ctx.workspaceId)
-        .eq('segment', 'property_manager_france')
+        .eq('source', 'gtm_autopilot')
         .gte('created_at', today.toISOString()),
       supabase
         .from('contacts')
         .select('id', { count: 'exact', head: true })
         .eq('workspace_id', ctx.workspaceId)
-        .eq('segment', 'property_manager_france')
+        .eq('source', 'gtm_autopilot')
         .eq('ai_score_label', 'HOT'),
       supabase
         .from('contacts')
@@ -112,8 +112,8 @@ export async function GET(request: NextRequest) {
       sequences: sequencesResult.data || [],
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch GTM status';
-    console.error('GTM status error:', message);
+    const message = error instanceof Error ? error.message : 'Failed to fetch outbound status';
+    console.error('Outbound status error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (Object.keys(update).length === 0) {
-      return NextResponse.json({ error: 'No GTM settings provided' }, { status: 400 });
+      return NextResponse.json({ error: 'No outbound settings provided' }, { status: 400 });
     }
 
     const { error } = await supabase
@@ -179,8 +179,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update GTM settings';
-    console.error('GTM status update error:', message);
+    const message = error instanceof Error ? error.message : 'Failed to update outbound settings';
+    console.error('Outbound status update error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

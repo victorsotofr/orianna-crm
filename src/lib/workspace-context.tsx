@@ -119,6 +119,14 @@ export function WorkspaceProvider({
           setMembers(data || []);
         });
 
+      // The isimple operator page intentionally opens the isimple workspace.
+      // If the user switches away from it, leave that page so it cannot switch
+      // them back during the reload.
+      if (window.location.pathname.startsWith('/isimple') && ws.slug !== 'isimple') {
+        window.location.assign('/dashboard');
+        return;
+      }
+
       // Reload the page to refresh all data with new workspace context
       window.location.reload();
     },

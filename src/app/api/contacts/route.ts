@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
     const assignedTo = searchParams.get('assigned_to');
     const owner = searchParams.get('owner');
     const search = searchParams.get('search');
+    const source = searchParams.get('source');
+    const gtmReviewStatus = searchParams.get('gtm_review_status');
     const limit = parseInt(searchParams.get('limit') || '50');
     const includeTeam = searchParams.get('include_team') === 'true';
 
@@ -37,6 +39,16 @@ export async function GET(request: NextRequest) {
         query = query.eq('status', status);
       }
       if (assignedTo) query = query.eq('assigned_to', assignedTo);
+      if (source === 'gtm_autopilot') {
+        query = query.eq('source', 'gtm_autopilot');
+      }
+      if (
+        gtmReviewStatus === 'pending' ||
+        gtmReviewStatus === 'approved' ||
+        gtmReviewStatus === 'rejected'
+      ) {
+        query = query.eq('gtm_review_status', gtmReviewStatus);
+      }
       if (owner === 'me') {
         query = query.eq('assigned_to', user!.id);
       } else if (owner === 'unassigned') {
@@ -79,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     // Optionally include team members and owner counts
     let teamMembers = null;
-    let ownerCounts: Record<string, number> = {};
+    const ownerCounts: Record<string, number> = {};
     if (includeTeam) {
       const { data: members } = await supabase
         .from('workspace_members')

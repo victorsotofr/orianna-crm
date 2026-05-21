@@ -5,6 +5,7 @@ import type { Contact } from '@/types/database';
 import { searchCompany, searchContact } from '@/lib/linkup';
 import { DEFAULT_SCORING_PROMPT } from '@/lib/ai-defaults';
 import { type BusinessContext, buildBusinessContextBlock } from '@/lib/ai-business-context';
+import { aiModel, hasOpenAIKey } from '@/lib/ai-provider';
 
 interface CustomPrompts {
   scoringPrompt?: string;
@@ -78,7 +79,7 @@ export async function scoreContact(
     + buildBusinessContextBlock(businessContext);
 
   if (linkupApiKey) {
-    // Linkup path: deep search for company AND contact, then Claude scoring (no tools)
+    // Linkup path: deep search for company AND contact, then model scoring (no tools)
     let companyResearch = '';
     let contactResearch = '';
     try {
@@ -117,7 +118,7 @@ export async function scoreContact(
     const userPrompt = `Analyse ce contact et donne-lui un score de 0 à 100 :\n\n${context}\n\n${researchBlock}`;
 
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('score'),
       system: systemPrompt,
       prompt: userPrompt,
     });
@@ -130,6 +131,19 @@ export async function scoreContact(
 }
 
 async function scoreWithWebSearch(context: string, systemPrompt: string): Promise<ScoringResult> {
+  if (hasOpenAIKey()) {
+    const { text } = await generateText({
+      model: aiModel('score'),
+      system: systemPrompt,
+      prompt: `Analyse ce contact et donne-lui un score de 0 à 100 en utilisant uniquement les données CRM fournies.
+Si des informations importantes manquent, pénalise le score et explique les incertitudes.
+
+${context}`,
+    });
+
+    return parseScoringResponse(text);
+  }
+
   const webSearchSystemPrompt = systemPrompt.replace(
     'Tu analyses les contacts pour déterminer leur potentiel commercial.',
     'Tu analyses les contacts pour déterminer leur potentiel commercial.\n\nTu dois rechercher sur le web des informations sur le contact et son entreprise, puis scorer le lead.'

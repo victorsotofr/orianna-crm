@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
-import { anthropic } from '@ai-sdk/anthropic';
 import { generateText, stepCountIs, tool } from 'ai';
 import { z } from 'zod';
 
+import { aiModel } from '@/lib/ai-provider';
 import { stripQuotedReplyHistory } from '@/lib/email-content';
 import {
   deleteGoogleCalendarEvent,
@@ -96,9 +96,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // Capture closure vars for tool execute functions
     const userId = user.id;
-    const workspaceId = ctx.workspaceId;
-    const contactId = thread.contact_id;
-    const threadId = thread.id;
     const tz = gcalConnection?.google_calendar_default_timezone || 'Europe/Paris';
     const calId = gcalConnection?.google_calendar_default_calendar_id || 'primary';
 
@@ -240,7 +237,7 @@ ${dayRef.join('\n')}`
       : undefined;
 
     const result = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('reply'),
       tools: toolsConfig,
       stopWhen: stepCountIs(5),
       system: `Tu aides un commercial à répondre manuellement à un prospect.

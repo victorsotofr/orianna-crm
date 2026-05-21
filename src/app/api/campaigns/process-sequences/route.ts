@@ -5,6 +5,7 @@ import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 
 // NO maxDuration constraint for cron jobs
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,7 @@ interface PendingSequenceEmail {
 }
 
 interface NextStep {
-  step_id: string;
+  id: string;
   delay_days: number;
 }
 
@@ -92,12 +93,12 @@ export async function POST(request: Request) {
     }
 
     // Process one email per user
-    for (const [userId, email] of emailsByUser) {
+    for (const email of emailsByUser.values()) {
       try {
-        // Double-check that contact hasn't replied
+        // Double-check that contact is still eligible before creating a send record.
         const { data: contact } = await supabase
           .from('contacts')
-          .select('replied_at')
+          .select('source, gtm_review_status, gtm_send_approved_at, replied_at, email_bounced, opted_out_at, status')
           .eq('id', email.contact_id)
           .single();
 
@@ -107,6 +108,32 @@ export async function POST(request: Request) {
             .from('campaign_enrollments')
             .update({ status: 'completed', completed_at: new Date().toISOString() })
             .eq('id', email.enrollment_id);
+          continue;
+        }
+
+        const gtmBlockReason = contact ? getGtmSendBlockReason(contact) : null;
+        if (gtmBlockReason) {
+          await supabase
+            .from('campaign_enrollments')
+            .update({ status: 'paused' })
+            .eq('id', email.enrollment_id);
+
+          await supabase.from('contact_timeline').insert({
+            contact_id: email.contact_id,
+            workspace_id: email.workspace_id,
+            event_type: 'gtm_send_blocked',
+            title: 'GTM send blocked',
+            description: gtmBlockReason,
+            metadata: {
+              enrollment_id: email.enrollment_id,
+              step_id: email.step_id,
+              sequence_id: email.sequence_id,
+            },
+            created_by: email.user_id,
+          });
+
+          errors.push(`${email.contact_email}: ${gtmBlockReason}`);
+          failedCount++;
           continue;
         }
 
@@ -295,7 +322,7 @@ export async function POST(request: Request) {
           await supabase
             .from('campaign_enrollments')
             .update({
-              current_step_id: nextStep.step_id,
+              current_step_id: nextStep.id,
               next_send_at: nextSendAt.toISOString(),
               retry_count: 0, // Reset retry count for next step
             })
@@ -312,9 +339,10 @@ export async function POST(request: Request) {
         }
 
         sentCount++;
-      } catch (error: any) {
-        console.error('Sequence email send error:', error instanceof Error ? error.message : error);
-        errors.push(`${email.contact_email}: ${error.message || 'Send failed'}`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Send failed';
+        console.error('Sequence email send error:', message);
+        errors.push(`${email.contact_email}: ${message}`);
         failedCount++;
       }
     }
@@ -325,7 +353,7 @@ export async function POST(request: Request) {
       failed: failedCount,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Process sequences error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

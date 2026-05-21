@@ -6,6 +6,7 @@ import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 
 export const maxDuration = 30;
 
@@ -43,10 +44,16 @@ export async function POST(request: Request) {
       .from('contacts')
       .select('*')
       .eq('id', contactId)
+      .eq('workspace_id', ctx.workspaceId)
       .single();
 
     if (contactError || !contact) {
       throw new Error('Contact not found');
+    }
+
+    const gtmBlockReason = getGtmSendBlockReason(contact);
+    if (gtmBlockReason) {
+      return NextResponse.json({ error: gtmBlockReason, success: false }, { status: 403 });
     }
 
     // Fetch template

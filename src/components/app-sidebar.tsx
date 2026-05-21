@@ -58,10 +58,15 @@ export function AppSidebar({
   const { workspace, workspaces, switchWorkspace } = useWorkspace()
 
   useEffect(() => {
+    if (!workspace?.id) {
+      return
+    }
+
     const fetchUnreadConversations = async () => {
       const { count } = await supabase
         .from('mailbox_threads')
         .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspace.id)
         .gt('unread_count', 0)
 
       setUnreadConversations(count ?? 0)
@@ -70,9 +75,13 @@ export function AppSidebar({
     fetchUnreadConversations()
     const interval = setInterval(fetchUnreadConversations, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [workspace?.id])
 
   useEffect(() => {
+    if (!workspace?.id) {
+      return
+    }
+
     const fetchFollowUpCount = async () => {
       const todayStr = new Date().toISOString().split('T')[0]
 
@@ -80,6 +89,7 @@ export function AppSidebar({
         supabase
           .from('contacts')
           .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
           .eq('status', 'contacted')
           .not('first_contact', 'is', null)
           .is('second_contact', null)
@@ -87,6 +97,7 @@ export function AppSidebar({
         supabase
           .from('contacts')
           .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
           .eq('status', 'contacted')
           .not('second_contact', 'is', null)
           .is('third_contact', null)
@@ -100,7 +111,7 @@ export function AppSidebar({
     // Refresh every 5 minutes
     const interval = setInterval(fetchFollowUpCount, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [workspace?.id])
 
   const navMain = useMemo(() => [
     {

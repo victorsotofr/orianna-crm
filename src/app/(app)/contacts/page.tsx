@@ -403,6 +403,8 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
   const [ownerFilter, setOwnerFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [gtmReviewFilter, setGtmReviewFilter] = useState('all');
   const [search, setSearch] = useState('');
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -412,6 +414,7 @@ export default function ContactsPage() {
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkStatusUpdating, setBulkStatusUpdating] = useState(false);
   const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkGtmReviewing, setBulkGtmReviewing] = useState(false);
   const [serverOwnerCounts, setServerOwnerCounts] = useState<Record<string, number>>({});
   const [previewLine, setPreviewLine] = useState<{ name: string; text: string } | null>(null);
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([{ column: 'created_at', direction: 'desc' }]);
@@ -430,6 +433,8 @@ export default function ContactsPage() {
       const params = new URLSearchParams({ limit: '10000', include_team: 'true' });
       if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
       if (ownerFilter && ownerFilter !== 'all') params.set('owner', ownerFilter);
+      if (sourceFilter && sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (gtmReviewFilter && gtmReviewFilter !== 'all') params.set('gtm_review_status', gtmReviewFilter);
 
       const response = await apiFetch(`/api/contacts?${params}`);
       if (response.ok) {
@@ -445,7 +450,7 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, ownerFilter]);
+  }, [statusFilter, ownerFilter, sourceFilter, gtmReviewFilter]);
 
   useEffect(() => {
     fetchContacts();
@@ -479,7 +484,8 @@ export default function ContactsPage() {
 
   useEffect(() => {
     lastClickedIndexRef.current = null;
-  }, [search, statusFilter, ownerFilter, sortKeys]);
+    setSelectedIds(new Set());
+  }, [search, statusFilter, ownerFilter, sourceFilter, gtmReviewFilter, sortKeys]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) {
@@ -585,6 +591,32 @@ export default function ContactsPage() {
     }
   };
 
+  const handleBulkGtmReview = async (reviewStatus: 'pending' | 'approved' | 'rejected') => {
+    setBulkGtmReviewing(true);
+    try {
+      const response = await apiFetch('/api/contacts/gtm-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_ids: Array.from(selectedIds), review_status: reviewStatus }),
+      });
+
+      if (response.ok) {
+        const { updated } = await response.json();
+        toast.success(t.contacts.toasts.gtmReviewUpdated(updated));
+        setSelectedIds(new Set());
+        fetchContacts();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || t.contacts.toasts.gtmReviewError);
+      }
+    } catch (error) {
+      console.error('GTM review update error:', error);
+      toast.error(t.contacts.toasts.gtmReviewError);
+    } finally {
+      setBulkGtmReviewing(false);
+    }
+  };
+
   const handleBulkScore = () => {
     const ids = Array.from(selectedIds);
     startScoring(ids);
@@ -682,6 +714,8 @@ export default function ContactsPage() {
 
   const COLUMNS = [
     { key: 'assigned_to', label: t.contacts.columns.owner, type: 'owner' as const },
+    { key: 'source', label: t.contacts.columns.source, type: 'readonly-text' as const },
+    { key: 'gtm_review_status', label: t.contacts.columns.review, type: 'gtm-review' as const },
     { key: 'ai_score', label: t.contacts.columns.aiScore, type: 'ai_score' as const },
     { key: 'ai_personalized_line', label: t.contacts.columns.aiPersonalization, type: 'ai_personalized' as const },
     { key: 'status', label: t.contacts.columns.status, type: 'status' as const },
@@ -750,6 +784,26 @@ export default function ContactsPage() {
                     </SelectItem>
                   ))}
                   <SelectItem value="unassigned">{t.contacts.unassignedContacts} ({ownerCounts['unassigned'] || 0})</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-[150px] h-8 text-xs">
+                  <SelectValue placeholder={t.contacts.sources.all} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t.contacts.sources.all}</SelectItem>
+                  <SelectItem value="gtm_autopilot">{t.contacts.sources.gtmAutopilot}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={gtmReviewFilter} onValueChange={setGtmReviewFilter}>
+                <SelectTrigger className="w-[150px] h-8 text-xs">
+                  <SelectValue placeholder={t.contacts.gtmReview.all} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t.contacts.gtmReview.all}</SelectItem>
+                  <SelectItem value="pending">{t.contacts.gtmReview.pending}</SelectItem>
+                  <SelectItem value="approved">{t.contacts.gtmReview.approved}</SelectItem>
+                  <SelectItem value="rejected">{t.contacts.gtmReview.rejected}</SelectItem>
                 </SelectContent>
               </Select>
               <CompactStatsBar stats={[
@@ -881,6 +935,27 @@ export default function ContactsPage() {
                                 ) : (
                                   <span className="text-xs text-muted-foreground">—</span>
                                 )
+                              ) : col.type === 'readonly-text' ? (
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {contact.source === 'gtm_autopilot' ? t.contacts.sources.gtmAutopilot : '—'}
+                                </span>
+                              ) : col.type === 'gtm-review' ? (
+                                contact.source === 'gtm_autopilot' ? (
+                                  <span className={cn(
+                                    'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+                                    contact.gtm_review_status === 'approved' && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+                                    contact.gtm_review_status === 'rejected' && 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+                                    (!contact.gtm_review_status || contact.gtm_review_status === 'pending') && 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                  )}>
+                                    {contact.gtm_review_status === 'approved'
+                                      ? t.contacts.gtmReview.approved
+                                      : contact.gtm_review_status === 'rejected'
+                                        ? t.contacts.gtmReview.rejected
+                                        : t.contacts.gtmReview.pending}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )
                               ) : (
                                 <EditableCell
                                   contactId={contact.id}
@@ -998,6 +1073,26 @@ export default function ContactsPage() {
             <Sparkles className="mr-1.5 h-3.5 w-3.5" />
             {t.contacts.bulkActions.personalize}
           </Button>
+          <div className="flex items-center gap-2 border-l pl-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkGtmReview('approved')}
+              disabled={bulkGtmReviewing}
+            >
+              {bulkGtmReviewing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1.5 h-3.5 w-3.5" />}
+              {t.contacts.bulkActions.approveGtm}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkGtmReview('rejected')}
+              disabled={bulkGtmReviewing}
+            >
+              <X className="mr-1.5 h-3.5 w-3.5" />
+              {t.contacts.bulkActions.rejectGtm}
+            </Button>
+          </div>
           <Button
             variant="destructive"
             size="sm"

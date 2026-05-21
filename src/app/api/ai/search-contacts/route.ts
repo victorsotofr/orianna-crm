@@ -5,7 +5,7 @@ import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
 import { searchProspecting } from '@/lib/linkup';
 import { generateText } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { aiModel } from '@/lib/ai-provider';
 
 
 export const maxDuration = 300;
@@ -19,6 +19,12 @@ export interface ProspectedContact {
   location: string;
   linkedin_url: string;
   company_domain: string;
+}
+
+function isProspectedContact(value: unknown): value is ProspectedContact {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ProspectedContact>;
+  return Boolean(candidate.first_name && candidate.last_name);
 }
 
 export async function POST(request: NextRequest) {
@@ -74,9 +80,9 @@ export async function POST(request: NextRequest) {
       outputType
     );
 
-    // Extract structured contacts with Claude Haiku (fast, cheap, sufficient for JSON extraction)
+    // Extract structured contacts with the fast extraction model.
     const { text } = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model: aiModel('extract'),
       system: `You are a data extraction specialist. Extract structured contact records from web research results.
 
 Rules:
@@ -100,7 +106,7 @@ ${rawResults}`,
       const cleaned = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleaned);
       if (Array.isArray(parsed)) {
-        contacts = parsed.filter((c: any) => c.first_name && c.last_name);
+        contacts = parsed.filter(isProspectedContact);
       }
     } catch {
       console.error('Failed to parse extraction response:', text.substring(0, 200));
@@ -124,9 +130,10 @@ ${rawResults}`,
     }
 
     return NextResponse.json({ contacts, existingEmails });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Search failed';
     console.error('Search contacts error:', error);
     // Sentry.captureException(error);
-    return NextResponse.json({ error: error.message || 'Search failed' }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

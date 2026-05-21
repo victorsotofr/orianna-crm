@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 
-import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
 
+import { aiModel } from '@/lib/ai-provider';
 import { stripQuotedReplyHistory } from '@/lib/email-content';
 import { searchCompany, searchContact } from '@/lib/linkup';
 import { createServerClient } from '@/lib/supabase-server';
@@ -269,7 +269,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // Generate brief with Claude
+    // Generate brief with the shared meeting-prep model.
     const prompt = `FICHE CONTACT CRM :
 ${crmParts.join('\n')}
 
@@ -281,7 +281,7 @@ ${webResearch ? `RECHERCHE WEB RÉCENTE :\n${webResearch}\n` : ''}
 Génère un brief de préparation de meeting structuré pour ce contact.`;
 
     const result = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('meeting'),
       system: `Tu es un assistant commercial expert qui prépare des briefs avant les meetings.
 
 Tu reçois toutes les données CRM, l'historique des échanges, les stats d'engagement email, et potentiellement de la recherche web récente sur le contact et son entreprise.

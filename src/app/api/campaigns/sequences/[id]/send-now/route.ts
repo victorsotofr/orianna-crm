@@ -6,6 +6,7 @@ import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 
 // POST /api/campaigns/sequences/[id]/send-now - Send pending emails immediately (for testing)
 export async function POST(
@@ -119,7 +120,14 @@ export async function POST(
           job_title,
           location,
           ai_personalized_line,
-          assigned_to
+          assigned_to,
+          status,
+          source,
+          gtm_review_status,
+          gtm_send_approved_at,
+          replied_at,
+          email_bounced,
+          opted_out_at
         )
       `)
       .eq('sequence_id', id)
@@ -173,6 +181,37 @@ export async function POST(
           contact_email: contact?.email || 'unknown',
           success: false,
           error: 'Contact missing email',
+        });
+        continue;
+      }
+
+      const gtmBlockReason = getGtmSendBlockReason(contact);
+      if (gtmBlockReason) {
+        console.log(`[send-now] Blocking GTM send for ${contact.email}: ${gtmBlockReason}`);
+        await supabase
+          .from('campaign_enrollments')
+          .update({ status: 'paused' })
+          .eq('id', enrollment.id);
+
+        await supabase.from('contact_timeline').insert({
+          contact_id: contact.id,
+          workspace_id: ctx.workspaceId,
+          event_type: 'gtm_send_blocked',
+          title: 'GTM send blocked',
+          description: gtmBlockReason,
+          metadata: {
+            sequence_id: sequence.id,
+            enrollment_id: enrollment.id,
+            send_now: true,
+          },
+          created_by: user.id,
+        });
+
+        results.push({
+          enrollment_id: enrollment.id,
+          contact_email: contact.email,
+          success: false,
+          error: gtmBlockReason,
         });
         continue;
       }

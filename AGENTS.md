@@ -1,12 +1,25 @@
 # Orianna CRM
 
+## Current Mission: isimple GTM Engine
+
+Orianna CRM is now also the outbound GTM engine for isimple. See `AGENT.md` for the concise handoff context when opening a new terminal/session.
+
+- Create and operate a dedicated workspace/org named `isimple`.
+- Preserve the existing Orianna org and every current contact; do not merge, delete, or overwrite them.
+- Use SMTP as the primary outreach channel and IMAP for reply/reply-state tracking.
+- Daily automation should find, qualify, enrich, personalize, and enroll roughly 20 new French real estate/property-management contacts.
+- Follow-ups should run automatically through existing campaign sequences.
+- Telegram is the operator console: status, daily summaries, approvals, and agent questions should go there.
+- Prefer OpenAI through `OPENAI_API_KEY`; Anthropic remains a fallback for legacy/web-search paths where needed.
+- Keep the product lean, visual, AI-native, production-grade, and optimized for SEO/GEO/API/MCP discovery surfaces.
+
 B2B prospecting CRM with AI-powered contact scoring, personalization, and prospecting. Multi-tenant, bilingual (FR/EN).
 
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router, Turbopack), React 19, TypeScript
 - **Database**: Supabase (PostgreSQL + Auth + RLS + Edge Functions)
-- **AI**: Codex Sonnet 4.5 via Vercel AI SDK (`ai` + `@ai-sdk/anthropic`)
+- **AI**: OpenAI-first via Vercel AI SDK (`ai` + `@ai-sdk/openai`), with Anthropic fallback for legacy/web-search paths
 - **Web Research**: Linkup API (`linkup-sdk`) for agentic web search
 - **Enrichment**: FullEnrich API for verified emails & phone numbers
 - **UI**: Tailwind CSS, shadcn/ui, Radix UI, TipTap rich text editor

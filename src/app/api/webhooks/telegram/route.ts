@@ -1,23 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { generateText } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
 
+import { aiModel } from '@/lib/ai-provider';
+import { ISIMPLE_GTM_WORKSPACE_SLUG, runDailyProspecting, type GtmRunMode } from '@/lib/gtm-automation';
 import { getServiceSupabase } from '@/lib/supabase';
 import { sendMessage, isTelegramConfigured, inlineKeyboard } from '@/lib/telegram';
 import { scoreContact } from '@/lib/ai-scoring';
 import { sendEmail, type EmailConfig, type EmailData } from '@/lib/email-sender';
 import { decrypt } from '@/lib/encryption';
-import { createGoogleCalendarEvent, listGoogleCalendarEvents } from '@/lib/google-calendar';
+import { createGoogleCalendarEvent } from '@/lib/google-calendar';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 // ─── Types ──────────────────────────────────────────────
 
 interface UserContext {
   user_id: string;
   telegram_pending_action: Record<string, unknown> | null;
+}
+
+interface TelegramAudioFile {
+  file_id: string;
+  file_size?: number;
+  mime_type?: string;
+}
+
+interface TelegramMessage {
+  chat: { id: number };
+  text?: string;
+  voice?: TelegramAudioFile;
+  audio?: TelegramAudioFile;
 }
 
 // ─── Webhook Entry Point ────────────────────────────────
@@ -35,13 +50,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const message = update.message;
-    if (!message?.text) {
+    const message = update.message as TelegramMessage | undefined;
+    if (!message) {
       return NextResponse.json({ ok: true });
     }
 
     const chatId = message.chat.id;
-    const text = message.text.trim();
+    let text = typeof message.text === 'string' ? message.text.trim() : '';
+    if (!text && (message.voice?.file_id || message.audio?.file_id)) {
+      try {
+        text = (await transcribeTelegramAudio(message)).trim();
+        if (text) {
+          await sendMessage(chatId, `J'ai compris: <i>${esc(text)}</i>`);
+        }
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : 'Voice transcription failed';
+        await sendMessage(chatId, `Je n'ai pas pu transcrire ce vocal: ${esc(messageText)}`);
+        return NextResponse.json({ ok: true });
+      }
+    }
+
+    if (!text) {
+      return NextResponse.json({ ok: true });
+    }
 
     // Route commands
     if (text.startsWith('/start ')) {
@@ -56,6 +87,18 @@ export async function POST(request: NextRequest) {
       await handleHotLeads(chatId);
     } else if (text === '/digest') {
       await handleDigest(chatId);
+    } else if (text === '/gtm') {
+      await handleGtmStatus(chatId);
+    } else if (text === '/run_gtm' || text.startsWith('/run_gtm ')) {
+      await handleRunGtm(chatId, { limit: parseNaturalLimit(text), mode: 'import_prepare' });
+    } else if (text === '/gtm_review') {
+      await handleGtmReviewQueue(chatId);
+    } else if (text === '/pause_gtm') {
+      await handlePauseGtm(chatId);
+    } else if (text === '/resume_gtm') {
+      await handleResumeGtm(chatId);
+    } else if (text.startsWith('/limit ')) {
+      await handleGtmLimit(chatId, text.slice(7).trim());
     } else if (text === '/summarize') {
       await handleSummarize(chatId);
     } else if (text.startsWith('/brief ')) {
@@ -75,7 +118,10 @@ export async function POST(request: NextRequest) {
     } else if (text === '/disconnect') {
       await handleDisconnect(chatId);
     } else {
-      await handlePendingOrFreeform(chatId, text);
+      const handled = await routeNaturalCommand(chatId, text);
+      if (!handled) {
+        await handlePendingOrFreeform(chatId, text);
+      }
     }
 
     return NextResponse.json({ ok: true });
@@ -114,9 +160,37 @@ async function getWorkspaceForUser(userId: string): Promise<string | null> {
   return data?.workspace_id ?? null;
 }
 
+async function getIsimpleWorkspaceForUser(userId: string): Promise<string | null> {
+  const { data: workspace } = await supabase()
+    .from('workspaces')
+    .select('id')
+    .eq('slug', ISIMPLE_GTM_WORKSPACE_SLUG)
+    .maybeSingle();
+
+  if (!workspace?.id) return null;
+
+  const { data: membership } = await supabase()
+    .from('workspace_members')
+    .select('id')
+    .eq('workspace_id', workspace.id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  return membership ? workspace.id : null;
+}
+
 async function requireWorkspace(chatId: number, userId: string): Promise<string | null> {
   const wsId = await getWorkspaceForUser(userId);
   if (!wsId) { await sendMessage(chatId, 'No workspace found.'); return null; }
+  return wsId;
+}
+
+async function requireGtmWorkspace(chatId: number, userId: string): Promise<string | null> {
+  const wsId = await getIsimpleWorkspaceForUser(userId);
+  if (!wsId) {
+    await sendMessage(chatId, 'No isimple workspace found for this Telegram user.');
+    return null;
+  }
   return wsId;
 }
 
@@ -172,20 +246,134 @@ async function getBusinessContext(wsId: string) {
 async function getUserSmtpConfig(userId: string): Promise<EmailConfig | null> {
   const { data } = await supabase()
     .from('user_settings')
-    .select('smtp_host, smtp_port, smtp_user, smtp_password')
+    .select('smtp_host, smtp_port, smtp_user, smtp_password_encrypted')
     .eq('user_id', userId)
     .single();
-  if (!data?.smtp_host || !data?.smtp_password) return null;
+  if (!data?.smtp_host || !data?.smtp_password_encrypted) return null;
   return {
     host: data.smtp_host,
     port: data.smtp_port || 587,
     user: data.smtp_user || '',
-    passwordEncrypted: data.smtp_password,
+    passwordEncrypted: data.smtp_password_encrypted,
   };
 }
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function transcribeTelegramAudio(message: TelegramMessage): Promise<string> {
+  const audio = message.voice || message.audio;
+  const fileId = audio?.file_id;
+  if (!fileId) throw new Error('No audio file found');
+  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing');
+
+  const declaredSize = audio.file_size || 0;
+  if (declaredSize > 25 * 1024 * 1024) {
+    throw new Error('Audio file is larger than 25 MB');
+  }
+
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const fileMetaRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`);
+  const fileMeta = await fileMetaRes.json();
+  const filePath = fileMeta?.result?.file_path;
+  if (!fileMetaRes.ok || !fileMeta?.ok || !filePath) {
+    throw new Error(fileMeta?.description || 'Telegram file lookup failed');
+  }
+
+  const audioRes = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+  if (!audioRes.ok) throw new Error('Telegram audio download failed');
+
+  const arrayBuffer = await audioRes.arrayBuffer();
+  if (arrayBuffer.byteLength > 25 * 1024 * 1024) {
+    throw new Error('Audio file is larger than 25 MB');
+  }
+
+  const filename = filePath.split('/').pop() || 'telegram-voice.oga';
+  const mimeType = audio.mime_type || 'audio/ogg';
+  const form = new FormData();
+  form.append('file', new Blob([arrayBuffer], { type: mimeType }), filename);
+  form.append('model', 'gpt-4o-mini-transcribe');
+  form.append('language', 'fr');
+  form.append('response_format', 'text');
+  form.append('prompt', 'Commandes CRM Orianna et isimple GTM: statut, lancer, test, prospects, validation, pause, reprendre, limite.');
+
+  const transcriptionRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: form,
+  });
+
+  const raw = await transcriptionRes.text();
+  if (!transcriptionRes.ok) {
+    let errorMessage = raw || 'OpenAI transcription failed';
+    try {
+      const data = JSON.parse(raw);
+      errorMessage = data.error?.message || errorMessage;
+    } catch {
+      // Keep the raw response when it is not JSON.
+    }
+    throw new Error(errorMessage);
+  }
+
+  try {
+    const data = JSON.parse(raw);
+    return String(data.text || '');
+  } catch {
+    return raw;
+  }
+}
+
+function parseNaturalLimit(text: string): number | undefined {
+  const match = text.match(/\b(\d{1,3})\b/);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  return Number.isInteger(value) && value >= 1 && value <= 100 ? value : undefined;
+}
+
+async function routeNaturalCommand(chatId: number, text: string): Promise<boolean> {
+  const lower = text.toLowerCase();
+  const mentionsGtm = /\b(gtm|autopilot|isimple|prospects?)\b/.test(lower);
+
+  if (mentionsGtm && /\b(status|statut|où|etat|état|resume|résumé)\b/.test(lower)) {
+    await handleGtmStatus(chatId);
+    return true;
+  }
+
+  if (mentionsGtm && /\b(review|validation|valider|à valider|a valider|queue|file)\b/.test(lower)) {
+    await handleGtmReviewQueue(chatId);
+    return true;
+  }
+
+  if (mentionsGtm && /\b(pause|stop|arrete|arrête)\b/.test(lower)) {
+    await handlePauseGtm(chatId);
+    return true;
+  }
+
+  if (mentionsGtm && /\b(reprends|reprendre|resume|relance|active)\b/.test(lower)) {
+    await handleResumeGtm(chatId);
+    return true;
+  }
+
+  if (mentionsGtm && /\b(limite|limit|quota|objectif)\b/.test(lower)) {
+    const limit = parseNaturalLimit(lower);
+    if (limit) {
+      await handleGtmLimit(chatId, String(limit));
+      return true;
+    }
+  }
+
+  if (mentionsGtm && /\b(test|lance|run|cherche|importe|trouve)\b/.test(lower)) {
+    await handleRunGtm(chatId, {
+      limit: parseNaturalLimit(lower),
+      mode: lower.includes('dry') || lower.includes('sans importer') ? 'dry_run' : 'import_prepare',
+    });
+    return true;
+  }
+
+  return false;
 }
 
 // ─── Basic Commands ─────────────────────────────────────
@@ -231,7 +419,11 @@ async function handleHelp(chatId: number) {
     '/contacts — Recent contacts',
     '/hot — Hot leads',
     '/digest — Daily stats',
+    '/gtm — GTM autopilot status',
+    '/run_gtm [20] — Import and prepare prospects for review',
+    '/gtm_review — Pending isimple GTM prospects',
     '/summarize — AI daily summary with insights',
+    'Voice messages work for the same commands.',
     '',
     '<b>AI Actions</b>',
     '/ask &lt;question&gt; — Ask anything about your CRM',
@@ -246,6 +438,9 @@ async function handleHelp(chatId: number) {
     '',
     '<b>Settings</b>',
     '/status — Connection status',
+    '/pause_gtm — Pause GTM autopilot',
+    '/resume_gtm — Resume GTM in review mode',
+    '/limit &lt;number&gt; — Set daily GTM contact target',
     '/disconnect — Unlink account',
   ].join('\n'));
 }
@@ -353,6 +548,198 @@ async function handleDigest(chatId: number) {
   ].join('\n'));
 }
 
+// ─── GTM Autopilot Commands ─────────────────────────────
+
+async function handleGtmStatus(chatId: number) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  const db = supabase();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [workspaceResult, sourcedResult, todayResult, hotResult, enrollmentResult, lastRunResult] = await Promise.all([
+    db
+      .from('workspaces')
+      .select('name, gtm_enabled, gtm_daily_contact_limit, gtm_requires_approval, gtm_active_sequence_id, gtm_last_run_at, gtm_last_run_status')
+      .eq('id', wsId)
+      .single(),
+    db
+      .from('contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', wsId)
+      .eq('segment', 'property_manager_france'),
+    db
+      .from('contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', wsId)
+      .eq('segment', 'property_manager_france')
+      .gte('created_at', today.toISOString()),
+    db
+      .from('contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', wsId)
+      .eq('segment', 'property_manager_france')
+      .eq('ai_score_label', 'HOT'),
+    db
+      .from('campaign_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', wsId)
+      .eq('status', 'active'),
+    db
+      .from('gtm_daily_runs')
+      .select('status, imported_count, enrolled_count, error, finished_at')
+      .eq('workspace_id', wsId)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (workspaceResult.error) {
+    await sendMessage(chatId, `GTM migration not available yet: ${esc(workspaceResult.error.message)}`);
+    return;
+  }
+
+  const ws = workspaceResult.data;
+  const lastRun = lastRunResult.data;
+  await sendMessage(chatId, [
+    '<b>GTM Autopilot</b>',
+    '',
+    `Workspace: ${esc(ws.name)}`,
+    `Status: ${ws.gtm_enabled ? 'ON' : 'OFF'}`,
+    `Daily target: ${ws.gtm_daily_contact_limit || 20}`,
+    `Approval mode: ${ws.gtm_requires_approval ? 'manual enrollment' : 'full auto enrollment'}`,
+    `Active sequence: ${ws.gtm_active_sequence_id ? 'configured' : 'missing'}`,
+    '',
+    `Sourced ICP contacts: ${sourcedResult.count ?? 0}`,
+    `Added today: ${todayResult.count ?? 0}`,
+    `Hot sourced leads: ${hotResult.count ?? 0}`,
+    `Active sequence enrollments: ${enrollmentResult.count ?? 0}`,
+    '',
+    lastRun
+      ? `Last run: ${lastRun.status} · imported ${lastRun.imported_count || 0}, enrolled ${lastRun.enrolled_count || 0}${lastRun.error ? ` · ${lastRun.error}` : ''}`
+      : 'Last run: none',
+  ].join('\n'));
+}
+
+async function handleRunGtm(chatId: number, options: { limit?: number; mode?: GtmRunMode; query?: string } = {}) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  const mode = options.mode || 'import_prepare';
+  await sendMessage(chatId, mode === 'dry_run'
+    ? 'Testing GTM prospecting without importing...'
+    : 'Running GTM prospecting in review mode...');
+
+  try {
+    const result = await runDailyProspecting({
+      workspaceId: wsId,
+      userId: user.user_id,
+      limit: options.limit,
+      mode,
+      query: options.query,
+      dryRun: mode === 'dry_run',
+      respectEnabled: false,
+    });
+
+    await sendMessage(chatId, [
+      '<b>GTM run complete</b>',
+      '',
+      `Mode: ${mode}`,
+      `Imported: ${result.importedCount}`,
+      `Prepared with AI: ${result.preparedCount}`,
+      result.enrichmentStartedCount ? `Enrichment started: ${result.enrichmentStartedCount}` : '',
+      `Enrolled: ${result.enrolledCount}`,
+      result.error ? `Error: ${esc(result.error)}` : '',
+    ].filter(Boolean).join('\n'));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'GTM run failed';
+    await sendMessage(chatId, `GTM run failed: ${esc(message)}`);
+  }
+}
+
+async function handlePauseGtm(chatId: number) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  await supabase()
+    .from('workspaces')
+    .update({ gtm_enabled: false })
+    .eq('id', wsId);
+
+  await sendMessage(chatId, 'GTM autopilot paused.');
+}
+
+async function handleResumeGtm(chatId: number) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  await supabase()
+    .from('workspaces')
+    .update({ gtm_enabled: true, gtm_requires_approval: true })
+    .eq('id', wsId);
+
+  await sendMessage(chatId, 'GTM autopilot resumed in review mode. New prospects still need approval before outreach.');
+}
+
+async function handleGtmLimit(chatId: number, input: string) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  const limit = Number(input);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    await sendMessage(chatId, 'Usage: /limit &lt;1-100&gt;');
+    return;
+  }
+
+  await supabase()
+    .from('workspaces')
+    .update({ gtm_daily_contact_limit: limit })
+    .eq('id', wsId);
+
+  await sendMessage(chatId, `Daily GTM target set to ${limit}.`);
+}
+
+async function handleGtmReviewQueue(chatId: number) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  const { data: contacts } = await supabase()
+    .from('contacts')
+    .select('first_name, last_name, company_name, job_title, email, ai_score, ai_score_label, ai_personalized_line')
+    .eq('workspace_id', wsId)
+    .eq('source', 'gtm_autopilot')
+    .eq('gtm_review_status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (!contacts?.length) {
+    await sendMessage(chatId, 'No pending isimple GTM prospects to review.');
+    return;
+  }
+
+  const lines = contacts.map((contact, index) => {
+    const score = contact.ai_score != null ? `${contact.ai_score}/100 ${contact.ai_score_label || ''}`.trim() : 'not scored';
+    const title = contact.job_title ? ` — ${contact.job_title}` : '';
+    const hook = contact.ai_personalized_line ? `\n   ${esc(contact.ai_personalized_line)}` : '';
+    return `${index + 1}. <b>${esc(contactName(contact))}</b>${esc(title)}\n   ${esc(contact.company_name || 'No company')} · ${esc(score)} · ${esc(contact.email || 'no email')}${hook}`;
+  });
+
+  await sendMessage(chatId, `<b>isimple GTM review queue</b>\n\n${lines.join('\n\n')}\n\nApprove or reject them from Contacts using the isimple GTM + pending review filters.`);
+}
+
 // ─── AI Commands ────────────────────────────────────────
 
 async function handleSummarize(chatId: number) {
@@ -399,7 +786,7 @@ async function handleSummarize(chatId: number) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('assistant'),
       system: `You are a sales assistant analyzing CRM data for a daily briefing. Be concise, actionable, and insightful. Use plain text (no markdown). Structure your response with clear sections. Highlight what needs attention TODAY. Keep it under 1500 characters.`,
       prompt: `Here's today's CRM data:\n${JSON.stringify(dataForAI, null, 2)}\n\nGive me a smart daily summary: what happened today, what needs my attention, which contacts to prioritize, and any risks I should know about.`,
     });
@@ -423,7 +810,7 @@ async function handleAsk(chatId: number, question: string) {
 
   const db = supabase();
 
-  // Gather broad CRM context for Claude to answer from
+  // Gather broad CRM context for the assistant to answer from
   const [contactStats, hotLeads, recentReplies, recentSent, topCompanies] = await Promise.all([
     db.from('contacts').select('id', { count: 'exact', head: true }).eq('workspace_id', wsId),
     db.from('contacts').select('first_name, last_name, company_name, ai_score, ai_score_label, status, email, location, job_title')
@@ -472,7 +859,7 @@ async function handleAsk(chatId: number, question: string) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('assistant'),
       system: `You are an AI assistant for a B2B sales CRM called Orianna. Answer the user's question based on the CRM data provided. Be concise and direct. Use plain text (no markdown). If you can't answer precisely, say so and suggest what data might help. Keep responses under 1500 characters.`,
       prompt: `CRM Data:\n${JSON.stringify(crmData, null, 2)}\n\nQuestion: ${question}`,
     });
@@ -501,11 +888,9 @@ async function handleBrief(chatId: number, nameQuery: string) {
   const name = contactName(contact);
 
   // Gather engagement data
-  const [emailsSent, timeline, threads] = await Promise.all([
+  const [emailsSent, threads] = await Promise.all([
     db.from('emails_sent').select('subject, sent_at, status, opened_at, replied_at')
       .eq('contact_id', contact.id).order('sent_at', { ascending: false }).limit(10),
-    db.from('contact_timeline').select('event_type, title, description, created_at')
-      .eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(15),
     db.from('mailbox_messages').select('subject, from_address, body_text, received_at')
       .eq('workspace_id', wsId).ilike('from_address', `%${contact.email || ''}%`)
       .order('received_at', { ascending: false }).limit(10),
@@ -534,7 +919,7 @@ async function handleBrief(chatId: number, nameQuery: string) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('meeting'),
       system: `You are a sales assistant preparing a meeting brief. Be concise and actionable. Use plain text (no markdown). Structure: Company Summary, Contact Role, Engagement Recap, Talking Points, Suggested Questions. Keep under 2000 characters.`,
       prompt: `CRM DATA:\n${crmParts}\n\n${engagementParts.length ? `EMAILS:\n${engagementParts.join('\n')}\n\n` : ''}${convParts.length ? `CONVERSATIONS:\n${convParts.join('\n')}\n\n` : ''}${businessParts.length ? `OUR BUSINESS:\n${businessParts.join('\n')}\n\n` : ''}Generate a concise meeting prep brief for ${name}.`,
     });
@@ -615,7 +1000,7 @@ async function handleDraft(chatId: number, nameQuery: string) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('reply'),
       system: `You are a B2B sales email copywriter. Write a short, personalized cold outreach email. Rules:
 - Plain text only, no markdown
 - First line is the subject (prefixed with "Subject: ")
@@ -688,7 +1073,7 @@ async function handleReply(chatId: number, nameQuery: string) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('reply'),
       system: `You are writing a professional email reply. Rules:
 - Plain text only, no markdown
 - Match the language of the conversation
@@ -788,10 +1173,10 @@ async function handleSchedule(chatId: number, input: string) {
 
   await sendMessage(chatId, 'Parsing your meeting request...');
 
-  // Use Claude to parse the natural language input
+  // Use AI to parse the natural language input
   try {
     const { text: parsed } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('meeting'),
       system: `Parse this meeting request and extract: contact name, date, time, and optional description.
 Return JSON only: {"name": "...", "date": "YYYY-MM-DD", "time": "HH:MM", "duration_minutes": 30, "description": "..."}
 Today is ${new Date().toISOString().split('T')[0]}. Interpret relative dates (tomorrow, next Monday, etc.) accordingly.
@@ -885,6 +1270,21 @@ async function executeSendEmail(chatId: number, userId: string, pending: Record<
 
   const contactEmail = pending.contactEmail as string;
   const cName = pending.contactName as string;
+  const contactId = pending.contactId as string | undefined;
+
+  if (contactId) {
+    const { data: contact } = await supabase()
+      .from('contacts')
+      .select('source, gtm_review_status, gtm_send_approved_at, replied_at, email_bounced, opted_out_at, status')
+      .eq('id', contactId)
+      .maybeSingle();
+
+    const gtmBlockReason = contact ? getGtmSendBlockReason(contact) : null;
+    if (gtmBlockReason) {
+      await sendMessage(chatId, `Email blocked for <b>${esc(cName)}</b>: ${esc(gtmBlockReason)}`);
+      return;
+    }
+  }
 
   let subject: string;
   let body: string;

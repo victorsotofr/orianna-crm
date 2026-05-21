@@ -5,6 +5,7 @@ import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { sendEmail } from '@/lib/email-sender';
 import { formatMessageId } from '@/lib/mailbox-utils';
 import { finalizeSentEmail } from '@/lib/outbound-email';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 
@@ -47,7 +48,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           id,
           email,
           first_name,
-          last_name
+          last_name,
+          status,
+          source,
+          gtm_review_status,
+          gtm_send_approved_at,
+          replied_at,
+          email_bounced,
+          opted_out_at
         )
       `)
       .eq('id', id)
@@ -63,6 +71,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Conversation is not linked to a contact' }, { status: 400 });
     }
     const contact = Array.isArray(thread.contacts) ? thread.contacts[0] : thread.contacts;
+    const gtmBlockReason = contact ? getGtmSendBlockReason(contact) : null;
+    if (gtmBlockReason) {
+      return NextResponse.json({ error: gtmBlockReason }, { status: 403 });
+    }
 
     const { data: messages, error: messagesError } = await supabase
       .from('mailbox_messages')

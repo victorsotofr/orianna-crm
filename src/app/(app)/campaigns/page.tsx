@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { useBackgroundJobs } from '@/lib/background-jobs';
+import { useWorkspace } from '@/lib/workspace-context';
 
 type CampaignTab = 'manual' | 'sequences';
 
@@ -49,16 +51,31 @@ interface TeamMember {
   email: string;
 }
 
+interface CampaignSequenceListItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  created_by: string;
+  contact_count?: number | null;
+  is_active?: boolean;
+  created_at: string;
+}
+
+interface SequencesResponse {
+  sequences?: CampaignSequenceListItem[];
+}
+
 export default function CampaignsPage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { workspace } = useWorkspace();
   const [tab, setTab] = useState<CampaignTab>('manual');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [contacts, setContacts] = useState<CampaignContact[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignSequenceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendPhase, setSendPhase] = useState<'idle' | 'enriching' | 'sending'>('idle');
   const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
@@ -70,34 +87,45 @@ export default function CampaignsPage() {
   const [sortKeys, setSortKeys] = useState<{ column: string; direction: 'asc' | 'desc' }[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [seqDeleteOpen, setSeqDeleteOpen] = useState(false);
-  const [seqToDelete, setSeqToDelete] = useState<any | null>(null);
+  const [seqToDelete, setSeqToDelete] = useState<CampaignSequenceListItem | null>(null);
   const [seqDeleting, setSeqDeleting] = useState(false);
 
   const lastClickedIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then((res: any) => {
-      if (res.data?.user) setUserId(res.data.user.id);
+    supabase.auth.getUser().then((result: { data: { user: User | null } }) => {
+      if (result.data.user) setUserId(result.data.user.id);
     });
   }, []);
 
   const fetchData = useCallback(async () => {
     try {
+      if (!workspace?.id) {
+        setContacts([]);
+        setTemplates([]);
+        setTeamMembers([]);
+        setCampaigns([]);
+        return;
+      }
+
       if (tab === 'manual') {
         const [contactsRes, templatesRes, teamRes] = await Promise.all([
           supabase
             .from('contacts')
             .select('id, first_name, last_name, email, company_name, location, status, assigned_to, ai_personalized_line')
+            .eq('workspace_id', workspace.id)
             .not('status', 'in', '("lost","do_not_contact","customer")')
             .order('created_at', { ascending: false }),
           supabase
             .from('templates')
             .select('id, name, subject, html_content, created_by')
+            .eq('workspace_id', workspace.id)
             .eq('is_active', true)
             .order('created_at', { ascending: false }),
           supabase
-            .from('team_members')
-            .select('user_id, display_name, email'),
+            .from('workspace_members')
+            .select('user_id, display_name, email')
+            .eq('workspace_id', workspace.id),
         ]);
 
         if (contactsRes.data) setContacts(contactsRes.data);
@@ -107,10 +135,13 @@ export default function CampaignsPage() {
         // Fetch sequences + team members
         const [seqResponse, teamRes] = await Promise.all([
           apiFetch('/api/campaigns/sequences'),
-          supabase.from('workspace_members').select('user_id, display_name, email'),
+          supabase
+            .from('workspace_members')
+            .select('user_id, display_name, email')
+            .eq('workspace_id', workspace.id),
         ]);
         if (seqResponse.ok) {
-          const data = await seqResponse.json();
+          const data = await seqResponse.json() as SequencesResponse;
           setCampaigns(data.sequences || []);
         }
         if (teamRes.data) setTeamMembers(teamRes.data);
@@ -120,7 +151,7 @@ export default function CampaignsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [tab, workspace?.id]);
 
   useEffect(() => {
     setLoading(true);
@@ -134,6 +165,25 @@ export default function CampaignsPage() {
   }, [teamMembers]);
 
   const filteredContacts = useMemo(() => {
+    const getSortValue = (contact: CampaignContact, column: string) => {
+      switch (column) {
+        case 'assigned_to':
+          return getOwnerName(contact.assigned_to);
+        case 'name':
+          return [contact.first_name, contact.last_name].filter(Boolean).join(' ');
+        case 'status':
+          return contact.status;
+        case 'email':
+          return contact.email;
+        case 'company_name':
+          return contact.company_name;
+        case 'location':
+          return contact.location;
+        default:
+          return null;
+      }
+    };
+
     const filtered = contacts.filter(c => {
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (ownerFilter !== 'all') {
@@ -163,19 +213,8 @@ export default function CampaignsPage() {
         const dir = direction === 'asc' ? 1 : -1;
         let result = 0;
 
-        let valA: string | null | undefined;
-        let valB: string | null | undefined;
-
-        if (column === 'assigned_to') {
-          valA = getOwnerName(a.assigned_to);
-          valB = getOwnerName(b.assigned_to);
-        } else if (column === 'name') {
-          valA = [a.first_name, a.last_name].filter(Boolean).join(' ');
-          valB = [b.first_name, b.last_name].filter(Boolean).join(' ');
-        } else {
-          valA = (a as any)[column];
-          valB = (b as any)[column];
-        }
+        const valA = getSortValue(a, column);
+        const valB = getSortValue(b, column);
 
         if (valA == null && valB == null) result = 0;
         else if (valA == null) result = 1;
@@ -383,7 +422,7 @@ export default function CampaignsPage() {
     }
   };
 
-  const renderSequenceSection = (title: string, items: any[], count: number) => {
+  const renderSequenceSection = (title: string, items: CampaignSequenceListItem[], count: number) => {
     if (items.length === 0) return null;
     return (
       <div className="space-y-3">

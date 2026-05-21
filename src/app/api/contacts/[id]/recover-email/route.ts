@@ -4,6 +4,7 @@ import { sendEmail } from '@/lib/email-sender';
 import { startBulkEnrichment, getEnrichmentResult } from '@/lib/fullenrich';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 import { getWorkspaceContext } from '@/lib/workspace';
 
 export const maxDuration = 120;
@@ -219,6 +220,15 @@ async function autoResendLastEmail(
   userId: string,
   newEmail: string,
 ): Promise<boolean> {
+  const { data: contactSafety } = await supabase
+    .from('contacts')
+    .select('source, gtm_review_status, gtm_send_approved_at, replied_at, email_bounced, opted_out_at, status')
+    .eq('id', contactId)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+
+  if (contactSafety && getGtmSendBlockReason(contactSafety)) return false;
+
   // Find the last bounced email for this contact
   const { data: bouncedEmail } = await supabase
     .from('emails_sent')

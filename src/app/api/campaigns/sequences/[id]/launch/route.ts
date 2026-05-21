@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 import { getWorkspaceContext } from '@/lib/workspace';
 
 export const maxDuration = 30;
@@ -84,7 +85,7 @@ export async function POST(
     // Filter contacts: exclude those who replied or have certain statuses
     const excludedStatuses = ['engaged', 'qualified', 'lost', 'do_not_contact', 'customer'];
     const eligibleContacts = allContacts.filter(
-      contact => !contact.replied_at && !excludedStatuses.includes(contact.status)
+      contact => !contact.replied_at && !excludedStatuses.includes(contact.status) && !getGtmSendBlockReason(contact)
     );
 
     if (eligibleContacts.length === 0) {

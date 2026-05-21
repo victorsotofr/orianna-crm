@@ -5,6 +5,7 @@ import type { Contact } from '@/types/database';
 import { searchCompany, searchContact } from '@/lib/linkup';
 import { DEFAULT_PERSONALIZATION_PROMPT } from '@/lib/ai-defaults';
 import { type BusinessContext, buildBusinessContextBlock } from '@/lib/ai-business-context';
+import { aiModel, hasOpenAIKey } from '@/lib/ai-provider';
 
 interface CustomPrompts {
   personalizationPrompt?: string;
@@ -122,7 +123,7 @@ export async function personalizeContact(
 
   // --- PASS 2: Generate the personalized sentence (no tools = clean output) ---
   const result = await generateText({
-    model: anthropic('claude-sonnet-4-5-20250929'),
+    model: aiModel('personalize'),
     system: systemPrompt,
     prompt: `CONTACT :\n${context}\n\nRECHERCHE :\n${research}\n\nÉcris la phrase :`,
   });
@@ -133,6 +134,19 @@ export async function personalizeContact(
 }
 
 async function researchWithWebSearch(context: string): Promise<string> {
+  if (hasOpenAIKey()) {
+    const researchResult = await generateText({
+      model: aiModel('research'),
+      system: `Tu es un assistant de recherche CRM.
+Résume uniquement les informations présentes dans le contact fourni.
+Ne prétends pas avoir consulté le web si aucune recherche externe n'est fournie.
+Réponds en 3-5 bullet points factuels et utiles pour personnaliser un email.`,
+      prompt: context,
+    });
+
+    return researchResult.text.trim();
+  }
+
   const researchResult = await generateText({
     model: anthropic('claude-sonnet-4-5-20250929'),
     stopWhen: stepCountIs(5),

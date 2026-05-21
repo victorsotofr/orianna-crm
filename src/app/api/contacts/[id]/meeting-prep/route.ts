@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 
-import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
 
+import { aiModel } from '@/lib/ai-provider';
 import { stripQuotedReplyHistory } from '@/lib/email-content';
 import { searchCompany, searchContact } from '@/lib/linkup';
 import { createServerClient } from '@/lib/supabase-server';
@@ -89,7 +89,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           .in('thread_id', threadIds)
           .order('message_at', { ascending: true })
           .limit(20)
-      : { data: [] as any[] };
+      : { data: [] as Array<{ direction: string; from_email: string | null; subject: string | null; text_body: string | null; message_at: string }> };
 
     // Fetch email engagement stats
     const { data: emailStats } = await supabase
@@ -186,7 +186,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const prompt = `FICHE CONTACT CRM :\n${crmParts.join('\n')}\n\n${engagementParts.length > 0 ? `ENGAGEMENT EMAIL :\n${engagementParts.join('\n')}\n\n` : ''}${convParts.length > 0 ? `HISTORIQUE CONVERSATION :\n${convParts.join('\n')}\n\n` : ''}${timelineParts.length > 0 ? `TIMELINE ACTIVITÉ :\n${timelineParts.join('\n')}\n\n` : ''}${businessParts.length > 0 ? `CONTEXTE BUSINESS (notre entreprise) :\n${businessParts.join('\n')}\n\n` : ''}${webResearch ? `RECHERCHE WEB RÉCENTE :\n${webResearch}\n\n` : ''}Génère un brief de préparation de meeting structuré pour ce contact.`;
 
     const result = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('meeting'),
       system: `Tu es un assistant commercial expert qui prépare des briefs avant les meetings.
 
 Tu reçois toutes les données CRM, l'historique des échanges, les stats d'engagement email, et potentiellement de la recherche web récente sur le contact et son entreprise.

@@ -7,6 +7,7 @@ import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 
 
 export const maxDuration = 30;
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     const { data: contacts, error: contactsError } = await supabase
       .from('contacts')
       .select('*')
+      .eq('workspace_id', ctx.workspaceId)
       .in('id', contactIds);
 
     if (contactsError || !contacts) {
@@ -90,6 +92,12 @@ export async function POST(request: Request) {
 
     for (const contact of contacts) {
       try {
+        const gtmBlockReason = getGtmSendBlockReason(contact);
+        if (gtmBlockReason) {
+          errors.push(`${contact.email || contact.id}: ${gtmBlockReason}`);
+          continue;
+        }
+
         // Build template variables from all contact fields
         const variables: Record<string, string> = {
           first_name: contact.first_name || '',

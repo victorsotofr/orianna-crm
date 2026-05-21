@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +10,7 @@ import { SiteHeader } from '@/components/site-header';
 import { CompactStatsBar } from '@/components/compact-stats-bar';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Reply, Layers, Info } from 'lucide-react';
+import { Send, Plus, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Reply, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
@@ -18,6 +19,7 @@ import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { useBackgroundJobs } from '@/lib/background-jobs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useWorkspace } from '@/lib/workspace-context';
 
 type FollowUpTab = 'first' | 'second';
 
@@ -51,6 +53,7 @@ interface TeamMember {
 export default function FollowUpsPage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { workspace } = useWorkspace();
   const [tab, setTab] = useState<FollowUpTab>('first');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
@@ -70,8 +73,8 @@ export default function FollowUpsPage() {
   const lastClickedIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then((res: any) => {
-      if (res.data?.user) setUserId(res.data.user.id);
+    supabase.auth.getUser().then((result: { data: { user: User | null } }) => {
+      if (result.data.user) setUserId(result.data.user.id);
     });
   }, []);
 
@@ -79,9 +82,17 @@ export default function FollowUpsPage() {
 
   const fetchData = useCallback(async () => {
     try {
+      if (!workspace?.id) {
+        setContacts([]);
+        setTemplates([]);
+        setTeamMembers([]);
+        return;
+      }
+
       let contactsQuery = supabase
         .from('contacts')
         .select('id, first_name, last_name, email, company_name, location, assigned_to, ai_personalized_line, first_contact, second_contact')
+        .eq('workspace_id', workspace.id)
         .eq('status', 'contacted');
 
       if (tab === 'first') {
@@ -101,11 +112,13 @@ export default function FollowUpsPage() {
         supabase
           .from('templates')
           .select('id, name, subject, html_content, created_by')
+          .eq('workspace_id', workspace.id)
           .eq('is_active', true)
           .order('created_at', { ascending: false }),
         supabase
-          .from('team_members')
-          .select('user_id, display_name, email'),
+          .from('workspace_members')
+          .select('user_id, display_name, email')
+          .eq('workspace_id', workspace.id),
       ]);
 
       if (contactsRes.data) setContacts(contactsRes.data);
@@ -116,7 +129,7 @@ export default function FollowUpsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, todayStr]);
+  }, [tab, todayStr, workspace?.id]);
 
   useEffect(() => {
     setLoading(true);
@@ -131,6 +144,23 @@ export default function FollowUpsPage() {
   }, [teamMembers]);
 
   const filteredContacts = useMemo(() => {
+    const getSortValue = (contact: FollowUpContact, column: string) => {
+      switch (column) {
+        case 'assigned_to':
+          return getOwnerName(contact.assigned_to);
+        case 'name':
+          return [contact.first_name, contact.last_name].filter(Boolean).join(' ');
+        case 'email':
+          return contact.email;
+        case 'company_name':
+          return contact.company_name;
+        case 'location':
+          return contact.location;
+        default:
+          return null;
+      }
+    };
+
     const filtered = contacts.filter(c => {
       if (ownerFilter !== 'all') {
         if (ownerFilter === 'unassigned') {
@@ -159,19 +189,8 @@ export default function FollowUpsPage() {
         const dir = direction === 'asc' ? 1 : -1;
         let result = 0;
 
-        let valA: string | null | undefined;
-        let valB: string | null | undefined;
-
-        if (column === 'assigned_to') {
-          valA = getOwnerName(a.assigned_to);
-          valB = getOwnerName(b.assigned_to);
-        } else if (column === 'name') {
-          valA = [a.first_name, a.last_name].filter(Boolean).join(' ');
-          valB = [b.first_name, b.last_name].filter(Boolean).join(' ');
-        } else {
-          valA = (a as any)[column];
-          valB = (b as any)[column];
-        }
+        const valA = getSortValue(a, column);
+        const valB = getSortValue(b, column);
 
         if (valA == null && valB == null) result = 0;
         else if (valA == null) result = 1;

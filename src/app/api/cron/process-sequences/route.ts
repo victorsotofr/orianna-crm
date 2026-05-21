@@ -5,6 +5,7 @@ import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
+import { getGtmSendBlockReason } from '@/lib/gtm-safety';
 
 // POST /api/cron/process-sequences - Process pending sequence emails (called by cron)
 export async function POST(request: Request) {
@@ -49,6 +50,43 @@ export async function POST(request: Request) {
     for (const pending of pendingEmails) {
       try {
         console.log(`[cron] Processing enrollment ${pending.enrollment_id} for ${pending.contact_email}`);
+
+        const { data: contactSafety } = await supabase
+          .from('contacts')
+          .select('source, gtm_review_status, gtm_send_approved_at, replied_at, email_bounced, opted_out_at, status')
+          .eq('id', pending.contact_id)
+          .maybeSingle();
+
+        const gtmBlockReason = contactSafety ? getGtmSendBlockReason(contactSafety) : null;
+        if (gtmBlockReason) {
+          await supabase
+            .from('campaign_enrollments')
+            .update({ status: 'paused' })
+            .eq('id', pending.enrollment_id);
+
+          await supabase.from('contact_timeline').insert({
+            contact_id: pending.contact_id,
+            workspace_id: pending.workspace_id,
+            event_type: 'gtm_send_blocked',
+            title: 'GTM send blocked',
+            description: gtmBlockReason,
+            metadata: {
+              sequence_id: pending.sequence_id,
+              step_id: pending.step_id,
+              enrollment_id: pending.enrollment_id,
+              cron: true,
+            },
+            created_by: pending.user_id,
+          });
+
+          results.failed++;
+          results.errors.push({
+            enrollment_id: pending.enrollment_id,
+            contact_email: pending.contact_email,
+            error: gtmBlockReason,
+          });
+          continue;
+        }
 
         // Render template
         const rendered = renderTemplate(pending.template_html_content, {

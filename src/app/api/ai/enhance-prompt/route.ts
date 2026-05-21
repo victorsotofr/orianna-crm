@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { generateText } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { aiModel } from '@/lib/ai-provider';
 
-const CLAUDE_PROMPT_GUIDANCE = `You are improving an AI system prompt that instructs Claude (an LLM) on how to process data and produce output.
+const LLM_PROMPT_GUIDANCE = `You are improving an AI system prompt that instructs a large language model on how to process data and produce output.
 
-Best practices for Claude prompts:
+Best practices for production LLM prompts:
 - Add clear structure with sections (MISSION, RULES, FORMAT, EXAMPLES)
 - Be explicit about constraints (length, tone, language, format)
 - Include 2-3 concrete examples of desired output
@@ -33,8 +33,8 @@ Common mistakes to fix:
 - No output structure → specify what sections to return`;
 
 const TYPE_SPECIFIC: Record<string, string> = {
-  personalization_prompt: CLAUDE_PROMPT_GUIDANCE,
-  scoring_prompt: CLAUDE_PROMPT_GUIDANCE,
+  personalization_prompt: LLM_PROMPT_GUIDANCE,
+  scoring_prompt: LLM_PROMPT_GUIDANCE,
   personalization_linkup_company: LINKUP_QUERY_GUIDANCE + `\n\nThis query is used to research a COMPANY for personalizing cold emails.
 Template variables to preserve exactly: {companyName}, {domainPart}
 Focus on: company description, recent news, growth signals, team/culture — data useful for writing a personalized opening line.`,
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     const typeGuidance = TYPE_SPECIFIC[type];
 
     const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('prompt'),
       system: `You are an expert prompt engineer. Your job is to improve a user-drafted prompt/query while preserving their intent and language.
 
 Core rules:
@@ -149,8 +149,9 @@ ${typeGuidance}`,
     });
 
     return NextResponse.json({ enhanced: text.trim() });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Enhancement failed';
     console.error('Enhance prompt error:', error);
-    return NextResponse.json({ error: error.message || 'Enhancement failed' }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

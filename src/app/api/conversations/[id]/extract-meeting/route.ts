@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
-import { anthropic } from '@ai-sdk/anthropic';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 
+import { aiModel } from '@/lib/ai-provider';
 import { stripQuotedReplyHistory } from '@/lib/email-content';
 import { getGoogleCalendarConnection } from '@/lib/google-oauth';
 import { createServerClient } from '@/lib/supabase-server';
@@ -87,7 +87,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const result = await generateObject({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: aiModel('meeting'),
       schema: z.object({
         summary: z.string().describe('A short meeting title, e.g. "Call Victor Soto - Orianna"'),
         date: z.string().describe('The meeting date in YYYY-MM-DD format'),

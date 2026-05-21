@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { generateText } from 'ai';
-import { anthropic } from '@ai-sdk/anthropic';
-
 import { getServiceSupabase } from '@/lib/supabase';
 import { sendMessage, isTelegramConfigured } from '@/lib/telegram';
 

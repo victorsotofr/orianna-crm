@@ -46,6 +46,33 @@ export interface Contact {
   original_email: string | null;
   email_recovery_attempted: boolean;
   email_recovery_count: number;
+  // GTM automation
+  source: string | null;
+  source_query: string | null;
+  source_url: string | null;
+  segment: string | null;
+  persona: string | null;
+  opted_out_at: string | null;
+  suppressed_reason: string | null;
+  gtm_review_status: 'pending' | 'approved' | 'rejected' | null;
+  gtm_send_approved_at: string | null;
+  gtm_send_approved_by: string | null;
+}
+
+export interface GtmDailyRun {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  status: 'running' | 'completed' | 'failed';
+  started_at: string;
+  finished_at: string | null;
+  requested_limit: number;
+  imported_count: number;
+  prepared_count: number;
+  enrolled_count: number;
+  skipped_count: number;
+  summary: Record<string, any>;
+  error: string | null;
 }
 
 export interface Template {

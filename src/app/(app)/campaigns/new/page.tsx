@@ -11,10 +11,11 @@ import { SiteHeader } from '@/components/site-header';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Save, Plus, X, Rocket } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, X, Rocket } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+import { useWorkspace } from '@/lib/workspace-context';
 import { DEFAULT_SEQUENCE_DELAYS, MAX_SEQUENCE_STEPS } from '@/types/sequences';
 import type { CampaignSequenceStep } from '@/types/sequences';
 
@@ -43,6 +44,7 @@ interface TeamMember {
 export default function NewSequencePage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { workspace } = useWorkspace();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,6 +70,13 @@ export default function NewSequencePage() {
 
   const fetchData = useCallback(async () => {
     try {
+      if (!workspace?.id) {
+        setTemplates([]);
+        setContacts([]);
+        setTeamMembers([]);
+        return;
+      }
+
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (user) setCurrentUserId(user.id);
@@ -76,16 +85,19 @@ export default function NewSequencePage() {
         supabase
           .from('templates')
           .select('id, name, subject')
+          .eq('workspace_id', workspace.id)
           .eq('is_active', true)
           .order('created_at', { ascending: false }),
         supabase
           .from('contacts')
           .select('id, first_name, last_name, email, company_name, status, assigned_to')
+          .eq('workspace_id', workspace.id)
           .not('status', 'in', '("lost","do_not_contact","customer")')
           .order('created_at', { ascending: false }),
         supabase
           .from('workspace_members')
           .select('user_id, display_name, email')
+          .eq('workspace_id', workspace.id)
           .order('display_name', { ascending: true }),
       ]);
 
@@ -98,7 +110,7 @@ export default function NewSequencePage() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, workspace?.id]);
 
   useEffect(() => {
     fetchData();
@@ -313,7 +325,7 @@ export default function NewSequencePage() {
                 </div>
 
                 <div className="space-y-3">
-                  {steps.map((step, index) => (
+                  {steps.map((step) => (
                     <div key={step.step_order} className="border rounded-lg p-3 space-y-3 bg-muted/30">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">

@@ -58,6 +58,42 @@ export function GET() {
           },
         },
       },
+      '/api/gtm/review': {
+        get: {
+          summary: 'List the isimple GTM review queue for the active workspace',
+          security: [{ supabaseSession: [] }],
+          parameters: [
+            {
+              name: 'status',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'string',
+                enum: ['all', 'pending', 'ready', 'blocked', 'approved', 'rejected', 'queued'],
+              },
+            },
+          ],
+          responses: {
+            '200': { description: 'Review queue, readiness counts, and email previews' },
+          },
+        },
+        post: {
+          summary: 'Approve, reject, hold, or re-enrich GTM prospects',
+          security: [{ supabaseSession: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/GtmReviewAction' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Review action result' },
+            '400': { description: 'Invalid action or contact ids' },
+          },
+        },
+      },
       '/api/gtm/isimple-workspace': {
         post: {
           summary: 'Ensure the dedicated isimple GTM workspace exists',
@@ -149,6 +185,25 @@ export function GET() {
             limit: { type: 'integer', minimum: 1, maximum: 100 },
             query: { type: 'string' },
             dryRun: { type: 'boolean' },
+          },
+        },
+        GtmReviewAction: {
+          type: 'object',
+          required: ['action', 'contactIds'],
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['approve_queue', 'reject', 'hold', 'reenrich'],
+            },
+            contactIds: {
+              type: 'array',
+              items: { type: 'string', format: 'uuid' },
+            },
+            source: {
+              type: 'string',
+              enum: ['web', 'telegram', 'voice', 'system'],
+            },
+            note: { type: 'string' },
           },
         },
         CronProspectingRequest: {

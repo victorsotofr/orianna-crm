@@ -4,8 +4,9 @@ import { generateText } from 'ai';
 
 import { aiModel } from '@/lib/ai-provider';
 import { ISIMPLE_GTM_WORKSPACE_SLUG, runDailyProspecting, type GtmRunMode } from '@/lib/gtm-automation';
+import { applyGtmReviewAction, getGtmReviewQueue, type GtmReviewAction } from '@/lib/gtm-review';
 import { getServiceSupabase } from '@/lib/supabase';
-import { sendMessage, isTelegramConfigured, inlineKeyboard } from '@/lib/telegram';
+import { answerCallbackQuery, sendMessage, isTelegramConfigured, inlineKeyboard } from '@/lib/telegram';
 import { scoreContact } from '@/lib/ai-scoring';
 import { sendEmail, type EmailConfig, type EmailData } from '@/lib/email-sender';
 import { decrypt } from '@/lib/encryption';
@@ -296,7 +297,7 @@ async function transcribeTelegramAudio(message: TelegramMessage): Promise<string
   form.append('model', 'gpt-4o-mini-transcribe');
   form.append('language', 'fr');
   form.append('response_format', 'text');
-  form.append('prompt', 'Commandes CRM Orianna et isimple GTM: statut, lancer, test, prospects, validation, pause, reprendre, limite.');
+  form.append('prompt', 'Commandes CRM Orianna et isimple GTM: statut, lancer, test, prospects, validation, valider, approuver, rejeter, enrichir, pause, reprendre, limite.');
 
   const transcriptionRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -344,6 +345,21 @@ async function routeNaturalCommand(chatId: number, text: string): Promise<boolea
 
   if (mentionsGtm && /\b(review|validation|valider|à valider|a valider|queue|file)\b/.test(lower)) {
     await handleGtmReviewQueue(chatId);
+    return true;
+  }
+
+  if (mentionsGtm && /\b(valide|valider|approuve|approve|approved|ok|go)\b/.test(lower)) {
+    await handleNaturalGtmBatchReview(chatId, 'approve_queue', parseNaturalLimit(lower));
+    return true;
+  }
+
+  if (mentionsGtm && /\b(rejette|rejeter|reject|refuse|supprime)\b/.test(lower)) {
+    await handleNaturalGtmBatchReview(chatId, 'reject', parseNaturalLimit(lower));
+    return true;
+  }
+
+  if (mentionsGtm && /\b(enrich|enrichis|enrichir|email)\b/.test(lower)) {
+    await handleNaturalGtmBatchReview(chatId, 'reenrich', parseNaturalLimit(lower));
     return true;
   }
 
@@ -560,7 +576,7 @@ async function handleGtmStatus(chatId: number) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [workspaceResult, sourcedResult, todayResult, hotResult, enrollmentResult, lastRunResult] = await Promise.all([
+  const [workspaceResult, sourcedResult, todayResult, hotResult, enrollmentResult, lastRunResult, reviewQueue] = await Promise.all([
     db
       .from('workspaces')
       .select('name, gtm_enabled, gtm_daily_contact_limit, gtm_requires_approval, gtm_active_sequence_id, gtm_last_run_at, gtm_last_run_status')
@@ -595,6 +611,7 @@ async function handleGtmStatus(chatId: number) {
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    getGtmReviewQueue({ db, workspaceId: wsId, status: 'pending', limit: 1 }),
   ]);
 
   if (workspaceResult.error) {
@@ -616,6 +633,7 @@ async function handleGtmStatus(chatId: number) {
     `Sourced ICP contacts: ${sourcedResult.count ?? 0}`,
     `Added today: ${todayResult.count ?? 0}`,
     `Hot sourced leads: ${hotResult.count ?? 0}`,
+    `Review: ${reviewQueue.counts.ready} ready · ${reviewQueue.counts.blocked} blocked · ${reviewQueue.counts.queued} queued`,
     `Active sequence enrollments: ${enrollmentResult.count ?? 0}`,
     '',
     lastRun
@@ -716,28 +734,98 @@ async function handleGtmReviewQueue(chatId: number) {
   const wsId = await requireGtmWorkspace(chatId, user.user_id);
   if (!wsId) return;
 
-  const { data: contacts } = await supabase()
-    .from('contacts')
-    .select('first_name, last_name, company_name, job_title, email, ai_score, ai_score_label, ai_personalized_line')
-    .eq('workspace_id', wsId)
-    .eq('source', 'gtm_autopilot')
-    .eq('gtm_review_status', 'pending')
-    .order('created_at', { ascending: false })
-    .limit(10);
+  const queue = await getGtmReviewQueue({
+    db: supabase(),
+    workspaceId: wsId,
+    status: 'pending',
+    limit: 10,
+  });
 
-  if (!contacts?.length) {
+  if (!queue.items.length) {
     await sendMessage(chatId, 'No pending isimple GTM prospects to review.');
     return;
   }
 
-  const lines = contacts.map((contact, index) => {
-    const score = contact.ai_score != null ? `${contact.ai_score}/100 ${contact.ai_score_label || ''}`.trim() : 'not scored';
-    const title = contact.job_title ? ` — ${contact.job_title}` : '';
-    const hook = contact.ai_personalized_line ? `\n   ${esc(contact.ai_personalized_line)}` : '';
-    return `${index + 1}. <b>${esc(contactName(contact))}</b>${esc(title)}\n   ${esc(contact.company_name || 'No company')} · ${esc(score)} · ${esc(contact.email || 'no email')}${hook}`;
+  const lines = queue.items.map((contact, index) => {
+    const score = contact.aiScore != null ? `${contact.aiScore}/100 ${contact.aiScoreLabel || ''}`.trim() : 'not scored';
+    const title = contact.jobTitle ? ` — ${contact.jobTitle}` : '';
+    const status = contact.readyForApproval ? 'READY' : `BLOCKED: ${contact.blockers[0] || 'Needs review'}`;
+    const hook = contact.personalizedLine ? `\n   ${esc(contact.personalizedLine)}` : '';
+    return `${index + 1}. <b>${esc(contact.name)}</b>${esc(title)}\n   ${esc(contact.companyName || 'No company')} · ${esc(score)} · ${esc(contact.email || 'no email')}\n   ${esc(status)}${hook}`;
   });
 
-  await sendMessage(chatId, `<b>isimple GTM review queue</b>\n\n${lines.join('\n\n')}\n\nApprove or reject them from Contacts using the isimple GTM + pending review filters.`);
+  const firstReady = queue.items.find((item) => item.readyForApproval);
+  const firstPending = queue.items[0];
+  await sendMessage(chatId, [
+    '<b>isimple GTM review queue</b>',
+    `Ready: ${queue.counts.ready} · Blocked: ${queue.counts.blocked} · Queued: ${queue.counts.queued}`,
+    '',
+    lines.join('\n\n'),
+  ].join('\n'), {
+    replyMarkup: inlineKeyboard([
+      firstReady
+        ? [
+            { text: 'Approve ready', callback_data: `gtm:approve:${firstReady.id}` },
+            { text: 'Details', callback_data: `gtm:detail:${firstReady.id}` },
+          ]
+        : [
+            { text: 'Details', callback_data: `gtm:detail:${firstPending.id}` },
+            { text: 'Re-enrich', callback_data: `gtm:enrich:${firstPending.id}` },
+          ],
+      [
+        { text: 'Reject first', callback_data: `gtm:reject:${firstPending.id}` },
+        { text: 'Hold first', callback_data: `gtm:hold:${firstPending.id}` },
+      ],
+    ]),
+  });
+}
+
+async function handleNaturalGtmBatchReview(chatId: number, action: GtmReviewAction, requestedLimit?: number) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  const limit = requestedLimit || 5;
+  const status = action === 'approve_queue' ? 'ready' : action === 'reenrich' ? 'blocked' : 'pending';
+  const queue = await getGtmReviewQueue({
+    db: supabase(),
+    workspaceId: wsId,
+    status,
+    limit,
+  });
+
+  const selected = queue.items.slice(0, limit);
+  if (!selected.length) {
+    await sendMessage(chatId, action === 'approve_queue'
+      ? 'No ready isimple GTM prospects to approve.'
+      : 'No matching isimple GTM prospects found.');
+    return;
+  }
+
+  await setPending(user.user_id, {
+    type: 'gtm_batch_review',
+    action,
+    contactIds: selected.map((item) => item.id),
+    source: 'voice',
+  });
+
+  const verb = action === 'approve_queue'
+    ? 'approve and queue'
+    : action === 'reject'
+      ? 'reject'
+      : 're-enrich';
+  const names = selected.map((item) => `• ${item.name} · ${item.companyName || 'No company'}`).join('\n');
+  await sendMessage(chatId, [
+    `<b>Confirm GTM batch action</b>`,
+    '',
+    `Action: ${esc(verb)}`,
+    `Prospects: ${selected.length}`,
+    '',
+    esc(names),
+    '',
+    'Reply <b>yes</b> to confirm, or <b>no</b> to cancel.',
+  ].join('\n'));
 }
 
 // ─── AI Commands ────────────────────────────────────────
@@ -1256,9 +1344,37 @@ async function handlePendingOrFreeform(chatId: number, text: string) {
     await executeSendEmail(chatId, user.user_id, pending);
   } else if (type === 'create_meeting') {
     await executeCreateMeeting(chatId, user.user_id, pending);
+  } else if (type === 'gtm_batch_review') {
+    await executeGtmBatchReview(chatId, user.user_id, pending);
   } else {
     await sendMessage(chatId, 'Unknown action. Cancelled.');
   }
+}
+
+async function executeGtmBatchReview(chatId: number, userId: string, pending: Record<string, unknown>) {
+  const wsId = await requireGtmWorkspace(chatId, userId);
+  if (!wsId) return;
+
+  const action = pending.action as GtmReviewAction;
+  const contactIds = Array.isArray(pending.contactIds)
+    ? pending.contactIds.filter((id): id is string => typeof id === 'string')
+    : [];
+
+  if (!contactIds.length) {
+    await sendMessage(chatId, 'No GTM prospects selected. Cancelled.');
+    return;
+  }
+
+  const result = await applyGtmReviewAction({
+    db: supabase(),
+    workspaceId: wsId,
+    userId,
+    contactIds,
+    action,
+    source: 'voice',
+  });
+
+  await sendMessage(chatId, formatGtmReviewResult(result));
 }
 
 async function executeSendEmail(chatId: number, userId: string, pending: Record<string, unknown>) {
@@ -1379,6 +1495,8 @@ async function handleCallbackQuery(query: { id: string; message?: { chat: { id: 
   const chatId = query.message?.chat?.id;
   if (!chatId || !query.data) return;
 
+  await answerCallbackQuery(query.id);
+
   if (query.data === 'disconnect_confirm') {
     await supabase().from('user_settings').update({
       telegram_chat_id: null, telegram_connected_at: null, telegram_notifications_enabled: true, telegram_pending_action: null,
@@ -1386,5 +1504,109 @@ async function handleCallbackQuery(query: { id: string; message?: { chat: { id: 
     await sendMessage(chatId, 'Disconnected. Reconnect anytime from Settings.');
   } else if (query.data === 'disconnect_cancel') {
     await sendMessage(chatId, 'Cancelled.');
+  } else if (query.data.startsWith('gtm:')) {
+    await handleGtmCallback(chatId, query.data);
   }
+}
+
+async function handleGtmCallback(chatId: number, data: string) {
+  const user = await requireUser(chatId);
+  if (!user) return;
+  const wsId = await requireGtmWorkspace(chatId, user.user_id);
+  if (!wsId) return;
+
+  const [, rawAction, contactId] = data.split(':');
+  if (!contactId) {
+    await sendMessage(chatId, 'Invalid GTM action.');
+    return;
+  }
+
+  if (rawAction === 'detail') {
+    const queue = await getGtmReviewQueue({
+      db: supabase(),
+      workspaceId: wsId,
+      status: 'all',
+      limit: 100,
+    });
+    const item = queue.items.find((candidate) => candidate.id === contactId);
+    if (!item) {
+      await sendMessage(chatId, 'GTM prospect not found.');
+      return;
+    }
+
+    await sendMessage(chatId, [
+      `<b>${esc(item.name)}</b>`,
+      `${esc(item.jobTitle || 'No title')} · ${esc(item.companyName || 'No company')}`,
+      item.email ? `Email: ${esc(item.email)}` : 'Email: missing',
+      item.aiScore != null ? `Score: ${item.aiScore}/100 ${esc(item.aiScoreLabel || '')}` : 'Score: not scored',
+      item.readyForApproval ? 'Status: READY' : `Status: BLOCKED · ${esc(item.blockers.join(', ') || 'Needs review')}`,
+      '',
+      item.personalizedLine ? `<i>${esc(item.personalizedLine)}</i>` : 'No personalization line yet.',
+      '',
+      item.preview.subject ? `<b>${esc(item.preview.subject)}</b>` : '',
+      item.preview.text ? esc(item.preview.text.slice(0, 600)) : '',
+    ].filter(Boolean).join('\n'), {
+      replyMarkup: inlineKeyboard([[
+        { text: 'Approve + queue', callback_data: `gtm:approve:${item.id}` },
+        { text: 'Reject', callback_data: `gtm:reject:${item.id}` },
+        { text: 'Re-enrich', callback_data: `gtm:enrich:${item.id}` },
+      ]]),
+    });
+    return;
+  }
+
+  const actionMap: Record<string, GtmReviewAction> = {
+    approve: 'approve_queue',
+    reject: 'reject',
+    hold: 'hold',
+    enrich: 'reenrich',
+  };
+  const action = actionMap[rawAction];
+  if (!action) {
+    await sendMessage(chatId, 'Unknown GTM action.');
+    return;
+  }
+
+  const result = await applyGtmReviewAction({
+    db: supabase(),
+    workspaceId: wsId,
+    userId: user.user_id,
+    contactIds: [contactId],
+    action,
+    source: 'telegram',
+  });
+
+  await sendMessage(chatId, formatGtmReviewResult(result));
+}
+
+function formatGtmReviewResult(result: {
+  action: GtmReviewAction;
+  updated: number;
+  queued: number;
+  enrichmentStarted: number;
+  skipped: number;
+  skippedContacts: Array<{ name: string; reasons: string[] }>;
+}) {
+  const actionLabel = result.action === 'approve_queue'
+    ? 'approved and queued'
+    : result.action === 'reject'
+      ? 'rejected'
+      : result.action === 'hold'
+        ? 'held'
+        : 'sent to enrichment';
+
+  const skipped = result.skippedContacts.slice(0, 3).map((item) =>
+    `• ${esc(item.name)}: ${esc(item.reasons.join(', '))}`
+  );
+
+  return [
+    `<b>GTM review updated</b>`,
+    '',
+    `Action: ${actionLabel}`,
+    `Updated: ${result.updated}`,
+    result.queued ? `Queued: ${result.queued}` : '',
+    result.enrichmentStarted ? `Enrichment started: ${result.enrichmentStarted}` : '',
+    result.skipped ? `Skipped: ${result.skipped}` : '',
+    skipped.length ? `\n${skipped.join('\n')}` : '',
+  ].filter(Boolean).join('\n');
 }

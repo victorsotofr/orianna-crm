@@ -8,6 +8,7 @@ import {
   FileText,
   Send,
   Settings,
+  BriefcaseBusiness,
   GalleryVerticalEnd,
   MessageSquarePlus,
   ChevronsUpDown,
@@ -114,6 +115,11 @@ export function AppSidebar({
   }, [workspace?.id])
 
   const navMain = useMemo(() => [
+    {
+      title: t.sidebar.isimple,
+      url: "/isimple",
+      icon: BriefcaseBusiness,
+    },
     {
       title: t.sidebar.dashboard,
       url: "/dashboard",

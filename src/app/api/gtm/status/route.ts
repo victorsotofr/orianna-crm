@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getGtmReviewQueue } from '@/lib/gtm-review';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
       enrollmentsResult,
       lastRunResult,
       sequencesResult,
+      reviewQueue,
     ] = await Promise.all([
       supabase
         .from('workspaces')
@@ -83,6 +85,12 @@ export async function GET(request: NextRequest) {
         .in('status', ['active', 'paused', 'draft'])
         .order('updated_at', { ascending: false })
         .limit(10),
+      getGtmReviewQueue({
+        db: supabase,
+        workspaceId: ctx.workspaceId,
+        status: 'pending',
+        limit: 1,
+      }),
     ]);
 
     if (workspaceResult.error) throw workspaceResult.error;
@@ -94,6 +102,10 @@ export async function GET(request: NextRequest) {
         addedToday: todayResult.count || 0,
         hotSourcedLeads: hotResult.count || 0,
         pendingReview: pendingReviewResult.count || 0,
+        readyReview: reviewQueue.counts.ready,
+        blockedReview: reviewQueue.counts.blocked,
+        approvedReview: reviewQueue.counts.approved,
+        queuedReview: reviewQueue.counts.queued,
         activeEnrollments: enrollmentsResult.count || 0,
       },
       lastRun: lastRunResult.data || null,

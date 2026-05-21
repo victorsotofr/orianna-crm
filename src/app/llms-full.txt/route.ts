@@ -21,13 +21,14 @@ ${siteConfig.description}
 
 ## isimple GTM Workflow
 
-The isimple GTM workflow targets French property managers, syndic firms, administrateurs de biens, and real estate operators. A daily job can research about 20 new contacts, dedupe them inside the active workspace, score and personalize the strongest leads, and enroll them into an active SMTP sequence when full-auto mode is enabled.
+The isimple GTM workflow targets French property managers, syndic firms, administrateurs de biens, and real estate operators. A daily job can research about 20 new contacts, dedupe them inside the active workspace, score and personalize the strongest leads, and place them in a human review queue. Approved prospects are queued into the active SMTP sequence; pending, rejected, generic-inbox, missing-email, bounced, opted-out, or unpersonalized prospects remain blocked.
 
 ## API And Agent Surfaces
 
 - OpenAPI: ${absoluteUrl('/api/openapi')}
 - GTM status: authenticated GET /api/gtm/status
 - GTM run: authenticated POST /api/gtm/run
+- GTM review queue: authenticated GET/POST /api/gtm/review
 - Service cron: service-key protected /api/cron/daily-prospecting
 - Telegram webhook: /api/webhooks/telegram
 - Sequence processor: service-key protected /api/campaigns/process-sequences

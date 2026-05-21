@@ -32,6 +32,13 @@ export async function sendMessage(chatId: number | string, text: string, options
   });
 }
 
+export async function answerCallbackQuery(callbackQueryId: string, text?: string) {
+  return callApi('answerCallbackQuery', {
+    callback_query_id: callbackQueryId,
+    ...(text && { text }),
+  });
+}
+
 export async function setWebhook(url: string) {
   return callApi('setWebhook', { url, allowed_updates: ['message', 'callback_query'] });
 }

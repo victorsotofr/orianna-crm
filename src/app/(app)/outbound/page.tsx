@@ -24,6 +24,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { apiFetch } from '@/lib/api';
@@ -113,6 +120,17 @@ interface ReviewQueue {
   items: ReviewItem[];
 }
 
+interface SetupSettings {
+  enabled: boolean;
+  setEnabled: (value: boolean) => void;
+  requiresApproval: boolean;
+  setRequiresApproval: (value: boolean) => void;
+  dailyLimit: string;
+  setDailyLimit: (value: string) => void;
+  activeSequenceId: string;
+  setActiveSequenceId: (value: string) => void;
+}
+
 export default function OutboundPage() {
   const { t } = useTranslation();
   const { workspace, isLoading: workspaceLoading } = useWorkspace();
@@ -124,6 +142,8 @@ export default function OutboundPage() {
   const [saving, setSaving] = useState(false);
   const [actingIds, setActingIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [requiresApproval, setRequiresApproval] = useState(true);
   const [dailyLimit, setDailyLimit] = useState('20');
@@ -173,9 +193,19 @@ export default function OutboundPage() {
     () => items.find((item) => item.id === selectedId) || items[0] || null,
     [items, selectedId]
   );
-  const readyIds = items.filter((item) => item.readyForApproval).map((item) => item.id);
+  const readyIds = useMemo(() => items.filter((item) => item.readyForApproval).map((item) => item.id), [items]);
   const recommendation = getRecommendation(queue, status, t);
   const checklist = buildChecklist(status, queue, t);
+  const settings: SetupSettings = {
+    enabled,
+    setEnabled,
+    requiresApproval,
+    setRequiresApproval,
+    dailyLimit,
+    setDailyLimit,
+    activeSequenceId,
+    setActiveSequenceId,
+  };
 
   useEffect(() => {
     if (!selectedItem) {
@@ -272,6 +302,11 @@ export default function OutboundPage() {
     }
   };
 
+  const openDetail = (item: ReviewItem) => {
+    setSelectedId(item.id);
+    setDetailOpen(true);
+  };
+
   return (
     <>
       <SiteHeader title={t.outbound.title} />
@@ -281,123 +316,125 @@ export default function OutboundPage() {
             <LoadingState />
           ) : (
             <>
-              <section className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-lg font-semibold">{t.outbound.heading(workspace?.name || t.outbound.workspaceFallback)}</h1>
-                    <Badge variant={enabled ? 'default' : 'secondary'}>{enabled ? t.outbound.on : t.outbound.off}</Badge>
-                    <Badge variant={requiresApproval ? 'secondary' : 'destructive'}>
-                      {requiresApproval ? t.outbound.approvalMode : t.outbound.fullAutoMode}
-                    </Badge>
+              <section className="shrink-0 rounded-lg border bg-card px-4 py-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="truncate text-lg font-semibold">
+                        {t.outbound.heading(workspace?.name || t.outbound.workspaceFallback)}
+                      </h1>
+                      <Badge variant={enabled ? 'default' : 'secondary'}>{enabled ? t.outbound.on : t.outbound.off}</Badge>
+                      <Badge variant={requiresApproval ? 'secondary' : 'destructive'}>
+                        {requiresApproval ? t.outbound.approvalMode : t.outbound.fullAutoMode}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{t.outbound.subtitle}</p>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{t.outbound.subtitle}</p>
+
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      {t.outbound.actions.refresh}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setSetupOpen(true)}>
+                      <Settings className="h-4 w-4" />
+                      {t.outbound.actions.setup}
+                    </Button>
+                    <Button size="sm" onClick={runOutbound} disabled={running}>
+                      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      {t.outbound.actions.run}
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    {t.outbound.actions.refresh}
-                  </Button>
-                  <Button size="sm" onClick={runOutbound} disabled={running}>
-                    {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                    {t.outbound.actions.run}
-                  </Button>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <MetricPill label={t.outbound.metrics.ready} value={queue?.counts.ready || 0} tone="ready" />
+                  <MetricPill label={t.outbound.metrics.blocked} value={queue?.counts.blocked || 0} tone="blocked" />
+                  <MetricPill label={t.outbound.metrics.pending} value={queue?.counts.pending || 0} />
+                  <MetricPill label={t.outbound.metrics.queued} value={queue?.counts.queued || 0} />
+                  <MetricPill label={t.outbound.metrics.today} value={status?.metrics.addedToday || 0} />
+                  <MetricPill label={t.outbound.metrics.active} value={status?.metrics.activeEnrollments || 0} />
                 </div>
               </section>
 
-              <section className="rounded-lg border bg-card">
-                <div className="flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex items-start gap-3">
+              <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
+                <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
                       <Bot className="h-4 w-4" />
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold">{recommendation.title}</div>
-                      <div className="text-xs text-muted-foreground">{recommendation.detail}</div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{recommendation.title}</div>
+                      <div className="truncate text-xs text-muted-foreground">{recommendation.detail}</div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 text-right sm:grid-cols-6">
-                    <MiniMetric label={t.outbound.metrics.ready} value={queue?.counts.ready || 0} />
-                    <MiniMetric label={t.outbound.metrics.blocked} value={queue?.counts.blocked || 0} />
-                    <MiniMetric label={t.outbound.metrics.pending} value={queue?.counts.pending || 0} />
-                    <MiniMetric label={t.outbound.metrics.queued} value={queue?.counts.queued || 0} />
-                    <MiniMetric label={t.outbound.metrics.today} value={status?.metrics.addedToday || 0} />
-                    <MiniMetric label={t.outbound.metrics.active} value={status?.metrics.activeEnrollments || 0} />
+
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {(['pending', 'ready', 'blocked', 'queued', 'approved', 'rejected'] as ReviewFilter[]).map((value) => (
+                      <FilterButton
+                        key={value}
+                        active={filter === value}
+                        onClick={() => setFilter(value)}
+                      >
+                        {t.outbound.filters[value]}
+                      </FilterButton>
+                    ))}
+                    <Button size="sm" onClick={() => applyAction('approve_queue', readyIds)} disabled={readyIds.length === 0 || actingIds.size > 0}>
+                      {actingIds.size > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      {t.outbound.actions.approveReady(readyIds.length)}
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/contacts?source=gtm_autopilot">{t.outbound.actions.contacts}</Link>
+                    </Button>
                   </div>
                 </div>
 
-                <div className="grid min-h-[520px] xl:grid-cols-[minmax(0,1fr)_400px]">
-                  <div className="min-w-0 border-r">
-                    <div className="flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="flex flex-wrap gap-2">
-                        {(['pending', 'ready', 'blocked', 'queued', 'approved', 'rejected'] as ReviewFilter[]).map((value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            className={cn(
-                              'rounded-md border px-2.5 py-1 text-xs transition-colors',
-                              filter === value ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'
-                            )}
-                            onClick={() => setFilter(value)}
-                          >
-                            {t.outbound.filters[value]}
-                          </button>
+                <div className="min-h-0 flex-1 overflow-auto">
+                  {items.length > 0 ? (
+                    <div className="min-w-[900px]">
+                      <QueueHeader t={t} />
+                      <div className="divide-y">
+                        {items.map((item) => (
+                          <QueueRow
+                            key={item.id}
+                            item={item}
+                            acting={actingIds.has(item.id)}
+                            selected={selectedId === item.id}
+                            onOpen={() => openDetail(item)}
+                            t={t}
+                          />
                         ))}
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => applyAction('approve_queue', readyIds)} disabled={readyIds.length === 0 || actingIds.size > 0}>
-                          {actingIds.size > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                          {t.outbound.actions.approveReady(readyIds.length)}
-                        </Button>
-                        <Button size="sm" variant="outline" asChild>
-                          <Link href="/contacts?source=gtm_autopilot">{t.outbound.actions.contacts}</Link>
-                        </Button>
-                      </div>
                     </div>
-
-                    <div className="max-h-[calc(100vh-300px)] min-h-[430px] overflow-auto">
-                      {items.length > 0 ? (
-                        <div className="divide-y">
-                          {items.map((item) => (
-                            <QueueRow
-                              key={item.id}
-                              item={item}
-                              selected={selectedItem?.id === item.id}
-                              acting={actingIds.has(item.id)}
-                              onSelect={() => setSelectedId(item.id)}
-                              t={t}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <EmptyQueue status={status} onRun={runOutbound} running={running} t={t} />
-                      )}
-                    </div>
-                  </div>
-
-                  <aside className="min-w-0 bg-muted/20">
-                    <DetailPanel
-                      item={selectedItem}
-                      status={status}
-                      checklist={checklist}
-                      settings={{
-                        enabled,
-                        setEnabled,
-                        requiresApproval,
-                        setRequiresApproval,
-                        dailyLimit,
-                        setDailyLimit,
-                        activeSequenceId,
-                        setActiveSequenceId,
-                      }}
-                      saving={saving}
-                      acting={selectedItem ? actingIds.has(selectedItem.id) : false}
-                      onSave={saveSettings}
-                      onAction={(action) => selectedItem && applyAction(action, [selectedItem.id])}
-                      t={t}
-                    />
-                  </aside>
+                  ) : (
+                    <EmptyQueue status={status} onRun={runOutbound} running={running} t={t} />
+                  )}
                 </div>
               </section>
+
+              <Sheet open={setupOpen} onOpenChange={setSetupOpen}>
+                <SheetContent side="right" className="flex w-[min(560px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
+                  <SetupSheetContent
+                    status={status}
+                    checklist={checklist}
+                    settings={settings}
+                    saving={saving}
+                    onSave={saveSettings}
+                    t={t}
+                  />
+                </SheetContent>
+              </Sheet>
+
+              <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+                <SheetContent side="right" className="flex w-[min(620px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
+                  <ProspectDetailSheetContent
+                    item={selectedItem}
+                    acting={selectedItem ? actingIds.has(selectedItem.id) : false}
+                    onAction={(action) => selectedItem && applyAction(action, [selectedItem.id])}
+                    t={t}
+                  />
+                </SheetContent>
+              </Sheet>
             </>
           )}
         </div>
@@ -406,116 +443,162 @@ export default function OutboundPage() {
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: number }) {
+function MetricPill({ label, value, tone }: { label: string; value: number; tone?: 'ready' | 'blocked' }) {
   return (
-    <div>
-      <div className="font-mono text-lg font-semibold tabular-nums leading-tight">{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+    <div className={cn(
+      'flex items-center justify-between rounded-md border bg-background px-3 py-2',
+      tone === 'ready' && 'border-emerald-200 bg-emerald-50/70',
+      tone === 'blocked' && 'border-amber-200 bg-amber-50/70'
+    )}>
+      <span className="truncate text-xs text-muted-foreground">{label}</span>
+      <span className="font-mono text-base font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'h-8 rounded-md border px-2.5 text-xs font-medium transition-colors',
+        active ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'
+      )}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function QueueHeader({ t }: { t: Translations }) {
+  return (
+    <div className="sticky top-0 z-10 grid grid-cols-[minmax(260px,1.7fr)_108px_88px_132px_minmax(220px,1fr)_96px] gap-3 border-b bg-muted/50 px-4 py-2 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
+      <div>{t.outbound.table.prospect}</div>
+      <div>{t.outbound.table.status}</div>
+      <div className="text-right">{t.outbound.table.score}</div>
+      <div className="text-right">{t.outbound.table.email}</div>
+      <div>{t.outbound.table.agentNote}</div>
+      <div className="text-right">{t.outbound.table.actions}</div>
     </div>
   );
 }
 
 function QueueRow({
   item,
-  selected,
   acting,
-  onSelect,
+  selected,
+  onOpen,
   t,
 }: {
   item: ReviewItem;
-  selected: boolean;
   acting: boolean;
-  onSelect: () => void;
+  selected: boolean;
+  onOpen: () => void;
   t: Translations;
 }) {
+  const subtitle = [item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany;
+  const note = item.personalizedLine || item.blockers[0] || item.icpFit || t.outbound.noPreview;
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
       className={cn(
-        'grid w-full grid-cols-[minmax(0,1fr)_110px_96px] gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60',
-        selected && 'bg-muted'
+        'grid min-h-[68px] cursor-pointer grid-cols-[minmax(260px,1.7fr)_108px_88px_132px_minmax(220px,1fr)_96px] items-center gap-3 px-4 py-2.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/60',
+        selected && 'bg-muted/70'
       )}
     >
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{item.name}</span>
-          <ReadinessBadge item={item} t={t} />
-          {acting && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium" title={item.name}>{item.name}</span>
+          {acting && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
         </div>
-        <div className="mt-1 truncate text-xs text-muted-foreground">
-          {[item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany}
-        </div>
-        <div className="mt-1 truncate text-xs text-muted-foreground">
-          {item.personalizedLine || item.blockers[0] || item.email || t.outbound.noEmail}
-        </div>
+        <div className="mt-1 truncate text-xs text-muted-foreground" title={subtitle}>{subtitle}</div>
       </div>
+
+      <ReadinessBadge item={item} t={t} />
+
       <div className="text-right">
-        <div className="text-xs font-medium">{item.aiScore != null ? `${item.aiScore}/100` : '—'}</div>
-        <div className="text-[11px] text-muted-foreground">{item.aiScoreLabel || t.outbound.notScored}</div>
+        <div className="text-xs font-medium tabular-nums">{item.aiScore != null ? `${item.aiScore}/100` : '—'}</div>
+        <div className="truncate text-[11px] text-muted-foreground">{item.aiScoreLabel || t.outbound.notScored}</div>
       </div>
-      <div className="text-right">
-        <div className="truncate text-xs">{item.email || '—'}</div>
-        <div className="text-[11px] text-muted-foreground">{item.emailVerifiedStatus || t.outbound.emailUnknown}</div>
+
+      <div className="min-w-0 text-right">
+        <div className="truncate text-xs" title={item.email || t.outbound.noEmail}>{item.email || '—'}</div>
+        <div className="truncate text-[11px] text-muted-foreground">{item.emailVerifiedStatus || t.outbound.emailUnknown}</div>
       </div>
-    </button>
+
+      <div className="min-w-0 truncate text-xs text-muted-foreground" title={note}>{note}</div>
+
+      <div className="flex justify-end">
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+        >
+          {t.outbound.actions.review}
+        </Button>
+      </div>
+    </div>
   );
 }
 
-function DetailPanel({
-  item,
+function SetupSheetContent({
   status,
   checklist,
   settings,
   saving,
-  acting,
   onSave,
-  onAction,
   t,
 }: {
-  item: ReviewItem | null;
   status: GtmStatus | null;
   checklist: Array<{ ok: boolean; label: string; detail: string }>;
-  settings: {
-    enabled: boolean;
-    setEnabled: (value: boolean) => void;
-    requiresApproval: boolean;
-    setRequiresApproval: (value: boolean) => void;
-    dailyLimit: string;
-    setDailyLimit: (value: string) => void;
-    activeSequenceId: string;
-    setActiveSequenceId: (value: string) => void;
-  };
+  settings: SetupSettings;
   saving: boolean;
-  acting: boolean;
   onSave: () => void;
-  onAction: (action: ReviewAction) => void;
   t: Translations;
 }) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b p-4">
-        <div className="flex items-center gap-2">
-          <Settings className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">{t.outbound.setup.title}</h2>
-        </div>
-        <div className="mt-3 grid gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <Label className="text-xs">{t.outbound.setup.enabled}</Label>
-            <Switch size="sm" checked={settings.enabled} onCheckedChange={settings.setEnabled} />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <Label className="text-xs">{t.outbound.setup.approval}</Label>
-            <Switch size="sm" checked={settings.requiresApproval} onCheckedChange={settings.setRequiresApproval} />
-          </div>
-          <div className="grid grid-cols-[1fr_96px] gap-2">
-            <div className="space-y-1">
+    <div className="flex h-full min-h-0 flex-col">
+      <SheetHeader className="border-b px-5 py-4 pr-12 text-left">
+        <SheetTitle className="text-base">{t.outbound.setup.title}</SheetTitle>
+        <SheetDescription>{t.outbound.setup.description}</SheetDescription>
+      </SheetHeader>
+
+      <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+        <div className="space-y-3">
+          <SettingToggle
+            label={t.outbound.setup.enabled}
+            detail={settings.enabled ? t.outbound.on : t.outbound.off}
+            checked={settings.enabled}
+            onCheckedChange={settings.setEnabled}
+          />
+          <SettingToggle
+            label={t.outbound.setup.approval}
+            detail={settings.requiresApproval ? t.outbound.approvalMode : t.outbound.fullAutoMode}
+            checked={settings.requiresApproval}
+            onCheckedChange={settings.setRequiresApproval}
+          />
+
+          <div className="grid gap-3 rounded-md border bg-background p-3">
+            <div className="space-y-1.5">
               <Label className="text-xs">{t.outbound.setup.sequence}</Label>
               <Select value={settings.activeSequenceId} onValueChange={settings.setActiveSequenceId}>
-                <SelectTrigger className="h-8">
+                <SelectTrigger className="h-9 w-full min-w-0">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-[520px]">
                   <SelectItem value="none">{t.outbound.setup.noSequence}</SelectItem>
                   {(status?.sequences || []).map((sequence) => (
                     <SelectItem key={sequence.id} value={sequence.id}>{sequence.name}</SelectItem>
@@ -523,10 +606,11 @@ function DetailPanel({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+
+            <div className="space-y-1.5">
               <Label className="text-xs">{t.outbound.setup.limit}</Label>
               <Input
-                className="h-8"
+                className="h-9 w-32"
                 type="number"
                 min={1}
                 max={100}
@@ -535,52 +619,111 @@ function DetailPanel({
               />
             </div>
           </div>
-          <Button size="sm" variant="outline" onClick={onSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {t.outbound.setup.save}
-          </Button>
-        </div>
-        <div className="mt-3 space-y-1.5">
-          {checklist.map((check) => (
-            <div key={check.label} className="flex items-start gap-2 text-xs">
-              {check.ok ? <Check className="mt-0.5 h-3.5 w-3.5 text-emerald-600" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 text-amber-600" />}
-              <div className="min-w-0">
-                <div className="font-medium">{check.label}</div>
-                <div className="truncate text-muted-foreground">{check.detail}</div>
-              </div>
+
+          <div className="rounded-md border bg-background p-3">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">{t.outbound.setup.checklist}</div>
+            <div className="space-y-2">
+              {checklist.map((check) => (
+                <div key={check.label} className="flex items-start gap-2 text-xs">
+                  {check.ok ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />}
+                  <div className="min-w-0">
+                    <div className="font-medium">{check.label}</div>
+                    <div className="break-words text-muted-foreground">{check.detail}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="border-t px-5 py-4">
+        <Button className="w-full" size="sm" onClick={onSave} disabled={saving}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          {t.outbound.setup.save}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SettingToggle({
+  label,
+  detail,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  detail: string;
+  checked: boolean;
+  onCheckedChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-md border bg-background p-3">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="truncate text-xs text-muted-foreground">{detail}</div>
+      </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  );
+}
+
+function ProspectDetailSheetContent({
+  item,
+  acting,
+  onAction,
+  t,
+}: {
+  item: ReviewItem | null;
+  acting: boolean;
+  onAction: (action: ReviewAction) => void;
+  t: Translations;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <SheetHeader className="border-b px-5 py-4 pr-12 text-left">
+        <SheetTitle className="text-base">{item ? item.name : t.outbound.detail.title}</SheetTitle>
+        <SheetDescription>
+          {item
+            ? [item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany
+            : t.outbound.detail.description}
+        </SheetDescription>
+      </SheetHeader>
+
+      <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
         {item ? (
           <div className="space-y-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-base font-semibold">{item.name}</h2>
-                <ReadinessBadge item={item} t={t} />
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {[item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{item.email || t.outbound.noEmail}</span>
-                {item.linkedinUrl && <a className="hover:text-foreground" href={item.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a>}
-                {item.sourceUrl && <a className="inline-flex items-center gap-1 hover:text-foreground" href={item.sourceUrl} target="_blank" rel="noreferrer">{t.outbound.source}<ExternalLink className="h-3 w-3" /></a>}
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ReadinessBadge item={item} t={t} />
+              <Badge variant="outline">{item.aiScore != null ? `${item.aiScore}/100 ${item.aiScoreLabel || ''}` : t.outbound.notScored}</Badge>
+              <Badge variant="outline">{item.emailVerifiedStatus || t.outbound.emailUnknown}</Badge>
+            </div>
+
+            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Mail className="h-3.5 w-3.5" />
+                {item.email || t.outbound.noEmail}
+              </span>
+              {item.linkedinUrl && <a className="hover:text-foreground" href={item.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a>}
+              {item.sourceUrl && (
+                <a className="inline-flex items-center gap-1 hover:text-foreground" href={item.sourceUrl} target="_blank" rel="noreferrer">
+                  {t.outbound.source}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
             </div>
 
             <InfoBlock icon={<Sparkles className="h-4 w-4" />} title={t.outbound.detail.agentRead}>
               <div className="space-y-2 text-sm">
-                <p>{item.aiScore != null ? `${item.aiScore}/100 ${item.aiScoreLabel || ''}` : t.outbound.notScored}</p>
                 {item.icpFit && <p className="text-muted-foreground">{item.icpFit}</p>}
                 {item.aiScoreReasoning && <p className="text-muted-foreground">{item.aiScoreReasoning}</p>}
+                {!item.icpFit && !item.aiScoreReasoning && <p className="text-muted-foreground">{t.outbound.notScored}</p>}
               </div>
             </InfoBlock>
 
             <InfoBlock title={t.outbound.detail.personalization}>
-              <p className="text-sm italic leading-relaxed">{item.personalizedLine || t.outbound.detail.noPersonalization}</p>
+              <p className="text-sm leading-relaxed">{item.personalizedLine || t.outbound.detail.noPersonalization}</p>
             </InfoBlock>
 
             <InfoBlock title={t.outbound.detail.preview}>
@@ -612,7 +755,7 @@ function DetailPanel({
         )}
       </div>
 
-      <div className="border-t p-4">
+      <div className="border-t px-5 py-4">
         <div className="grid grid-cols-2 gap-2">
           <Button size="sm" onClick={() => onAction('approve_queue')} disabled={!item?.readyForApproval || Boolean(item?.isQueued) || acting}>
             {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -686,7 +829,7 @@ function EmptyQueue({ status, onRun, running, t }: { status: GtmStatus | null; o
 function LoadingState() {
   return (
     <div className="space-y-3">
-      <Skeleton className="h-16 rounded-lg" />
+      <Skeleton className="h-28 rounded-lg" />
       <Skeleton className="h-[620px] rounded-lg" />
     </div>
   );

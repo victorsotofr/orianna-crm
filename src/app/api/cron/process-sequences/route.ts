@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-sender';
+import { getDefaultSendMailAccount, type MailAccount } from '@/lib/mail-accounts';
+import { sendWithMailAccount } from '@/lib/mail-account-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
 import { getGtmSendBlockReason } from '@/lib/gtm-safety';
+
+interface SequenceStep {
+  id: string;
+  step_order: number;
+  delay_days: number;
+}
 
 // POST /api/cron/process-sequences - Process pending sequence emails (called by cron)
 export async function POST(request: Request) {
@@ -43,8 +51,9 @@ export async function POST(request: Request) {
     const results = {
       sent: 0,
       failed: 0,
-      errors: [] as any[],
+      errors: [] as Array<{ enrollment_id: string; contact_email: string; error: string }>,
     };
+    const sendAccountCache = new Map<string, MailAccount | null>();
 
     // Process each pending email
     for (const pending of pendingEmails) {
@@ -124,14 +133,6 @@ export async function POST(request: Request) {
           throw new Error(emailRecordError?.message || 'Failed to create email record');
         }
 
-        const emailConfig = {
-          host: pending.smtp_host,
-          port: pending.smtp_port,
-          user: pending.smtp_user,
-          passwordEncrypted: pending.smtp_password_encrypted,
-          bccEnabled: pending.bcc_enabled,
-        };
-
         const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
         const finalHtml = `${rendered}\n${trackingPixel}`;
         const plainText = extractPlainText(undefined, rendered);
@@ -144,7 +145,22 @@ export async function POST(request: Request) {
           from: pending.user_email || 'CRM',
         };
 
-        const result = await sendEmail(emailConfig, emailData);
+        if (!sendAccountCache.has(pending.user_id)) {
+          sendAccountCache.set(pending.user_id, await getDefaultSendMailAccount(supabase, pending.user_id));
+        }
+        const mailAccount = sendAccountCache.get(pending.user_id) || null;
+        const result = mailAccount
+          ? await sendWithMailAccount(supabase, mailAccount, emailData)
+          : await sendEmail(
+            {
+              host: pending.smtp_host,
+              port: pending.smtp_port,
+              user: pending.smtp_user,
+              passwordEncrypted: pending.smtp_password_encrypted,
+              bccEnabled: pending.bcc_enabled,
+            },
+            emailData
+          );
 
         if (!result.success) {
           await supabase
@@ -163,13 +179,17 @@ export async function POST(request: Request) {
             userId: pending.user_id,
             contactId: pending.contact_id,
             emailSentId: emailRecord.id,
+            mailAccountId: mailAccount?.id || null,
+            provider: mailAccount?.provider || null,
+            providerMessageId: result.providerMessageId || null,
+            providerThreadId: result.providerThreadId || null,
             rawMessageId: result.messageId!,
             subject: renderedSubject,
             htmlBody: rendered,
             textBody: plainText,
             to: pending.contact_email,
             from: {
-              email: pending.smtp_user,
+              email: mailAccount?.email || pending.smtp_user,
               name: pending.user_email || 'CRM',
             },
             enrollmentId: pending.enrollment_id,
@@ -199,8 +219,8 @@ export async function POST(request: Request) {
           throw new Error('Sequence not found');
         }
 
-        const sortedSteps = sequence.steps.sort((a: any, b: any) => a.step_order - b.step_order);
-        const currentStepIndex = sortedSteps.findIndex((s: any) => s.id === pending.step_id);
+        const sortedSteps = ([...(sequence.steps || [])] as SequenceStep[]).sort((a, b) => a.step_order - b.step_order);
+        const currentStepIndex = sortedSteps.findIndex((s) => s.id === pending.step_id);
         const nextStep = sortedSteps[currentStepIndex + 1];
 
         if (nextStep) {
@@ -247,14 +267,14 @@ export async function POST(request: Request) {
         });
 
         results.sent++;
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(`[cron] Error processing enrollment ${pending.enrollment_id}:`, error);
 
         results.failed++;
         results.errors.push({
           enrollment_id: pending.enrollment_id,
           contact_email: pending.contact_email,
-          error: error.message,
+          error: error instanceof Error ? error.message : 'Unknown error',
         });
 
         // Increment retry count or mark as failed
@@ -288,10 +308,10 @@ export async function POST(request: Request) {
       duration_ms: duration,
       errors: results.errors.length > 0 ? results.errors : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[cron] Process sequences error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: error.message || 'Failed to process sequences' },
+      { error: error instanceof Error ? error.message : 'Failed to process sequences' },
       { status: 500 }
     );
   }

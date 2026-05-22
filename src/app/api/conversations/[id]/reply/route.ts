@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { textToHtml } from '@/lib/email-content';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { sendEmail } from '@/lib/email-sender';
+import { getDefaultSendMailAccount, getThreadMailAccount } from '@/lib/mail-accounts';
+import { sendWithMailAccount } from '@/lib/mail-account-sender';
 import { formatMessageId } from '@/lib/mailbox-utils';
 import { finalizeSentEmail } from '@/lib/outbound-email';
 import { getGtmSendBlockReason } from '@/lib/gtm-safety';
@@ -40,10 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: thread, error: threadError } = await supabase
       .from('mailbox_threads')
       .select(`
-        id,
-        workspace_id,
-        contact_id,
-        subject,
+        *,
         contacts (
           id,
           email,
@@ -78,7 +77,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const { data: messages, error: messagesError } = await supabase
       .from('mailbox_messages')
-      .select('id, internet_message_id, from_email, direction, message_at')
+      .select('*')
       .eq('thread_id', id)
       .eq('workspace_id', ctx.workspaceId)
       .eq('user_id', user.id)
@@ -89,15 +88,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Conversation has no messages' }, { status: 400 });
     }
 
+    const mailAccount =
+      (await getThreadMailAccount(supabase, user.id, thread.id)) ||
+      (await getDefaultSendMailAccount(supabase, user.id));
+
     const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (settingsError || !settings?.smtp_host || !settings.smtp_user || !settings.smtp_password_encrypted) {
+    if (settingsError) throw settingsError;
+    if (!mailAccount && (!settings?.smtp_host || !settings.smtp_user || !settings.smtp_password_encrypted)) {
       return NextResponse.json(
-        { error: 'SMTP settings not configured. Configure them in Settings.' },
+        { error: 'No sending mailbox configured. Connect Gmail/Outlook or configure SMTP in Settings.' },
         { status: 400 }
       );
     }
@@ -134,24 +138,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .filter(Boolean)
       .slice(-20);
 
-    const result = await sendEmail(
-      {
-        host: settings.smtp_host,
-        port: settings.smtp_port,
-        user: settings.smtp_user,
-        passwordEncrypted: settings.smtp_password_encrypted,
-        bccEnabled: settings.bcc_enabled !== false,
-      },
-      {
-        to: recipient,
-        subject: trimmedSubject || thread.subject || 'Re: Conversation',
-        html: finalHtml,
-        text: trimmedBody,
-        from: user.user_metadata?.full_name || settings.user_email || user.email || 'Orianna CRM',
-        inReplyTo: formatMessageId(latestMessage.internet_message_id),
-        references: referenceIds.map((messageId) => formatMessageId(messageId)).filter((value): value is string => Boolean(value)),
-      }
-    );
+    const emailData = {
+      to: recipient,
+      subject: trimmedSubject || thread.subject || 'Re: Conversation',
+      html: finalHtml,
+      text: trimmedBody,
+      from: user.user_metadata?.full_name || settings?.user_email || user.email || 'Orianna CRM',
+      inReplyTo: formatMessageId(latestMessage.internet_message_id),
+      references: referenceIds.map((messageId) => formatMessageId(messageId)).filter((value): value is string => Boolean(value)),
+    };
+
+    const result = mailAccount
+      ? await sendWithMailAccount(supabase, mailAccount, emailData, {
+        threadId: lastInbound?.provider_thread_id || latestMessage.provider_thread_id || thread.provider_thread_id || null,
+      })
+      : await sendEmail(
+        {
+          host: settings!.smtp_host,
+          port: settings!.smtp_port,
+          user: settings!.smtp_user,
+          passwordEncrypted: settings!.smtp_password_encrypted,
+          bccEnabled: settings!.bcc_enabled !== false,
+        },
+        emailData
+      );
 
     if (!result.success) {
       await supabase
@@ -168,14 +178,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       userId: user.id,
       contactId: thread.contact_id,
       emailSentId: emailRecord.id,
+      mailAccountId: mailAccount?.id || null,
+      provider: mailAccount?.provider || null,
+      providerMessageId: result.providerMessageId || null,
+      providerThreadId: result.providerThreadId || latestMessage.provider_thread_id || thread.provider_thread_id || null,
       rawMessageId: result.messageId!,
       subject: trimmedSubject || thread.subject || 'Re: Conversation',
       htmlBody,
       textBody: trimmedBody,
       to: recipient,
       from: {
-        email: settings.smtp_user,
-        name: user.user_metadata?.full_name || settings.user_email || user.email || 'Orianna CRM',
+        email: mailAccount?.email || settings!.smtp_user,
+        name: user.user_metadata?.full_name || settings?.user_email || user.email || 'Orianna CRM',
       },
       threadId: thread.id,
       inReplyTo: latestMessage.internet_message_id,
@@ -204,8 +218,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     return NextResponse.json({ success: true, threadId: persisted.threadId, mailboxMessageId: persisted.messageId });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Conversation reply error:', error instanceof Error ? error.message : error);
-    return NextResponse.json({ error: error.message || 'Failed to send reply' }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to send reply' }, { status: 500 });
   }
 }

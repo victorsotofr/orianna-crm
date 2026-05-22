@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-sender';
+import { getDefaultSendMailAccount, type MailAccount } from '@/lib/mail-accounts';
+import { sendWithMailAccount } from '@/lib/mail-account-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
@@ -82,6 +84,7 @@ export async function POST(request: Request) {
     let sentCount = 0;
     let failedCount = 0;
     const errors: string[] = [];
+    const sendAccountCache = new Map<string, MailAccount | null>();
 
     // Group by user_id and take only the FIRST pending email per user
     // This ensures proper spacing between emails (via cron running every 5 min)
@@ -203,23 +206,29 @@ export async function POST(request: Request) {
         const finalHtml = `${renderedHtml}\n${trackingPixel}`;
         const plainText = extractPlainText(undefined, renderedHtml);
 
-        // Send email via SMTP
-        const result = await sendEmail(
-          {
-            host: email.smtp_host,
-            port: email.smtp_port,
-            user: email.smtp_user,
-            passwordEncrypted: email.smtp_password_encrypted,
-            bccEnabled: email.bcc_enabled,
-          },
-          {
-            to: email.contact_email,
-            subject: renderedSubject,
-            html: finalHtml,
-            text: plainText,
-            from: email.user_email || email.smtp_user,
-          }
-        );
+        if (!sendAccountCache.has(email.user_id)) {
+          sendAccountCache.set(email.user_id, await getDefaultSendMailAccount(supabase, email.user_id));
+        }
+        const mailAccount = sendAccountCache.get(email.user_id) || null;
+        const emailData = {
+          to: email.contact_email,
+          subject: renderedSubject,
+          html: finalHtml,
+          text: plainText,
+          from: email.user_email || email.smtp_user,
+        };
+        const result = mailAccount
+          ? await sendWithMailAccount(supabase, mailAccount, emailData)
+          : await sendEmail(
+            {
+              host: email.smtp_host,
+              port: email.smtp_port,
+              user: email.smtp_user,
+              passwordEncrypted: email.smtp_password_encrypted,
+              bccEnabled: email.bcc_enabled,
+            },
+            emailData
+          );
 
         if (!result.success) {
           // Increment retry count
@@ -264,13 +273,17 @@ export async function POST(request: Request) {
             userId: email.user_id,
             contactId: email.contact_id,
             emailSentId: emailRecord.id,
+            mailAccountId: mailAccount?.id || null,
+            provider: mailAccount?.provider || null,
+            providerMessageId: result.providerMessageId || null,
+            providerThreadId: result.providerThreadId || null,
             rawMessageId: result.messageId!,
             subject: renderedSubject,
             htmlBody: renderedHtml,
             textBody: plainText,
             to: email.contact_email,
             from: {
-              email: email.smtp_user,
+              email: mailAccount?.email || email.smtp_user,
               name: email.user_email || email.smtp_user,
             },
             enrollmentId: email.enrollment_id,

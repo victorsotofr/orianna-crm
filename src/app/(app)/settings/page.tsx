@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit, CheckCircle2, XCircle, Send, Copy, Bell, BellOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, UserPlus, Trash2, Sparkles, RotateCcw, BrainCircuit, CheckCircle2, XCircle, Send, Copy, Bell, Mail, Inbox, RefreshCw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DEFAULT_PERSONALIZATION_PROMPT, DEFAULT_SCORING_PROMPT, DEFAULT_LINKUP_COMPANY_QUERY, DEFAULT_LINKUP_CONTACT_QUERY, DEFAULT_LINKUP_PROSPECTING_QUERY } from '@/lib/ai-defaults';
@@ -33,6 +33,33 @@ function PwInput({ value, onChange, show, onToggle, placeholder }: {
 
 type Section = 'email' | 'integrations' | 'preferences' | 'security' | 'workspace' | 'members';
 
+type MailAccount = {
+  id: string;
+  provider: 'imap' | 'gmail' | 'outlook';
+  email: string;
+  display_name: string | null;
+  status: 'active' | 'paused' | 'error';
+  sync_enabled: boolean;
+  send_enabled: boolean;
+  is_default_send: boolean;
+  last_synced_at: string | null;
+  last_error: string | null;
+};
+
+type PendingInvitation = {
+  id: string;
+  email: string;
+  created_at: string;
+};
+
+type MailAccountSyncResult = {
+  stored?: number;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : null;
+}
+
 export default function SettingsPage() {
   const { t, language, setLanguage } = useTranslation();
   const { workspace, members, refresh: refreshWorkspace } = useWorkspace();
@@ -43,7 +70,7 @@ export default function SettingsPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
-  const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [workspaceName, setWorkspaceName] = useState('');
   const [renamingWorkspace, setRenamingWorkspace] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
@@ -97,6 +124,10 @@ export default function SettingsPage() {
   const [imapUser, setImapUser] = useState('');
   const [imapPassword, setImapPassword] = useState('');
   const [dailySendLimit, setDailySendLimit] = useState('50');
+  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
+  const [mailAccountAvailability, setMailAccountAvailability] = useState({ gmail: false, outlook: false });
+  const [loadingMailAccounts, setLoadingMailAccounts] = useState(false);
+  const [syncingMailAccount, setSyncingMailAccount] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -110,18 +141,40 @@ export default function SettingsPage() {
     dailySendLimit: '50', bccEnabled: true,
   });
 
-  useEffect(() => { fetchSettings(); fetchIntegrations(); fetchGoogleCalendarStatus(); fetchTelegramStatus(); }, []);
+  useEffect(() => { fetchSettings(); fetchMailAccounts(); fetchIntegrations(); fetchGoogleCalendarStatus(); fetchTelegramStatus(); }, []);
   // Handle Google Calendar OAuth callback query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gcParam = params.get('google_calendar');
-    if (!gcParam) return;
+    const mailParam = params.get('mail_account');
+    if (!gcParam && !mailParam) return;
     const gcError = params.get('google_calendar_error');
+    const mailError = params.get('mail_account_error');
+    const provider = params.get('provider');
     // Clean URL
     params.delete('google_calendar');
     params.delete('google_calendar_error');
+    params.delete('mail_account');
+    params.delete('mail_account_error');
+    params.delete('provider');
     const newUrl = params.toString() ? `${window.location.pathname}?${params}` : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
+    if (mailParam) {
+      setSection('email');
+      if (mailParam === 'connected') {
+        toast.success(`${provider === 'outlook' ? 'Outlook' : 'Gmail'} mailbox connected.`);
+        fetchMailAccounts();
+      } else if (mailParam === 'not_configured') {
+        toast.error(`${provider === 'outlook' ? 'Outlook' : 'Gmail'} OAuth is not configured on this server.`);
+      } else if (mailParam === 'denied') {
+        toast.error('Mailbox access was denied.');
+      } else if (mailParam === 'state_error') {
+        toast.error('Mailbox connection security check failed. Try again.');
+      } else {
+        toast.error(mailError || 'Mailbox connection failed.');
+      }
+    }
+    if (!gcParam) return;
     setSection('integrations');
     if (gcParam === 'connected') {
       toast.success(t.settings.googleCalendar.justConnected);
@@ -171,6 +224,67 @@ export default function SettingsPage() {
         }
       }
     } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  const fetchMailAccounts = async () => {
+    setLoadingMailAccounts(true);
+    try {
+      const r = await fetch('/api/settings/mail-accounts');
+      if (!r.ok) return;
+      const data = await r.json();
+      setMailAccounts(data.accounts || []);
+      setMailAccountAvailability(data.availability || { gmail: false, outlook: false });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMailAccounts(false);
+    }
+  };
+
+  const handleSetDefaultMailAccount = async (accountId: string) => {
+    try {
+      const r = await fetch('/api/settings/mail-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_default', accountId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed to update mailbox');
+      toast.success('Default sender updated');
+      fetchMailAccounts();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) || t.settings.toasts.saveError);
+    }
+  };
+
+  const handleSyncMailAccount = async (accountId?: string) => {
+    setSyncingMailAccount(accountId || 'all');
+    try {
+      const r = await fetch('/api/settings/mail-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync', accountId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Mailbox sync failed');
+      const stored = ((data.results || []) as MailAccountSyncResult[]).reduce((sum, item) => sum + (item.stored || 0), 0);
+      toast.success(stored > 0 ? `${stored} message(s) imported` : 'Mailbox is up to date');
+      fetchMailAccounts();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) || t.conversations.syncError);
+    } finally {
+      setSyncingMailAccount(null);
+    }
+  };
+
+  const handleDeleteMailAccount = async (accountId: string) => {
+    try {
+      const r = await fetch(`/api/settings/mail-accounts/${accountId}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error((await r.json()).error || 'Failed to disconnect mailbox');
+      toast.success('Mailbox disconnected');
+      fetchMailAccounts();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) || t.settings.toasts.saveError);
+    }
   };
 
   const fetchIntegrations = async () => {
@@ -401,10 +515,10 @@ export default function SettingsPage() {
     if (!smtpPassword) { toast.error(t.settings.toasts.passwordRequired); return; }
     setSaving(true);
     try {
-      const body: Record<string, any> = { smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, dailySendLimit, bccEnabled };
+      const body: Record<string, string | boolean> = { smtpHost, smtpPort, smtpUser, smtpPassword, imapHost, imapPort, imapUser, dailySendLimit, bccEnabled };
       if (imapPassword) body.imapPassword = imapPassword;
       const r = await fetch('/api/settings/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (r.ok) { toast.success(t.settings.toasts.saved); await fetchSettings(); }
+      if (r.ok) { toast.success(t.settings.toasts.saved); await fetchSettings(); await fetchMailAccounts(); }
       else { const d = await r.json(); toast.error(d.error || t.settings.toasts.saveError); }
     } catch { toast.error(t.settings.toasts.networkError); } finally { setSaving(false); }
   };
@@ -550,6 +664,88 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground mt-3">{t.settings.imap.description}</p>
                   </div>
                   <div className="space-y-4">
+                    <div className="rounded-xl border bg-muted/20 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{t.settings.mailAccounts.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{t.settings.mailAccounts.description}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleSyncMailAccount()} disabled={!!syncingMailAccount}>
+                          {syncingMailAccount === 'all' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+                          {t.settings.mailAccounts.syncAll}
+                        </Button>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {loadingMailAccounts ? (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            {t.common.loading}
+                          </div>
+                        ) : mailAccounts.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">{t.settings.mailAccounts.empty}</p>
+                        ) : (
+                          mailAccounts.map((account) => (
+                            <div key={account.id} className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+                              <div className="min-w-0 flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                                  {account.provider === 'imap' ? <Inbox className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="truncate text-sm font-medium">{account.email}</p>
+                                    {account.is_default_send && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">{t.settings.mailAccounts.defaultSender}</span>}
+                                    {account.status === 'error' && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">{t.settings.mailAccounts.error}</span>}
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {account.provider.toUpperCase()} · {account.last_synced_at ? t.settings.mailAccounts.lastSync(new Date(account.last_synced_at).toLocaleDateString()) : t.settings.mailAccounts.notSynced}
+                                  </p>
+                                  {account.last_error && <p className="truncate text-[11px] text-red-600">{account.last_error}</p>}
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                {!account.is_default_send && account.send_enabled && (
+                                  <Button variant="ghost" size="sm" onClick={() => handleSetDefaultMailAccount(account.id)}>
+                                    {t.settings.mailAccounts.makeDefault}
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="sm" onClick={() => handleSyncMailAccount(account.id)} disabled={!!syncingMailAccount}>
+                                  {syncingMailAccount === account.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                </Button>
+                                {account.provider !== 'imap' && (
+                                  <Button variant="ghost" size="sm" onClick={() => handleDeleteMailAccount(account.id)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!mailAccountAvailability.gmail}
+                          onClick={() => { window.location.href = '/api/settings/mail-accounts/gmail/connect'; }}
+                        >
+                          {t.settings.mailAccounts.connectGmail}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!mailAccountAvailability.outlook}
+                          onClick={() => { window.location.href = '/api/settings/mail-accounts/outlook/connect'; }}
+                        >
+                          {t.settings.mailAccounts.connectOutlook}
+                        </Button>
+                        {(!mailAccountAvailability.gmail || !mailAccountAvailability.outlook) && (
+                          <p className="basis-full text-[11px] text-muted-foreground">{t.settings.mailAccounts.oauthHint}</p>
+                        )}
+                      </div>
+                    </div>
+
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">SMTP</p>
                     <div className="grid grid-cols-[1fr_72px] gap-2">
                       <div><Label className="text-xs">{t.settings.smtp.server}</Label><Input value={smtpHost} onChange={e => setSmtpHost(e.target.value)} className="h-9 text-sm mt-1" /></div>

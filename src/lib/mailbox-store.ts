@@ -22,7 +22,12 @@ interface BaseMessageInput {
   workspaceId: string;
   contactId?: string | null;
   emailSentId?: string | null;
+  mailAccountId?: string | null;
   threadId?: string | null;
+  provider?: string | null;
+  providerMessageId?: string | null;
+  providerThreadId?: string | null;
+  providerLabelIds?: string[];
   internetMessageId: string;
   inReplyTo?: string | null;
   references?: string[];
@@ -140,6 +145,8 @@ async function createThread(
     userId,
     contactId,
     subject,
+    mailAccountId,
+    providerThreadId,
     participants,
     messageAt,
   }: {
@@ -147,26 +154,45 @@ async function createThread(
     userId: string;
     contactId?: string | null;
     subject?: string | null;
+    mailAccountId?: string | null;
+    providerThreadId?: string | null;
     participants: MailboxAddress[];
     messageAt: string;
   }
 ): Promise<ThreadRow> {
+  const payload = {
+    workspace_id: workspaceId,
+    user_id: userId,
+    contact_id: contactId || null,
+    mail_account_id: mailAccountId || null,
+    provider_thread_id: providerThreadId || null,
+    subject: subject || null,
+    subject_normalized: normalizeThreadSubject(subject) || null,
+    snippet: '',
+    unread_count: 0,
+    last_message_at: messageAt,
+    participants,
+    updated_at: messageAt,
+  };
+
   const { data, error } = await supabase
     .from('mailbox_threads')
-    .insert({
-      workspace_id: workspaceId,
-      user_id: userId,
-      contact_id: contactId || null,
-      subject: subject || null,
-      subject_normalized: normalizeThreadSubject(subject) || null,
-      snippet: '',
-      unread_count: 0,
-      last_message_at: messageAt,
-      participants,
-      updated_at: messageAt,
-    })
+    .insert(payload)
     .select('id, contact_id, subject, subject_normalized, unread_count, participants')
     .single();
+
+  if ((error as { code?: string } | null)?.code === '42703') {
+    const legacyPayload = { ...payload };
+    delete (legacyPayload as Partial<typeof payload>).mail_account_id;
+    delete (legacyPayload as Partial<typeof payload>).provider_thread_id;
+    const legacy = await supabase
+      .from('mailbox_threads')
+      .insert(legacyPayload)
+      .select('id, contact_id, subject, subject_normalized, unread_count, participants')
+      .single();
+    if (legacy.error || !legacy.data) throw legacy.error || new Error('Failed to create mailbox thread');
+    return legacy.data as ThreadRow;
+  }
 
   if (error || !data) {
     throw error || new Error('Failed to create mailbox thread');
@@ -183,6 +209,8 @@ async function resolveThread(
     workspaceId,
     contactId,
     subject,
+    mailAccountId,
+    providerThreadId,
     references,
     participants,
     messageAt,
@@ -192,6 +220,8 @@ async function resolveThread(
     workspaceId: string;
     contactId?: string | null;
     subject?: string | null;
+    mailAccountId?: string | null;
+    providerThreadId?: string | null;
     references: string[];
     participants: MailboxAddress[];
     messageAt: string;
@@ -213,6 +243,8 @@ async function resolveThread(
     userId,
     contactId,
     subject,
+    mailAccountId,
+    providerThreadId,
     participants,
     messageAt,
   });
@@ -224,11 +256,25 @@ async function insertMailboxMessage(
   internetMessageId: string,
   userId: string
 ): Promise<MessageRow & { created: boolean }> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('mailbox_messages')
     .insert(payload)
     .select('id, thread_id')
     .single();
+
+  if ((error as { code?: string } | null)?.code === '42703') {
+    const legacyPayload = { ...payload };
+    for (const key of ['mail_account_id', 'provider', 'provider_message_id', 'provider_thread_id', 'provider_label_ids']) {
+      delete legacyPayload[key];
+    }
+    const legacy = await supabase
+      .from('mailbox_messages')
+      .insert(legacyPayload)
+      .select('id, thread_id')
+      .single();
+    data = legacy.data;
+    error = legacy.error;
+  }
 
   if (!error && data) {
     return { ...(data as MessageRow), created: true };
@@ -261,6 +307,8 @@ async function updateThreadSnapshot(
     messageAt,
     subject,
     contactId,
+    mailAccountId,
+    providerThreadId,
     participants,
     snippet,
   }: {
@@ -269,6 +317,8 @@ async function updateThreadSnapshot(
     messageAt: string;
     subject?: string | null;
     contactId?: string | null;
+    mailAccountId?: string | null;
+    providerThreadId?: string | null;
     participants: MailboxAddress[];
     snippet: string;
   }
@@ -276,21 +326,36 @@ async function updateThreadSnapshot(
   const mergedParticipants = buildParticipantList(parseParticipants(thread.participants), participants);
   const unreadCount = direction === 'inbound' ? (thread.unread_count || 0) + 1 : thread.unread_count || 0;
 
+  const update: Record<string, unknown> = {
+    contact_id: thread.contact_id || contactId || null,
+    subject: thread.subject || subject || null,
+    subject_normalized: thread.subject_normalized || normalizeThreadSubject(subject) || null,
+    snippet,
+    unread_count: unreadCount,
+    last_message_id: messageId,
+    last_message_at: messageAt,
+    last_message_direction: direction,
+    participants: mergedParticipants,
+    updated_at: new Date().toISOString(),
+  };
+  if (mailAccountId) update.mail_account_id = mailAccountId;
+  if (providerThreadId) update.provider_thread_id = providerThreadId;
+
   const { error } = await supabase
     .from('mailbox_threads')
-    .update({
-      contact_id: thread.contact_id || contactId || null,
-      subject: thread.subject || subject || null,
-      subject_normalized: thread.subject_normalized || normalizeThreadSubject(subject) || null,
-      snippet,
-      unread_count: unreadCount,
-      last_message_id: messageId,
-      last_message_at: messageAt,
-      last_message_direction: direction,
-      participants: mergedParticipants,
-      updated_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq('id', thread.id);
+
+  if ((error as { code?: string } | null)?.code === '42703') {
+    delete update.mail_account_id;
+    delete update.provider_thread_id;
+    const legacy = await supabase
+      .from('mailbox_threads')
+      .update(update)
+      .eq('id', thread.id);
+    if (legacy.error) throw legacy.error;
+    return;
+  }
 
   if (error) throw error;
 }
@@ -302,7 +367,12 @@ async function persistMailboxMessage(
     workspaceId,
     contactId,
     emailSentId,
+    mailAccountId,
     threadId,
+    provider,
+    providerMessageId,
+    providerThreadId,
+    providerLabelIds,
     internetMessageId,
     inReplyTo,
     references,
@@ -343,6 +413,8 @@ async function persistMailboxMessage(
     workspaceId,
     contactId,
     subject,
+    mailAccountId,
+    providerThreadId,
     references: normalizedReferences,
     participants,
     messageAt,
@@ -355,7 +427,12 @@ async function persistMailboxMessage(
     user_id: userId,
     contact_id: contactId || thread.contact_id || null,
     email_sent_id: emailSentId || null,
+    mail_account_id: mailAccountId || null,
     direction,
+    provider: provider || null,
+    provider_message_id: providerMessageId || null,
+    provider_thread_id: providerThreadId || null,
+    provider_label_ids: providerLabelIds || [],
     internet_message_id: normalizedMessageId,
     in_reply_to: normalizeMessageId(inReplyTo) || null,
     references: normalizedReferences,
@@ -387,6 +464,8 @@ async function persistMailboxMessage(
       messageAt,
       subject,
       contactId,
+      mailAccountId,
+      providerThreadId,
       participants,
       snippet,
     });

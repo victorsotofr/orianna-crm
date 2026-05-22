@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
+import { getDefaultSendMailAccount } from '@/lib/mail-accounts';
+import { sendWithMailAccount } from '@/lib/mail-account-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
@@ -74,9 +76,17 @@ export async function POST(request: Request) {
       .eq('user_id', user.id)
       .single();
 
-    if (settingsError || !settings || !settings.smtp_password_encrypted) {
+    if (settingsError || !settings) {
       return NextResponse.json(
-        { error: 'SMTP settings not configured. Please configure them in Settings.' },
+        { error: 'Email settings not configured. Please configure them in Settings.' },
+        { status: 400 }
+      );
+    }
+
+    const mailAccount = await getDefaultSendMailAccount(supabase, user.id);
+    if (!mailAccount && (!settings.smtp_host || !settings.smtp_user || !settings.smtp_password_encrypted)) {
+      return NextResponse.json(
+        { error: 'No sending mailbox configured. Connect Gmail/Outlook or configure SMTP in Settings.' },
         { status: 400 }
       );
     }
@@ -171,22 +181,25 @@ export async function POST(request: Request) {
     const plainText = extractPlainText(undefined, composedHtml);
 
     // Send email
-    const emailResult = await sendEmail(
-      {
-        host: settings.smtp_host!,
-        port: settings.smtp_port,
-        user: settings.smtp_user!,
-        passwordEncrypted: settings.smtp_password_encrypted,
-        bccEnabled: settings.bcc_enabled !== false,
-      },
-      {
-        to: contact.email,
-        subject: renderedSubject,
-        html: finalHtml,
-        text: plainText,
-        from: settings.user_email || user.email || 'Email Automation',
-      }
-    );
+    const emailData = {
+      to: contact.email,
+      subject: renderedSubject,
+      html: finalHtml,
+      text: plainText,
+      from: settings.user_email || user.email || 'Email Automation',
+    };
+    const emailResult = mailAccount
+      ? await sendWithMailAccount(supabase, mailAccount, emailData)
+      : await sendEmail(
+        {
+          host: settings.smtp_host!,
+          port: settings.smtp_port,
+          user: settings.smtp_user!,
+          passwordEncrypted: settings.smtp_password_encrypted,
+          bccEnabled: settings.bcc_enabled !== false,
+        },
+        emailData
+      );
 
     if (!emailResult.success) {
       // Update record to failed
@@ -207,13 +220,17 @@ export async function POST(request: Request) {
       userId: user.id,
       contactId,
       emailSentId: emailRecord.id,
+      mailAccountId: mailAccount?.id || null,
+      provider: mailAccount?.provider || null,
+      providerMessageId: emailResult.providerMessageId || null,
+      providerThreadId: emailResult.providerThreadId || null,
       rawMessageId: emailResult.messageId!,
       subject: renderedSubject,
       htmlBody: composedHtml,
       textBody: plainText,
       to: contact.email,
       from: {
-        email: settings.smtp_user!,
+        email: mailAccount?.email || settings.smtp_user!,
         name: settings.user_email || user.email || 'Email Automation',
       },
       metadata: {
@@ -234,10 +251,10 @@ export async function POST(request: Request) {
       messageId: emailResult.messageId,
       message: 'Email sent successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Email send error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: error.message || 'Failed to send email', success: false },
+      { error: error instanceof Error ? error.message : 'Failed to send email', success: false },
       { status: 500 }
     );
   }

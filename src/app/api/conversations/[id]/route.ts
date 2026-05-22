@@ -27,19 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { data: thread, error: threadError } = await supabase
       .from('mailbox_threads')
       .select(`
-        id,
-        workspace_id,
-        user_id,
-        contact_id,
-        subject,
-        subject_normalized,
-        snippet,
-        unread_count,
-        last_message_at,
-        last_message_direction,
-        participants,
-        created_at,
-        updated_at,
+        *,
         contacts (
           id,
           email,

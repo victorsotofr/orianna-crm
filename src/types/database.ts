@@ -255,6 +255,8 @@ export interface MailboxThread {
   workspace_id: string;
   user_id: string;
   contact_id: string | null;
+  mail_account_id: string | null;
+  provider_thread_id: string | null;
   subject: string | null;
   subject_normalized: string | null;
   snippet: string | null;
@@ -274,6 +276,11 @@ export interface MailboxMessage {
   user_id: string;
   contact_id: string | null;
   email_sent_id: string | null;
+  mail_account_id: string | null;
+  provider: 'imap' | 'gmail' | 'outlook' | null;
+  provider_message_id: string | null;
+  provider_thread_id: string | null;
+  provider_label_ids: string[];
   direction: 'inbound' | 'outbound';
   internet_message_id: string;
   in_reply_to: string | null;

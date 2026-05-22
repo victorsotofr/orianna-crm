@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { syncMailboxForUser } from '@/lib/mailbox-sync';
+import { syncAllMailAccountsForUser } from '@/lib/mail-account-sync';
 import { getServiceSupabase } from '@/lib/supabase';
 
 export const maxDuration = 120;
@@ -13,12 +13,9 @@ export async function POST(request: Request) {
     }
 
     const supabase = getServiceSupabase();
-    const { data: usersWithImap, error } = await supabase
+    const { data: usersWithSettings, error } = await supabase
       .from('user_settings')
-      .select('user_id, user_email, smtp_user, imap_host, imap_port, imap_user, imap_password_encrypted')
-      .not('imap_host', 'is', null)
-      .not('imap_user', 'is', null)
-      .not('imap_password_encrypted', 'is', null);
+      .select('user_id, user_email, smtp_host, smtp_port, smtp_user, smtp_password_encrypted, imap_host, imap_port, imap_user, imap_password_encrypted, bcc_enabled');
 
     if (error) throw error;
 
@@ -27,12 +24,15 @@ export async function POST(request: Request) {
     let stored = 0;
     const userErrors: string[] = [];
 
-    for (const userSettings of usersWithImap || []) {
+    const users = usersWithSettings || [];
+    for (const userSettings of users) {
       try {
-        const result = await syncMailboxForUser(supabase, userSettings);
-        repliesDetected += result.repliesDetected;
-        scanned += result.scanned;
-        stored += result.stored;
+        const { results } = await syncAllMailAccountsForUser(supabase, userSettings.user_id, userSettings);
+        for (const result of results) {
+          repliesDetected += result.repliesDetected;
+          scanned += result.scanned;
+          stored += result.stored;
+        }
       } catch (userError) {
         console.error(
           `Error syncing mailbox for ${userSettings.user_email}:`,
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       repliesDetected,
       scanned,
       stored,
-      usersChecked: usersWithImap?.length || 0,
+      usersChecked: users.length,
       errors: userErrors.length > 0 ? userErrors : undefined,
     });
   } catch (error) {

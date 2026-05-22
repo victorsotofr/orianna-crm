@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 // import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
+import { getDefaultSendMailAccount } from '@/lib/mail-accounts';
+import { sendWithMailAccount } from '@/lib/mail-account-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
@@ -69,21 +71,22 @@ export async function POST(request: Request) {
       .eq('user_id', user.id)
       .single();
 
-    if (!userSettings?.smtp_host || !userSettings?.smtp_user || !userSettings?.smtp_password_encrypted) {
+    const mailAccount = await getDefaultSendMailAccount(supabase, user.id);
+    if (!mailAccount && (!userSettings?.smtp_host || !userSettings?.smtp_user || !userSettings?.smtp_password_encrypted)) {
       return NextResponse.json({
-        error: 'Configuration SMTP manquante. Allez dans Paramètres pour configurer votre email.',
+        error: 'Aucune boîte d’envoi configurée. Connectez Gmail/Outlook ou configurez SMTP dans Paramètres.',
       }, { status: 400 });
     }
 
     // Atomic daily send limit check
     const { data: canSend } = await supabase.rpc('check_daily_send_limit', {
       p_user_id: user.id,
-      p_limit: userSettings.daily_send_limit || 50,
+      p_limit: userSettings?.daily_send_limit || 50,
     });
 
     if (!canSend) {
       return NextResponse.json({
-        error: `Limite d'envoi journalière (${userSettings.daily_send_limit || 50}) atteinte. Réessayez demain.`,
+        error: `Limite d'envoi journalière (${userSettings?.daily_send_limit || 50}) atteinte. Réessayez demain.`,
       }, { status: 429 });
     }
 
@@ -164,30 +167,32 @@ export async function POST(request: Request) {
           throw new Error(insertError?.message || 'Failed to create email record');
         }
 
-        const composedHtml = userSettings.signature_html
+        const composedHtml = userSettings?.signature_html
           ? `${renderedHtml}\n\n${userSettings.signature_html}`
           : renderedHtml;
         const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
         const finalHtml = `${composedHtml}\n${trackingPixel}`;
         const plainText = extractPlainText(undefined, composedHtml);
 
-        // Send email via SMTP
-        const result = await sendEmail(
-          {
-            host: userSettings.smtp_host,
-            port: userSettings.smtp_port || 587,
-            user: userSettings.smtp_user,
-            passwordEncrypted: userSettings.smtp_password_encrypted,
-            bccEnabled: userSettings.bcc_enabled !== false,
-          },
-          {
-            to: contact.email,
-            subject: renderedSubject,
-            html: finalHtml,
-            text: plainText,
-            from: userSettings.user_email || user.email || 'CRM',
-          }
-        );
+        const emailData = {
+          to: contact.email,
+          subject: renderedSubject,
+          html: finalHtml,
+          text: plainText,
+          from: userSettings?.user_email || user.email || 'CRM',
+        };
+        const result = mailAccount
+          ? await sendWithMailAccount(supabase, mailAccount, emailData)
+          : await sendEmail(
+            {
+              host: userSettings!.smtp_host,
+              port: userSettings!.smtp_port || 587,
+              user: userSettings!.smtp_user,
+              passwordEncrypted: userSettings!.smtp_password_encrypted,
+              bccEnabled: userSettings!.bcc_enabled !== false,
+            },
+            emailData
+          );
 
         if (!result.success) {
           // Update record to failed
@@ -205,14 +210,18 @@ export async function POST(request: Request) {
             userId: user.id,
             contactId: contact.id,
             emailSentId: emailRecord.id,
+            mailAccountId: mailAccount?.id || null,
+            provider: mailAccount?.provider || null,
+            providerMessageId: result.providerMessageId || null,
+            providerThreadId: result.providerThreadId || null,
             rawMessageId: result.messageId!,
             subject: renderedSubject,
             htmlBody: composedHtml,
             textBody: plainText,
             to: contact.email,
             from: {
-              email: userSettings.smtp_user,
-              name: userSettings.user_email || user.email || 'CRM',
+              email: mailAccount?.email || userSettings!.smtp_user,
+              name: userSettings?.user_email || user.email || 'CRM',
             },
             metadata: {
               template_id: templateId,
@@ -261,7 +270,7 @@ export async function POST(request: Request) {
         });
 
         sentCount++;
-      } catch (error: any) {
+      } catch (error: unknown) {
         const errMsg = error instanceof Error ? error.message : String(error);
         console.error(`Campaign email send error for ${contact.email}:`, errMsg);
         errors.push(`${contact.email}: ${errMsg}`);
@@ -273,7 +282,7 @@ export async function POST(request: Request) {
       total: contacts.length,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Campaign send error:', error instanceof Error ? error.message : error);
     // Sentry.captureException(error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

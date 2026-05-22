@@ -24,7 +24,7 @@ export interface EmailData {
   references?: string[];
 }
 
-export async function sendEmail(config: EmailConfig, emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
+export async function sendEmail(config: EmailConfig, emailData: EmailData): Promise<{ success: boolean; messageId?: string; providerMessageId?: string | null; providerThreadId?: string | null; error?: string }> {
   try {
     const password = decrypt(config.passwordEncrypted);
 

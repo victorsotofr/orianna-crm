@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { syncMailboxForUser } from '@/lib/mailbox-sync';
+import { syncAllMailAccountsForUser } from '@/lib/mail-account-sync';
 import { getServiceSupabase } from '@/lib/supabase';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
@@ -29,19 +29,28 @@ export async function POST(request: Request) {
     const serviceSupabase = getServiceSupabase();
     const { data: settings, error } = await serviceSupabase
       .from('user_settings')
-      .select('user_id, user_email, smtp_user, imap_host, imap_port, imap_user, imap_password_encrypted')
+      .select('user_id, user_email, smtp_host, smtp_port, smtp_user, smtp_password_encrypted, imap_host, imap_port, imap_user, imap_password_encrypted, bcc_enabled')
       .eq('user_id', user.id)
       .maybeSingle();
 
     if (error) throw error;
-    if (!settings?.imap_host || !settings.imap_user || !settings.imap_password_encrypted) {
+
+    const { results } = await syncAllMailAccountsForUser(serviceSupabase, user.id, settings);
+    if (results.length === 0) {
       return NextResponse.json(
-        { error: 'IMAP settings are not configured. Configure them in Settings first.' },
+        { error: 'No synced mailbox is configured. Connect Gmail/Outlook or configure IMAP in Settings.' },
         { status: 400 }
       );
     }
-
-    const result = await syncMailboxForUser(serviceSupabase, settings);
+    const result = results.reduce(
+      (acc, item) => ({
+        scanned: acc.scanned + item.scanned,
+        stored: acc.stored + item.stored,
+        repliesDetected: acc.repliesDetected + item.repliesDetected,
+        bouncesDetected: acc.bouncesDetected + item.bouncesDetected,
+      }),
+      { scanned: 0, stored: 0, repliesDetected: 0, bouncesDetected: 0 }
+    );
     return NextResponse.json({
       success: true,
       result: {
@@ -49,12 +58,11 @@ export async function POST(request: Request) {
         stored: result.stored,
         repliesDetected: result.repliesDetected,
         bouncesDetected: result.bouncesDetected,
-        detectedBounces: result.detectedBounces,
-        lastSeenUid: result.lastSeenUid,
+        accounts: results,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Conversation sync error:', error instanceof Error ? error.message : error);
-    return NextResponse.json({ error: error.message || 'Failed to sync conversations' }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to sync conversations' }, { status: 500 });
   }
 }

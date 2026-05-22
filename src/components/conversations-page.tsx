@@ -69,6 +69,11 @@ function getMessageBody(message: ConversationMessage) {
   return stripQuotedReplyHistory(raw)
 }
 
+function getProviderLabel(message: ConversationMessage) {
+  if (!message.provider) return null
+  return message.provider === "imap" ? "IMAP" : message.provider === "gmail" ? "Gmail" : "Outlook"
+}
+
 export function ConversationsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -711,6 +716,11 @@ export function ConversationsPage() {
                                   )}
                                   {!inbound && message.email_sent_id && (
                                     <EmailStatusBadge status={message.emails_sent?.status || "sent"} />
+                                  )}
+                                  {getProviderLabel(message) && (
+                                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">
+                                      {getProviderLabel(message)}
+                                    </span>
                                   )}
                                 </div>
                                 <div className="whitespace-pre-wrap text-sm leading-6">

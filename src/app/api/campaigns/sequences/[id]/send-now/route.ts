@@ -2,11 +2,47 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { sendEmail } from '@/lib/email-sender';
+import { getDefaultSendMailAccount } from '@/lib/mail-accounts';
+import { sendWithMailAccount } from '@/lib/mail-account-sender';
 import { renderTemplate } from '@/lib/template-renderer';
 import { buildTrackingPixelHtml } from '@/lib/email-tracking';
 import { extractPlainText } from '@/lib/email-content';
 import { finalizeSentEmail } from '@/lib/outbound-email';
-import { getGtmSendBlockReason } from '@/lib/gtm-safety';
+import { getGtmSendBlockReason, type GtmReviewStatus } from '@/lib/gtm-safety';
+
+interface SequenceStep {
+  id: string;
+  template_id?: string | null;
+  step_order: number;
+  delay_days: number;
+}
+
+interface EnrollmentContact {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  company_name: string | null;
+  company_domain: string | null;
+  job_title: string | null;
+  location: string | null;
+  ai_personalized_line: string | null;
+  assigned_to: string | null;
+  status: string | null;
+  source: string | null;
+  gtm_review_status: GtmReviewStatus | null;
+  gtm_send_approved_at: string | null;
+  replied_at: string | null;
+  email_bounced: boolean | null;
+  opted_out_at: string | null;
+}
+
+interface SendNowResult {
+  enrollment_id: string;
+  contact_email: string;
+  success: boolean;
+  error?: string;
+}
 
 // POST /api/campaigns/sequences/[id]/send-now - Send pending emails immediately (for testing)
 export async function POST(
@@ -53,22 +89,23 @@ export async function POST(
     }
 
     // Get current user's SMTP settings
-    const { data: currentUserSettings, error: currentUserSettingsError } = await supabase
+    const { data: currentUserSettings } = await supabase
       .from('user_settings')
       .select('*')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (!currentUserSettings || !currentUserSettings.smtp_host) {
+    const mailAccount = await getDefaultSendMailAccount(supabase, user.id);
+    if (!mailAccount && (!currentUserSettings || !currentUserSettings.smtp_host)) {
       return NextResponse.json({
-        error: 'Vous devez configurer votre SMTP dans Paramètres avant d\'envoyer des emails',
+        error: 'Vous devez configurer une boîte d’envoi dans Paramètres avant d’envoyer des emails',
         sent: 0,
       }, { status: 400 });
     }
 
     // If sequence is draft, activate it and initialize next_send_at for all enrollments
     if (sequence.status === 'draft') {
-      const sortedSteps = sequence.steps.sort((a: any, b: any) => a.step_order - b.step_order);
+      const sortedSteps = ([...(sequence.steps || [])] as SequenceStep[]).sort((a, b) => a.step_order - b.step_order);
       const firstStep = sortedSteps[0];
 
       // Get all enrollments with null next_send_at
@@ -147,14 +184,14 @@ export async function POST(
     }
 
     // Limit batch size based on daily send limit
-    const dailyLimit = currentUserSettings.daily_send_limit || 50;
+    const dailyLimit = currentUserSettings?.daily_send_limit || 50;
     const batchSize = Math.min(pendingEnrollments.length, dailyLimit, 20); // Max 20 per batch
     const emailsToSend = pendingEnrollments.slice(0, batchSize);
 
     console.log(`[send-now] Processing ${emailsToSend.length}/${pendingEnrollments.length} pending emails`);
 
-    const results = [];
-    const sortedSteps = sequence.steps.sort((a: any, b: any) => a.step_order - b.step_order);
+    const results: SendNowResult[] = [];
+    const sortedSteps = ([...(sequence.steps || [])] as SequenceStep[]).sort((a, b) => a.step_order - b.step_order);
 
     // Helper function to delay between sends
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -168,7 +205,7 @@ export async function POST(
         await delay(60000); // 1 minute = 60,000ms
       }
 
-      const contact = enrollment.contact as any;
+      const contact = (Array.isArray(enrollment.contact) ? enrollment.contact[0] : enrollment.contact) as EnrollmentContact | null;
       console.log(`[send-now] Processing enrollment ${enrollment.id}:`, {
         hasContact: !!contact,
         email: contact?.email,
@@ -217,7 +254,7 @@ export async function POST(
       }
 
       // Find current step
-      const currentStep = sortedSteps.find((s: any) => s.id === enrollment.current_step_id);
+      const currentStep = sortedSteps.find((s) => s.id === enrollment.current_step_id);
       if (!currentStep) {
         console.log(`[send-now] Skipping enrollment ${enrollment.id}: step not found`);
         continue;
@@ -262,7 +299,7 @@ export async function POST(
         continue;
       }
 
-      // Use current user's SMTP settings for sending
+      // Use current user's default mailbox for sending.
       const userSettings = currentUserSettings;
 
       // Render template
@@ -291,7 +328,7 @@ export async function POST(
             template_id: template.id,
             user_id: contact.assigned_to,
             sent_by: user.id,
-            sent_by_email: userSettings.user_email,
+            sent_by_email: userSettings?.user_email || user.email,
             status: 'pending',
             enrollment_id: enrollment.id,
             step_id: currentStep.id,
@@ -315,14 +352,6 @@ export async function POST(
           throw new Error(insertError?.message || 'Failed to create email record');
         }
 
-        const emailConfig = {
-          host: userSettings.smtp_host,
-          port: userSettings.smtp_port,
-          user: userSettings.smtp_user,
-          passwordEncrypted: userSettings.smtp_password_encrypted,
-          bccEnabled: userSettings.bcc_enabled,
-        };
-
         const trackingPixel = buildTrackingPixelHtml(emailRecord.id);
         const finalHtml = `${rendered}\n${trackingPixel}`;
         const plainText = extractPlainText(undefined, rendered);
@@ -332,10 +361,21 @@ export async function POST(
           subject: renderedSubject,
           html: finalHtml,
           text: plainText,
-          from: userSettings.user_email || user.email || 'CRM',
+          from: userSettings?.user_email || user.email || 'CRM',
         };
 
-        const result = await sendEmail(emailConfig, emailData);
+        const result = mailAccount
+          ? await sendWithMailAccount(supabase, mailAccount, emailData)
+          : await sendEmail(
+            {
+              host: userSettings!.smtp_host,
+              port: userSettings!.smtp_port,
+              user: userSettings!.smtp_user,
+              passwordEncrypted: userSettings!.smtp_password_encrypted,
+              bccEnabled: userSettings!.bcc_enabled,
+            },
+            emailData
+          );
 
         if (!result.success) {
           await supabase
@@ -352,14 +392,18 @@ export async function POST(
             userId: user.id,
             contactId: contact.id,
             emailSentId: emailRecord.id,
+            mailAccountId: mailAccount?.id || null,
+            provider: mailAccount?.provider || null,
+            providerMessageId: result.providerMessageId || null,
+            providerThreadId: result.providerThreadId || null,
             rawMessageId: result.messageId!,
             subject: renderedSubject,
             htmlBody: rendered,
             textBody: plainText,
             to: contact.email,
             from: {
-              email: userSettings.smtp_user,
-              name: userSettings.user_email || 'CRM',
+              email: mailAccount?.email || userSettings!.smtp_user,
+              name: userSettings?.user_email || 'CRM',
             },
             enrollmentId: enrollment.id,
             stepId: currentStep.id,
@@ -390,7 +434,7 @@ export async function POST(
         }
 
         // Find next step
-        const currentStepIndex = sortedSteps.findIndex((s: any) => s.id === currentStep.id);
+        const currentStepIndex = sortedSteps.findIndex((s) => s.id === currentStep.id);
         const nextStep = sortedSteps[currentStepIndex + 1];
 
         if (nextStep) {
@@ -436,13 +480,13 @@ export async function POST(
           contact_email: contact.email,
           success: true,
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(`[send-now] Error sending to ${contact.email}:`, error);
         results.push({
           enrollment_id: enrollment.id,
           contact_email: contact.email,
           success: false,
-          error: error.message,
+          error: error instanceof Error ? error.message : 'Failed to send email',
         });
       }
     }
@@ -461,10 +505,10 @@ export async function POST(
       results,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Send now error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: error.message || 'Failed to send emails' },
+      { error: error instanceof Error ? error.message : 'Failed to send emails' },
       { status: 500 }
     );
   }

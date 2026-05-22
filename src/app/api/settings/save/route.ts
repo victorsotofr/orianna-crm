@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase-server';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { upsertLegacyImapMailAccount } from '@/lib/mail-accounts';
 
 export async function POST(request: Request) {
   try {
@@ -41,9 +42,9 @@ export async function POST(request: Request) {
     }
 
     // Prepare upsert data
-    const upsertData: any = {
+    const upsertData: Record<string, string | number | boolean | null> = {
       user_id: user.id,
-      user_email: user.email,
+      user_email: user.email || null,
       smtp_host: smtpHost,
       smtp_port: parseInt(smtpPort),
       smtp_user: smtpUser,
@@ -82,18 +83,27 @@ export async function POST(request: Request) {
       throw upsertError;
     }
 
+    const { data: savedSettings, error: savedSettingsError } = await supabase
+      .from('user_settings')
+      .select('user_id, user_email, smtp_host, smtp_port, smtp_user, smtp_password_encrypted, imap_host, imap_port, imap_user, imap_password_encrypted, bcc_enabled')
+      .eq('user_id', user.id)
+      .single();
+
+    if (savedSettingsError) throw savedSettingsError;
+    await upsertLegacyImapMailAccount(supabase, savedSettings);
+
     return NextResponse.json({ success: true, message: 'Settings saved successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Settings save error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: error.message || 'Failed to save settings' },
+      { error: error instanceof Error ? error.message : 'Failed to save settings' },
       { status: 500 }
     );
   }
 }
 
 // GET endpoint to fetch current settings
-export async function GET(request: Request) {
+export async function GET() {
   try {
     // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
@@ -132,12 +142,11 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({ settings: null });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Settings fetch error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch settings' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch settings' },
       { status: 500 }
     );
   }
 }
-

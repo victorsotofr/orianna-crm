@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { extractReplyText } from '@/lib/email-content';
 import { decrypt } from '@/lib/encryption';
+import { registerContactEmailAddress } from '@/lib/mailbox-ingest';
 import { persistInboundMailboxMessage } from '@/lib/mailbox-store';
 import { notifyReply, notifyBounce } from '@/lib/telegram-notifications';
 import {
@@ -24,6 +25,7 @@ import {
 export interface MailboxSyncUserSettings {
   user_id: string;
   user_email: string | null;
+  mail_account_id?: string | null;
   smtp_user: string | null;
   imap_host: string | null;
   imap_port: number | null;
@@ -110,7 +112,19 @@ async function downloadPartAsString(client: ImapFlow, uid: number, part?: string
   return streamToString(content);
 }
 
-async function getSyncState(supabase: SupabaseClient, userId: string) {
+async function getSyncState(supabase: SupabaseClient, userId: string, mailAccountId?: string | null) {
+  if (mailAccountId) {
+    const { data, error } = await supabase
+      .from('mail_account_sync_state')
+      .select('*')
+      .eq('mail_account_id', mailAccountId)
+      .eq('folder', 'INBOX')
+      .maybeSingle();
+
+    if (error && error.code !== '42P01') throw error;
+    return data;
+  }
+
   const { data, error } = await supabase
     .from('mailbox_sync_state')
     .select('*')
@@ -125,18 +139,41 @@ async function upsertSyncState(
   supabase: SupabaseClient,
   {
     userId,
+    mailAccountId,
     folder,
     uidValidity,
     lastSeenUid,
     lastError,
   }: {
     userId: string;
+    mailAccountId?: string | null;
     folder: string;
     uidValidity?: bigint | number | null;
     lastSeenUid: number;
     lastError?: string | null;
   }
 ) {
+  if (mailAccountId) {
+    const { error } = await supabase
+      .from('mail_account_sync_state')
+      .upsert(
+        {
+          mail_account_id: mailAccountId,
+          user_id: userId,
+          folder,
+          uid_validity: uidValidity != null ? String(uidValidity) : null,
+          last_seen_uid: lastSeenUid,
+          last_synced_at: new Date().toISOString(),
+          last_error: lastError || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'mail_account_id,folder' }
+      );
+
+    if (error && error.code !== '42P01') throw error;
+    if (!error) return;
+  }
+
   const { error } = await supabase
     .from('mailbox_sync_state')
     .upsert(
@@ -183,6 +220,20 @@ async function findContactBySender(
   cache: Map<string, ContactMatch | null>
 ): Promise<ContactMatch | null> {
   if (cache.has(senderEmail)) return cache.get(senderEmail) || null;
+
+  const { data: aliasRows, error: aliasError } = await supabase
+    .from('contact_email_addresses')
+    .select('contact_id, workspace_id, email')
+    .eq('normalized_email', senderEmail)
+    .limit(1);
+
+  if (aliasError && aliasError.code !== '42P01' && aliasError.code !== '42703') throw aliasError;
+  const alias = aliasRows?.[0];
+  if (alias?.contact_id && alias.workspace_id) {
+    const match = { id: alias.contact_id, workspace_id: alias.workspace_id, email: alias.email || senderEmail };
+    cache.set(senderEmail, match);
+    return match;
+  }
 
   const { data, error } = await supabase
     .from('contacts')
@@ -381,7 +432,7 @@ export async function syncMailboxForUser(
   try {
     await client.connect();
     const mailbox = await client.mailboxOpen('INBOX', { readOnly: true });
-    const syncState = await getSyncState(supabase, settings.user_id);
+    const syncState = await getSyncState(supabase, settings.user_id, settings.mail_account_id);
 
     const uidValidityChanged =
       syncState?.uid_validity != null &&
@@ -398,6 +449,7 @@ export async function syncMailboxForUser(
     if (!mailbox.exists || initialStartUid >= mailbox.uidNext) {
       await upsertSyncState(supabase, {
         userId: settings.user_id,
+        mailAccountId: settings.mail_account_id,
         folder: 'INBOX',
         uidValidity: mailbox.uidValidity,
         lastSeenUid,
@@ -599,6 +651,8 @@ export async function syncMailboxForUser(
         workspaceId: matched.workspaceId,
         contactId: matched.contactId,
         emailSentId: matched.matchedSentEmail?.id || null,
+        mailAccountId: settings.mail_account_id || null,
+        provider: settings.mail_account_id ? 'imap' : null,
         internetMessageId: matched.incomingMessageId,
         inReplyTo: matched.inReplyTo,
         references: matched.references,
@@ -616,6 +670,7 @@ export async function syncMailboxForUser(
         metadata: {
           flags: matched.flags,
           raw_message_id: formatMessageId(matched.incomingMessageId) || matched.incomingMessageId,
+          mail_account_id: settings.mail_account_id || null,
         },
       });
 
@@ -624,6 +679,17 @@ export async function syncMailboxForUser(
       }
 
       stored++;
+
+      if (matched.contactId && matched.workspaceId) {
+        await registerContactEmailAddress(supabase, {
+          workspaceId: matched.workspaceId,
+          contactId: matched.contactId,
+          email: matched.senderEmail,
+          kind: matched.matchedSentEmail ? 'reply_to' : 'discovered',
+          source: 'imap_inbound',
+          confidence: matched.matchedSentEmail ? 1 : 0.7,
+        });
+      }
 
       // Handle bounce detection — takes priority over reply detection
       if (bounceResult.isBounce) {
@@ -735,6 +801,7 @@ export async function syncMailboxForUser(
 
     await upsertSyncState(supabase, {
       userId: settings.user_id,
+      mailAccountId: settings.mail_account_id,
       folder: 'INBOX',
       uidValidity: mailbox.uidValidity,
       lastSeenUid,
@@ -745,6 +812,7 @@ export async function syncMailboxForUser(
   } catch (error) {
     await upsertSyncState(supabase, {
       userId: settings.user_id,
+      mailAccountId: settings.mail_account_id,
       folder: 'INBOX',
       lastSeenUid,
       lastError: error instanceof Error ? error.message : 'Mailbox sync failed',

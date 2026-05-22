@@ -10,6 +10,10 @@ interface FinalizeSentEmailInput {
   userId: string;
   contactId: string | null;
   emailSentId: string;
+  mailAccountId?: string | null;
+  provider?: string | null;
+  providerMessageId?: string | null;
+  providerThreadId?: string | null;
   rawMessageId: string;
   subject: string;
   htmlBody: string;
@@ -33,6 +37,10 @@ export async function finalizeSentEmail({
   userId,
   contactId,
   emailSentId,
+  mailAccountId,
+  provider,
+  providerMessageId,
+  providerThreadId,
   rawMessageId,
   subject,
   htmlBody,
@@ -50,11 +58,33 @@ export async function finalizeSentEmail({
   metadata,
 }: FinalizeSentEmailInput) {
   const timestamp = sentAt || new Date().toISOString();
+  const updatePayload = {
+    status: 'sent',
+    message_id: rawMessageId,
+    sent_at: timestamp,
+    mail_account_id: mailAccountId || null,
+    provider: provider || null,
+    provider_message_id: providerMessageId || null,
+    provider_thread_id: providerThreadId || null,
+    sent_from_email: from.email,
+  };
 
-  const { error: updateError } = await supabase
+  let { error: updateError } = await supabase
     .from('emails_sent')
-    .update({ status: 'sent', message_id: rawMessageId, sent_at: timestamp })
+    .update(updatePayload)
     .eq('id', emailSentId);
+
+  if ((updateError as { code?: string } | null)?.code === '42703') {
+    const legacyPayload = { ...updatePayload };
+    for (const key of ['mail_account_id', 'provider', 'provider_message_id', 'provider_thread_id', 'sent_from_email']) {
+      delete legacyPayload[key as keyof typeof legacyPayload];
+    }
+    const legacy = await supabase
+      .from('emails_sent')
+      .update(legacyPayload)
+      .eq('id', emailSentId);
+    updateError = legacy.error;
+  }
 
   if (updateError) throw updateError;
 
@@ -64,6 +94,10 @@ export async function finalizeSentEmail({
     workspaceId,
     contactId,
     emailSentId,
+    mailAccountId,
+    provider,
+    providerMessageId,
+    providerThreadId,
     threadId,
     internetMessageId: rawMessageId,
     inReplyTo,

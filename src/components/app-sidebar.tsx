@@ -161,8 +161,7 @@ export function AppSidebar({
   ], [t, followUpCount])
 
   const moreActive = moreItems.some((item) => pathname === item.url || pathname.startsWith(item.url + '/'))
-    || pathname === '/settings'
-    || pathname.startsWith('/settings/')
+  const settingsActive = pathname === '/settings' || pathname.startsWith('/settings/')
 
   const showSwitcher = workspaces.length > 0
 
@@ -243,23 +242,32 @@ export function AppSidebar({
                       </a>
                     </DropdownMenuItem>
                   ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
-                    <MessageSquarePlus className="size-4" />
-                    {t.sidebar.feedback}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a href="/settings">
-                      <Settings className="size-4" />
-                      {t.sidebar.settings}
-                    </a>
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setFeedbackOpen(true)}
+                tooltip={t.sidebar.feedback}
+                className="bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50"
+              >
+                <MessageSquarePlus className="size-4" />
+                <span>{t.sidebar.feedback}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip={t.sidebar.settings} isActive={settingsActive}>
+                <a href="/settings">
+                  <Settings className="size-4" />
+                  <span>{t.sidebar.settings}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
           <NavUser user={user} />
         </SidebarFooter>
         <SidebarRail />

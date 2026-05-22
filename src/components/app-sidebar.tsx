@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect, useMemo } from "react"
+import { usePathname } from "next/navigation"
 import {
   Home,
   Users,
@@ -15,6 +16,7 @@ import {
   Plus,
   Check,
   Reply,
+  MoreHorizontal,
   MessageSquareText,
 } from "lucide-react"
 
@@ -55,6 +57,7 @@ export function AppSidebar({
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [followUpCount, setFollowUpCount] = useState(0)
   const [unreadConversations, setUnreadConversations] = useState(0)
+  const pathname = usePathname()
   const { t } = useTranslation()
   const { workspace, workspaces, switchWorkspace } = useWorkspace()
 
@@ -116,14 +119,9 @@ export function AppSidebar({
 
   const navMain = useMemo(() => [
     {
-      title: t.sidebar.outbound,
+      title: t.sidebar.agent,
       url: "/outbound",
       icon: Bot,
-    },
-    {
-      title: t.sidebar.dashboard,
-      url: "/dashboard",
-      icon: Home,
     },
     {
       title: t.sidebar.contacts,
@@ -131,15 +129,23 @@ export function AppSidebar({
       icon: Users,
     },
     {
-      title: t.sidebar.campaigns,
-      url: "/campaigns",
-      icon: Send,
-    },
-    {
-      title: t.sidebar.conversations,
+      title: t.sidebar.inbox,
       url: "/conversations",
       icon: MessageSquareText,
       badge: unreadConversations,
+    },
+  ], [t, unreadConversations])
+
+  const moreItems = useMemo(() => [
+    {
+      title: t.sidebar.dashboard,
+      url: "/dashboard",
+      icon: Home,
+    },
+    {
+      title: t.sidebar.campaigns,
+      url: "/campaigns",
+      icon: Send,
     },
     {
       title: t.sidebar.followUps,
@@ -152,7 +158,11 @@ export function AppSidebar({
       url: "/templates",
       icon: FileText,
     },
-  ], [t, followUpCount, unreadConversations])
+  ], [t, followUpCount])
+
+  const moreActive = moreItems.some((item) => pathname === item.url || pathname.startsWith(item.url + '/'))
+    || pathname === '/settings'
+    || pathname.startsWith('/settings/')
 
   const showSwitcher = workspaces.length > 0
 
@@ -208,28 +218,48 @@ export function AppSidebar({
         </SidebarHeader>
         <SidebarContent>
           <NavMain items={navMain} />
-        </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
+          <SidebarMenu className="px-2">
             <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setFeedbackOpen(true)}
-                tooltip={t.sidebar.feedback}
-                className="bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50"
-              >
-                <MessageSquarePlus className="size-4" />
-                <span>{t.sidebar.feedback}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip={t.sidebar.settings}>
-                <a href="/settings">
-                  <Settings className="size-4" />
-                  <span>{t.sidebar.settings}</span>
-                </a>
-              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton tooltip={t.sidebar.more} isActive={moreActive}>
+                    <MoreHorizontal className="size-4" />
+                    <span>{t.sidebar.more}</span>
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" className="w-56">
+                  {moreItems.map((item) => (
+                    <DropdownMenuItem key={item.url} asChild>
+                      <a href={item.url} className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <item.icon className="size-4 shrink-0" />
+                          <span className="truncate">{item.title}</span>
+                        </span>
+                        {item.badge != null && item.badge > 0 && (
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+                            {item.badge}
+                          </span>
+                        )}
+                      </a>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
+                    <MessageSquarePlus className="size-4" />
+                    {t.sidebar.feedback}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href="/settings">
+                      <Settings className="size-4" />
+                      {t.sidebar.settings}
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </SidebarMenuItem>
           </SidebarMenu>
+        </SidebarContent>
+        <SidebarFooter>
           <NavUser user={user} />
         </SidebarFooter>
         <SidebarRail />

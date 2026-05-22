@@ -38,8 +38,16 @@ import { useTranslation, type Translations } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/lib/workspace-context';
 
+type TaskView = 'needs_work' | 'ready' | 'queued';
 type ReviewFilter = 'pending' | 'ready' | 'blocked' | 'approved' | 'rejected' | 'queued';
 type ReviewAction = 'approve_queue' | 'reject' | 'hold' | 'reenrich';
+type PrimaryActionKind = 'setup' | 'run' | 'show_ready' | 'approve_ready' | 'show_needs_work' | 'enrich_visible';
+
+const VIEW_TO_FILTER: Record<TaskView, ReviewFilter> = {
+  needs_work: 'blocked',
+  ready: 'ready',
+  queued: 'queued',
+};
 
 interface GtmStatus {
   workspace: {
@@ -131,12 +139,19 @@ interface SetupSettings {
   setActiveSequenceId: (value: string) => void;
 }
 
+interface PrimaryAction {
+  kind: PrimaryActionKind;
+  title: string;
+  detail: string;
+  label: string;
+}
+
 export default function OutboundPage() {
   const { t } = useTranslation();
   const { workspace, isLoading: workspaceLoading } = useWorkspace();
   const [status, setStatus] = useState<GtmStatus | null>(null);
   const [queue, setQueue] = useState<ReviewQueue | null>(null);
-  const [filter, setFilter] = useState<ReviewFilter>('pending');
+  const [view, setView] = useState<TaskView>('needs_work');
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -155,7 +170,7 @@ export default function OutboundPage() {
     try {
       const [statusRes, queueRes] = await Promise.all([
         apiFetch('/api/gtm/status'),
-        apiFetch(`/api/gtm/review?status=${filter}&limit=100`),
+        apiFetch(`/api/gtm/review?status=${VIEW_TO_FILTER[view]}&limit=100`),
       ]);
 
       if (!statusRes.ok) {
@@ -174,7 +189,7 @@ export default function OutboundPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, t.outbound.toasts.loadError, workspace?.id]);
+  }, [t.outbound.toasts.loadError, view, workspace?.id]);
 
   useEffect(() => {
     fetchData();
@@ -193,8 +208,9 @@ export default function OutboundPage() {
     () => items.find((item) => item.id === selectedId) || items[0] || null,
     [items, selectedId]
   );
-  const readyIds = useMemo(() => items.filter((item) => item.readyForApproval).map((item) => item.id), [items]);
-  const recommendation = getRecommendation(queue, status, t);
+  const readyIds = useMemo(() => items.filter((item) => item.readyForApproval && !item.isQueued).map((item) => item.id), [items]);
+  const visibleIds = useMemo(() => items.map((item) => item.id), [items]);
+  const primaryAction = getPrimaryAction(queue, status, view, t);
   const checklist = buildChecklist(status, queue, t);
   const settings: SetupSettings = {
     enabled,
@@ -302,203 +318,241 @@ export default function OutboundPage() {
     }
   };
 
+  const handlePrimaryAction = () => {
+    switch (primaryAction.kind) {
+      case 'setup':
+        setSetupOpen(true);
+        break;
+      case 'run':
+        runOutbound();
+        break;
+      case 'show_ready':
+        setView('ready');
+        break;
+      case 'approve_ready':
+        applyAction('approve_queue', readyIds);
+        break;
+      case 'show_needs_work':
+        setView('needs_work');
+        break;
+      case 'enrich_visible':
+        applyAction('reenrich', visibleIds);
+        break;
+    }
+  };
+
   const openDetail = (item: ReviewItem) => {
     setSelectedId(item.id);
     setDetailOpen(true);
   };
 
+  const primaryDisabled = loading || running || actingIds.size > 0
+    || (primaryAction.kind === 'approve_ready' && readyIds.length === 0)
+    || (primaryAction.kind === 'enrich_visible' && visibleIds.length === 0);
+
   return (
     <>
-      <SiteHeader title={t.outbound.title} />
+      <SiteHeader title={t.sidebar.agent} />
       <div className="page-container">
-        <div className="page-content">
-          {workspaceLoading || (loading && !status) ? (
-            <LoadingState />
-          ) : (
-            <>
-              <section className="shrink-0 rounded-lg border bg-card px-4 py-3">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="truncate text-lg font-semibold">
+        <div className="page-content bg-muted/20">
+          <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
+            {workspaceLoading || (loading && !status) ? (
+              <LoadingState />
+            ) : (
+              <>
+                <section className="rounded-xl border bg-background px-4 py-4 shadow-xs sm:px-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <StatusPill active={enabled}>
+                          {enabled ? t.outbound.agent.statusOn : t.outbound.agent.statusOff}
+                        </StatusPill>
+                        <StatusPill active={requiresApproval}>
+                          {requiresApproval ? t.outbound.agent.reviewOn : t.outbound.agent.reviewOff}
+                        </StatusPill>
+                      </div>
+                      <h1 className="truncate text-2xl font-semibold">
                         {t.outbound.heading(workspace?.name || t.outbound.workspaceFallback)}
                       </h1>
-                      <Badge variant={enabled ? 'default' : 'secondary'}>{enabled ? t.outbound.on : t.outbound.off}</Badge>
-                      <Badge variant={requiresApproval ? 'secondary' : 'destructive'}>
-                        {requiresApproval ? t.outbound.approvalMode : t.outbound.fullAutoMode}
-                      </Badge>
+                      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t.outbound.subtitle}</p>
                     </div>
-                    <p className="mt-1 truncate text-sm text-muted-foreground">{t.outbound.subtitle}</p>
+
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        {t.outbound.actions.refresh}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setSetupOpen(true)}>
+                        <Settings className="h-4 w-4" />
+                        {t.outbound.actions.setup}
+                      </Button>
+                      <Button size="sm" onClick={handlePrimaryAction} disabled={primaryDisabled}>
+                        {running || actingIds.size > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        {primaryAction.label}
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      {t.outbound.actions.refresh}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setSetupOpen(true)}>
-                      <Settings className="h-4 w-4" />
-                      {t.outbound.actions.setup}
-                    </Button>
-                    <Button size="sm" onClick={runOutbound} disabled={running}>
-                      {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                      {t.outbound.actions.run}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                  <MetricPill label={t.outbound.metrics.ready} value={queue?.counts.ready || 0} tone="ready" />
-                  <MetricPill label={t.outbound.metrics.blocked} value={queue?.counts.blocked || 0} tone="blocked" />
-                  <MetricPill label={t.outbound.metrics.pending} value={queue?.counts.pending || 0} />
-                  <MetricPill label={t.outbound.metrics.queued} value={queue?.counts.queued || 0} />
-                  <MetricPill label={t.outbound.metrics.today} value={status?.metrics.addedToday || 0} />
-                  <MetricPill label={t.outbound.metrics.active} value={status?.metrics.activeEnrollments || 0} />
-                </div>
-              </section>
-
-              <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
-                <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
-                      <Bot className="h-4 w-4" />
+                  <div className="mt-5 rounded-lg bg-muted/45 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Bot className="h-4 w-4 text-emerald-700" />
+                          {primaryAction.title}
+                        </div>
+                        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{primaryAction.detail}</p>
+                      </div>
+                      <div className="shrink-0 text-sm text-muted-foreground">
+                        {t.outbound.agent.summary(
+                          queue?.counts.ready || 0,
+                          queue?.counts.blocked || 0,
+                          queue?.counts.queued || 0,
+                          status?.metrics.addedToday || 0
+                        )}
+                      </div>
                     </div>
+                  </div>
+                </section>
+
+                <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-xs">
+                  <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{recommendation.title}</div>
-                      <div className="truncate text-xs text-muted-foreground">{recommendation.detail}</div>
+                      <h2 className="text-base font-semibold">{t.outbound.queue.title}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">{t.outbound.queue.description}</p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2 overflow-x-auto">
+                      <QueueViewButton
+                        active={view === 'needs_work'}
+                        label={t.outbound.queue.needsWork}
+                        count={queue?.counts.blocked || 0}
+                        onClick={() => setView('needs_work')}
+                      />
+                      <QueueViewButton
+                        active={view === 'ready'}
+                        label={t.outbound.queue.ready}
+                        count={queue?.counts.ready || 0}
+                        onClick={() => setView('ready')}
+                      />
+                      <QueueViewButton
+                        active={view === 'queued'}
+                        label={t.outbound.queue.queued}
+                        count={queue?.counts.queued || 0}
+                        onClick={() => setView('queued')}
+                      />
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {(['pending', 'ready', 'blocked', 'queued', 'approved', 'rejected'] as ReviewFilter[]).map((value) => (
-                      <FilterButton
-                        key={value}
-                        active={filter === value}
-                        onClick={() => setFilter(value)}
-                      >
-                        {t.outbound.filters[value]}
-                      </FilterButton>
-                    ))}
-                    <Button size="sm" onClick={() => applyAction('approve_queue', readyIds)} disabled={readyIds.length === 0 || actingIds.size > 0}>
-                      {actingIds.size > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      {t.outbound.actions.approveReady(readyIds.length)}
-                    </Button>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href="/contacts?source=gtm_autopilot">{t.outbound.actions.contacts}</Link>
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-auto">
-                  {items.length > 0 ? (
-                    <div className="min-w-[900px]">
-                      <QueueHeader t={t} />
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    {items.length > 0 ? (
                       <div className="divide-y">
                         {items.map((item) => (
-                          <QueueRow
+                          <ProspectTaskRow
                             key={item.id}
                             item={item}
                             acting={actingIds.has(item.id)}
                             selected={selectedId === item.id}
                             onOpen={() => openDetail(item)}
+                            onAction={(action) => applyAction(action, [item.id])}
                             t={t}
                           />
                         ))}
                       </div>
-                    </div>
-                  ) : (
-                    <EmptyQueue status={status} onRun={runOutbound} running={running} t={t} />
-                  )}
-                </div>
-              </section>
+                    ) : (
+                      <EmptyQueue status={status} view={view} onRun={runOutbound} running={running} t={t} />
+                    )}
+                  </div>
+                </section>
 
-              <Sheet open={setupOpen} onOpenChange={setSetupOpen}>
-                <SheetContent side="right" className="flex w-[min(560px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
-                  <SetupSheetContent
-                    status={status}
-                    checklist={checklist}
-                    settings={settings}
-                    saving={saving}
-                    onSave={saveSettings}
-                    t={t}
-                  />
-                </SheetContent>
-              </Sheet>
+                <Sheet open={setupOpen} onOpenChange={setSetupOpen}>
+                  <SheetContent side="right" className="flex w-[min(520px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
+                    <SetupSheetContent
+                      status={status}
+                      checklist={checklist}
+                      settings={settings}
+                      saving={saving}
+                      onSave={saveSettings}
+                      t={t}
+                    />
+                  </SheetContent>
+                </Sheet>
 
-              <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-                <SheetContent side="right" className="flex w-[min(620px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
-                  <ProspectDetailSheetContent
-                    item={selectedItem}
-                    acting={selectedItem ? actingIds.has(selectedItem.id) : false}
-                    onAction={(action) => selectedItem && applyAction(action, [selectedItem.id])}
-                    t={t}
-                  />
-                </SheetContent>
-              </Sheet>
-            </>
-          )}
+                <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+                  <SheetContent side="right" className="flex w-[min(600px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
+                    <ProspectDetailSheetContent
+                      item={selectedItem}
+                      acting={selectedItem ? actingIds.has(selectedItem.id) : false}
+                      onAction={(action) => selectedItem && applyAction(action, [selectedItem.id])}
+                      t={t}
+                    />
+                  </SheetContent>
+                </Sheet>
+              </>
+            )}
+          </main>
         </div>
       </div>
     </>
   );
 }
 
-function MetricPill({ label, value, tone }: { label: string; value: number; tone?: 'ready' | 'blocked' }) {
+function StatusPill({ active, children }: { active: boolean; children: ReactNode }) {
   return (
-    <div className={cn(
-      'flex items-center justify-between rounded-md border bg-background px-3 py-2',
-      tone === 'ready' && 'border-emerald-200 bg-emerald-50/70',
-      tone === 'blocked' && 'border-amber-200 bg-amber-50/70'
-    )}>
-      <span className="truncate text-xs text-muted-foreground">{label}</span>
-      <span className="font-mono text-base font-semibold tabular-nums">{value}</span>
-    </div>
+    <span
+      className={cn(
+        'inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium',
+        active ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-muted text-muted-foreground ring-1 ring-border'
+      )}
+    >
+      {children}
+    </span>
   );
 }
 
-function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function QueueViewButton({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       className={cn(
-        'h-8 rounded-md border px-2.5 text-xs font-medium transition-colors',
-        active ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'
+        'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors',
+        active ? 'border-foreground bg-foreground text-background' : 'border-border bg-background text-muted-foreground hover:text-foreground'
       )}
       onClick={onClick}
     >
-      {children}
+      <span>{label}</span>
+      <span className={cn('font-mono text-xs tabular-nums', active ? 'text-background/80' : 'text-muted-foreground')}>{count}</span>
     </button>
   );
 }
 
-function QueueHeader({ t }: { t: Translations }) {
-  return (
-    <div className="sticky top-0 z-10 grid grid-cols-[minmax(260px,1.7fr)_108px_88px_132px_minmax(220px,1fr)_96px] gap-3 border-b bg-muted/50 px-4 py-2 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
-      <div>{t.outbound.table.prospect}</div>
-      <div>{t.outbound.table.status}</div>
-      <div className="text-right">{t.outbound.table.score}</div>
-      <div className="text-right">{t.outbound.table.email}</div>
-      <div>{t.outbound.table.agentNote}</div>
-      <div className="text-right">{t.outbound.table.actions}</div>
-    </div>
-  );
-}
-
-function QueueRow({
+function ProspectTaskRow({
   item,
   acting,
   selected,
   onOpen,
+  onAction,
   t,
 }: {
   item: ReviewItem;
   acting: boolean;
   selected: boolean;
   onOpen: () => void;
+  onAction: (action: ReviewAction) => void;
   t: Translations;
 }) {
   const subtitle = [item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany;
   const note = item.personalizedLine || item.blockers[0] || item.icpFit || t.outbound.noPreview;
+  const action = getRowAction(item, t);
 
   return (
     <div
@@ -512,42 +566,41 @@ function QueueRow({
         }
       }}
       className={cn(
-        'grid min-h-[68px] cursor-pointer grid-cols-[minmax(260px,1.7fr)_108px_88px_132px_minmax(220px,1fr)_96px] items-center gap-3 px-4 py-2.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/60',
-        selected && 'bg-muted/70'
+        'grid cursor-pointer gap-3 px-4 py-4 outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/50 sm:px-5 md:grid-cols-[minmax(0,1fr)_auto]',
+        selected && 'bg-muted/40'
       )}
     >
       <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium" title={item.name}>{item.name}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-semibold" title={item.name}>{item.name}</span>
+          <ReadinessBadge item={item} t={t} />
+          {item.aiScoreLabel && <span className="text-xs uppercase text-muted-foreground">{item.aiScoreLabel}</span>}
           {acting && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
         </div>
-        <div className="mt-1 truncate text-xs text-muted-foreground" title={subtitle}>{subtitle}</div>
+        <div className="mt-1 truncate text-sm text-muted-foreground" title={subtitle}>{subtitle}</div>
+        <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-relaxed text-muted-foreground" title={note}>{note}</p>
       </div>
 
-      <ReadinessBadge item={item} t={t} />
-
-      <div className="text-right">
-        <div className="text-xs font-medium tabular-nums">{item.aiScore != null ? `${item.aiScore}/100` : '—'}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{item.aiScoreLabel || t.outbound.notScored}</div>
-      </div>
-
-      <div className="min-w-0 text-right">
-        <div className="truncate text-xs" title={item.email || t.outbound.noEmail}>{item.email || '—'}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{item.emailVerifiedStatus || t.outbound.emailUnknown}</div>
-      </div>
-
-      <div className="min-w-0 truncate text-xs text-muted-foreground" title={note}>{note}</div>
-
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3 md:justify-end">
+        <div className="min-w-0 text-sm text-muted-foreground md:text-right">
+          <div className="truncate">{item.email || t.outbound.noEmail}</div>
+          <div className="text-xs">{item.emailVerifiedStatus || t.outbound.emailUnknown}</div>
+        </div>
         <Button
-          size="xs"
-          variant="outline"
+          size="sm"
+          variant={action.action === 'approve_queue' ? 'default' : 'outline'}
+          disabled={acting}
           onClick={(event) => {
             event.stopPropagation();
-            onOpen();
+            if (action.action) {
+              onAction(action.action);
+            } else {
+              onOpen();
+            }
           }}
         >
-          {t.outbound.actions.review}
+          {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : action.icon}
+          {action.label}
         </Button>
       </div>
     </div>
@@ -580,25 +633,25 @@ function SetupSheetContent({
         <div className="space-y-3">
           <SettingToggle
             label={t.outbound.setup.enabled}
-            detail={settings.enabled ? t.outbound.on : t.outbound.off}
+            detail={settings.enabled ? t.outbound.agent.statusOn : t.outbound.agent.statusOff}
             checked={settings.enabled}
             onCheckedChange={settings.setEnabled}
           />
           <SettingToggle
             label={t.outbound.setup.approval}
-            detail={settings.requiresApproval ? t.outbound.approvalMode : t.outbound.fullAutoMode}
+            detail={settings.requiresApproval ? t.outbound.agent.reviewOn : t.outbound.agent.reviewOff}
             checked={settings.requiresApproval}
             onCheckedChange={settings.setRequiresApproval}
           />
 
-          <div className="grid gap-3 rounded-md border bg-background p-3">
+          <div className="grid gap-4 rounded-lg border bg-background p-4">
             <div className="space-y-1.5">
               <Label className="text-xs">{t.outbound.setup.sequence}</Label>
               <Select value={settings.activeSequenceId} onValueChange={settings.setActiveSequenceId}>
                 <SelectTrigger className="h-9 w-full min-w-0">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="max-w-[520px]">
+                <SelectContent className="max-w-[480px]">
                   <SelectItem value="none">{t.outbound.setup.noSequence}</SelectItem>
                   {(status?.sequences || []).map((sequence) => (
                     <SelectItem key={sequence.id} value={sequence.id}>{sequence.name}</SelectItem>
@@ -610,7 +663,7 @@ function SetupSheetContent({
             <div className="space-y-1.5">
               <Label className="text-xs">{t.outbound.setup.limit}</Label>
               <Input
-                className="h-9 w-32"
+                className="h-9 w-28"
                 type="number"
                 min={1}
                 max={100}
@@ -620,9 +673,9 @@ function SetupSheetContent({
             </div>
           </div>
 
-          <div className="rounded-md border bg-background p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">{t.outbound.setup.checklist}</div>
-            <div className="space-y-2">
+          <details className="rounded-lg border bg-background p-4">
+            <summary className="cursor-pointer text-sm font-medium">{t.outbound.setup.checklist}</summary>
+            <div className="mt-3 space-y-2">
               {checklist.map((check) => (
                 <div key={check.label} className="flex items-start gap-2 text-xs">
                   {check.ok ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />}
@@ -633,7 +686,7 @@ function SetupSheetContent({
                 </div>
               ))}
             </div>
-          </div>
+          </details>
         </div>
       </div>
 
@@ -659,7 +712,7 @@ function SettingToggle({
   onCheckedChange: (value: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border bg-background p-3">
+    <div className="flex items-center justify-between gap-4 rounded-lg border bg-background p-4">
       <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
         <div className="truncate text-xs text-muted-foreground">{detail}</div>
@@ -696,45 +749,24 @@ function ProspectDetailSheetContent({
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <ReadinessBadge item={item} t={t} />
-              <Badge variant="outline">{item.aiScore != null ? `${item.aiScore}/100 ${item.aiScoreLabel || ''}` : t.outbound.notScored}</Badge>
               <Badge variant="outline">{item.emailVerifiedStatus || t.outbound.emailUnknown}</Badge>
             </div>
 
-            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <Mail className="h-3.5 w-3.5" />
-                {item.email || t.outbound.noEmail}
-              </span>
-              {item.linkedinUrl && <a className="hover:text-foreground" href={item.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a>}
-              {item.sourceUrl && (
-                <a className="inline-flex items-center gap-1 hover:text-foreground" href={item.sourceUrl} target="_blank" rel="noreferrer">
-                  {t.outbound.source}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-
-            <InfoBlock icon={<Sparkles className="h-4 w-4" />} title={t.outbound.detail.agentRead}>
-              <div className="space-y-2 text-sm">
-                {item.icpFit && <p className="text-muted-foreground">{item.icpFit}</p>}
-                {item.aiScoreReasoning && <p className="text-muted-foreground">{item.aiScoreReasoning}</p>}
-                {!item.icpFit && !item.aiScoreReasoning && <p className="text-muted-foreground">{t.outbound.notScored}</p>}
-              </div>
-            </InfoBlock>
-
-            <InfoBlock title={t.outbound.detail.personalization}>
-              <p className="text-sm leading-relaxed">{item.personalizedLine || t.outbound.detail.noPersonalization}</p>
-            </InfoBlock>
-
-            <InfoBlock title={t.outbound.detail.preview}>
+            <InfoBlock icon={<Mail className="h-4 w-4" />} title={t.outbound.detail.preview}>
               {item.preview.subject || item.preview.text ? (
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">{item.preview.subject}</div>
-                  <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{item.preview.text}</p>
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold">{item.preview.subject}</div>
+                  <p className="whitespace-pre-line text-sm leading-6 text-muted-foreground">{item.preview.text}</p>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">{t.outbound.noPreview}</p>
               )}
+            </InfoBlock>
+
+            <InfoBlock icon={<Sparkles className="h-4 w-4" />} title={t.outbound.detail.personalization}>
+              <p className="text-sm leading-6 text-muted-foreground">
+                {item.personalizedLine || item.icpFit || t.outbound.detail.noPersonalization}
+              </p>
             </InfoBlock>
 
             {(item.blockers.length > 0 || item.warnings.length > 0) && (
@@ -747,6 +779,30 @@ function ProspectDetailSheetContent({
                 ))}
               </div>
             )}
+
+            <details className="rounded-lg border bg-background p-4">
+              <summary className="cursor-pointer text-sm font-medium">{t.outbound.detail.details}</summary>
+              <div className="mt-3 space-y-3 text-sm text-muted-foreground">
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <span className="inline-flex items-center gap-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    {item.email || t.outbound.noEmail}
+                  </span>
+                  {item.linkedinUrl && <a className="hover:text-foreground" href={item.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn</a>}
+                  {item.sourceUrl && (
+                    <a className="inline-flex items-center gap-1 hover:text-foreground" href={item.sourceUrl} target="_blank" rel="noreferrer">
+                      {t.outbound.source}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+                {item.aiScore != null && (
+                  <p>{item.aiScore}/100 {item.aiScoreLabel || ''}</p>
+                )}
+                {item.aiScoreReasoning && <p>{item.aiScoreReasoning}</p>}
+                {item.sourceQuery && <p>{item.sourceQuery}</p>}
+              </div>
+            </details>
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
@@ -786,7 +842,7 @@ function ProspectDetailSheetContent({
 
 function InfoBlock({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-md border bg-background p-3">
+    <section className="rounded-lg border bg-background p-4">
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
         {title}
@@ -803,20 +859,34 @@ function ReadinessBadge({ item, t }: { item: ReviewItem; t: Translations }) {
       ? 'border-amber-200 bg-amber-50 text-amber-700'
       : item.readiness === 'rejected'
         ? 'border-red-200 bg-red-50 text-red-700'
-        : 'border-blue-200 bg-blue-50 text-blue-700';
+        : 'border-zinc-200 bg-zinc-50 text-zinc-700';
 
   return <Badge variant="outline" className={tone}>{t.outbound.readiness[item.readiness]}</Badge>;
 }
 
-function EmptyQueue({ status, onRun, running, t }: { status: GtmStatus | null; onRun: () => void; running: boolean; t: Translations }) {
+function EmptyQueue({
+  status,
+  view,
+  onRun,
+  running,
+  t,
+}: {
+  status: GtmStatus | null;
+  view: TaskView;
+  onRun: () => void;
+  running: boolean;
+  t: Translations;
+}) {
+  const description = status?.workspace.gtm_active_sequence_id
+    ? t.outbound.emptyByView[view]
+    : t.outbound.emptySetupDescription;
+
   return (
-    <div className="flex h-full min-h-[430px] items-center justify-center">
+    <div className="flex h-full min-h-[360px] items-center justify-center px-6">
       <div className="max-w-sm text-center">
         <Bot className="mx-auto h-8 w-8 text-muted-foreground" />
         <h3 className="mt-3 text-sm font-semibold">{t.outbound.emptyTitle}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {status?.workspace.gtm_active_sequence_id ? t.outbound.emptyDescription : t.outbound.emptySetupDescription}
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         <Button className="mt-4" size="sm" onClick={onRun} disabled={running}>
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {t.outbound.actions.run}
@@ -828,30 +898,73 @@ function EmptyQueue({ status, onRun, running, t }: { status: GtmStatus | null; o
 
 function LoadingState() {
   return (
-    <div className="space-y-3">
-      <Skeleton className="h-28 rounded-lg" />
-      <Skeleton className="h-[620px] rounded-lg" />
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
+      <Skeleton className="h-44 rounded-xl" />
+      <Skeleton className="h-[520px] rounded-xl" />
     </div>
   );
 }
 
-function getRecommendation(queue: ReviewQueue | null, status: GtmStatus | null, t: Translations) {
+function getPrimaryAction(queue: ReviewQueue | null, status: GtmStatus | null, view: TaskView, t: Translations): PrimaryAction {
   if (!status?.workspace.gtm_active_sequence_id) {
-    return { title: t.outbound.recommendations.sequenceTitle, detail: t.outbound.recommendations.sequenceDetail };
-  }
-  if (!status.workspace.gtm_requires_approval) {
-    return { title: t.outbound.recommendations.approvalTitle, detail: t.outbound.recommendations.approvalDetail };
-  }
-  if ((queue?.counts.ready || 0) > 0) {
     return {
-      title: t.outbound.recommendations.readyTitle(queue?.counts.ready || 0),
-      detail: t.outbound.recommendations.readyDetail(queue?.counts.blocked || 0),
+      kind: 'setup',
+      title: t.outbound.recommendations.sequenceTitle,
+      detail: t.outbound.recommendations.sequenceDetail,
+      label: t.outbound.actions.setup,
     };
   }
-  if ((queue?.counts.blocked || 0) > 0) {
-    return { title: t.outbound.recommendations.blockedTitle, detail: t.outbound.recommendations.blockedDetail };
+
+  if ((queue?.counts.ready || 0) > 0) {
+    if (view !== 'ready') {
+      return {
+        kind: 'show_ready',
+        title: t.outbound.recommendations.readyTitle(queue?.counts.ready || 0),
+        detail: t.outbound.recommendations.readyDetail(queue?.counts.blocked || 0),
+        label: t.outbound.actions.reviewReady,
+      };
+    }
+    return {
+      kind: 'approve_ready',
+      title: t.outbound.recommendations.readyTitle(queue?.counts.ready || 0),
+      detail: t.outbound.recommendations.readyDetail(queue?.counts.blocked || 0),
+      label: t.outbound.actions.approveReady(queue?.counts.ready || 0),
+    };
   }
-  return { title: t.outbound.recommendations.idleTitle, detail: t.outbound.recommendations.idleDetail };
+
+  if ((queue?.counts.blocked || 0) > 0) {
+    if (view !== 'needs_work') {
+      return {
+        kind: 'show_needs_work',
+        title: t.outbound.recommendations.blockedTitle,
+        detail: t.outbound.recommendations.blockedDetail,
+        label: t.outbound.actions.showNeedsWork,
+      };
+    }
+    return {
+      kind: 'enrich_visible',
+      title: t.outbound.recommendations.blockedTitle,
+      detail: t.outbound.recommendations.blockedDetail,
+      label: t.outbound.actions.enrichVisible,
+    };
+  }
+
+  return {
+    kind: 'run',
+    title: t.outbound.recommendations.idleTitle,
+    detail: t.outbound.recommendations.idleDetail,
+    label: t.outbound.actions.run,
+  };
+}
+
+function getRowAction(item: ReviewItem, t: Translations): { action: ReviewAction | null; label: string; icon: ReactNode } {
+  if (item.readyForApproval && !item.isQueued) {
+    return { action: 'approve_queue', label: t.outbound.actions.approve, icon: <Check className="h-4 w-4" /> };
+  }
+  if (item.isQueued) {
+    return { action: null, label: t.outbound.actions.viewDetails, icon: <Sparkles className="h-4 w-4" /> };
+  }
+  return { action: 'reenrich', label: t.outbound.actions.reenrich, icon: <RefreshCw className="h-4 w-4" /> };
 }
 
 function buildChecklist(status: GtmStatus | null, queue: ReviewQueue | null, t: Translations) {

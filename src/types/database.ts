@@ -75,6 +75,78 @@ export interface GtmDailyRun {
   error: string | null;
 }
 
+export interface OutreachSession {
+  id: string;
+  workspace_id: string;
+  user_id: string | null;
+  prompt: string;
+  structured_brief: Record<string, any>;
+  status: 'draft' | 'searching' | 'ready' | 'enriching' | 'sequence_draft' | 'saved' | 'launched' | 'automated' | 'failed';
+  raw_search_result: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachSessionProspect {
+  id: string;
+  session_id: string;
+  workspace_id: string;
+  contact_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  email_verified_status: string | null;
+  company_name: string | null;
+  company_domain: string | null;
+  job_title: string | null;
+  linkedin_url: string | null;
+  location: string | null;
+  source_url: string | null;
+  source_label: string | null;
+  confidence: string | null;
+  reason: string | null;
+  raw_result: Record<string, any>;
+  selected: boolean;
+  ignored: boolean;
+  enrichment_status: 'not_requested' | 'not_enrichable' | 'requested' | 'found' | 'not_found' | 'failed';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachSequenceDraft {
+  id: string;
+  session_id: string;
+  workspace_id: string;
+  user_id: string | null;
+  name: string;
+  steps: Array<{ subject: string; body: string; delayDays: number }>;
+  status: 'draft' | 'saved' | 'launched';
+  sequence_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachAutomation {
+  id: string;
+  workspace_id: string;
+  user_id: string | null;
+  session_id: string | null;
+  sequence_id: string | null;
+  name: string;
+  prompt: string;
+  structured_brief: Record<string, any>;
+  schedule: string;
+  daily_limit: number;
+  approval_required: boolean;
+  enabled: boolean;
+  status: 'active' | 'paused' | 'archived';
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Template {
   id: string;
   workspace_id: string | null;

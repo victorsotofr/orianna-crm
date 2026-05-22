@@ -18,6 +18,7 @@ import {
   Reply,
   MoreHorizontal,
   MessageSquareText,
+  Rocket,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -119,12 +120,17 @@ export function AppSidebar({
 
   const navMain = useMemo(() => [
     {
-      title: t.sidebar.agent,
+      title: t.sidebar.launch,
+      url: "/launch",
+      icon: Rocket,
+    },
+    {
+      title: t.sidebar.control,
       url: "/outbound",
       icon: Bot,
     },
     {
-      title: t.sidebar.contacts,
+      title: t.sidebar.people,
       url: "/contacts",
       icon: Users,
     },
@@ -221,9 +227,9 @@ export function AppSidebar({
             <SidebarMenuItem>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <SidebarMenuButton tooltip={t.sidebar.more} isActive={moreActive}>
+                  <SidebarMenuButton tooltip={t.sidebar.advanced} isActive={moreActive}>
                     <MoreHorizontal className="size-4" />
-                    <span>{t.sidebar.more}</span>
+                    <span>{t.sidebar.advanced}</span>
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start" className="w-56">

@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 
 import { SiteHeader } from '@/components/site-header';
+import { AutomationsPanel } from '@/components/outreach/automations-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -352,7 +353,7 @@ export default function OutboundPage() {
 
   return (
     <>
-      <SiteHeader title={t.sidebar.agent} />
+      <SiteHeader title={t.sidebar.control} />
       <div className="page-container">
         <div className="page-content bg-muted/20">
           <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
@@ -360,6 +361,7 @@ export default function OutboundPage() {
               <LoadingState />
             ) : (
               <>
+                <AutomationsPanel />
                 <section className="rounded-xl border bg-background px-4 py-4 shadow-xs sm:px-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">

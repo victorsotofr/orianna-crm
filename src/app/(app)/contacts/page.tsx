@@ -740,7 +740,7 @@ export default function ContactsPage() {
 
   return (
     <>
-      <SiteHeader title={t.contacts.title} />
+      <SiteHeader title={t.sidebar.people} />
       <div className="page-container">
         <div className="page-content">
           {/* Toolbar — always visible */}

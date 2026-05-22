@@ -80,7 +80,7 @@ export interface OutreachSession {
   workspace_id: string;
   user_id: string | null;
   prompt: string;
-  structured_brief: Record<string, any>;
+  structured_brief: Record<string, unknown>;
   status: 'draft' | 'searching' | 'ready' | 'enriching' | 'sequence_draft' | 'saved' | 'launched' | 'automated' | 'failed';
   raw_search_result: string | null;
   error: string | null;
@@ -106,7 +106,7 @@ export interface OutreachSessionProspect {
   source_label: string | null;
   confidence: string | null;
   reason: string | null;
-  raw_result: Record<string, any>;
+  raw_result: Record<string, unknown>;
   selected: boolean;
   ignored: boolean;
   enrichment_status: 'not_requested' | 'not_enrichable' | 'requested' | 'found' | 'not_found' | 'failed';
@@ -135,7 +135,7 @@ export interface OutreachAutomation {
   sequence_id: string | null;
   name: string;
   prompt: string;
-  structured_brief: Record<string, any>;
+  structured_brief: Record<string, unknown>;
   schedule: string;
   daily_limit: number;
   approval_required: boolean;

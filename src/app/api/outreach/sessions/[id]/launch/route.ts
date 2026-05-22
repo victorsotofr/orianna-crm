@@ -9,13 +9,28 @@ import {
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 
-function getSkipReason(contact: any) {
+interface LaunchContact {
+  id: string;
+  email: string | null;
+  email_verified_status: string | null;
+  email_bounced: boolean | null;
+  replied_at: string | null;
+  opted_out_at: string | null;
+  status: string | null;
+}
+
+interface SequenceStepRow {
+  id: string;
+  step_order: number;
+}
+
+function getSkipReason(contact: LaunchContact) {
   if (!contact.email) return 'No email';
   if (contact.email_verified_status === 'INVALID') return 'Invalid email';
   if (contact.email_bounced) return 'Email bounced';
   if (contact.replied_at) return 'Already replied';
   if (contact.opted_out_at) return 'Opted out';
-  if (['engaged', 'qualified', 'lost', 'do_not_contact', 'customer'].includes(contact.status)) {
+  if (contact.status && ['engaged', 'qualified', 'lost', 'do_not_contact', 'customer'].includes(contact.status)) {
     return `Status is ${contact.status}`;
   }
   return null;
@@ -81,8 +96,9 @@ export async function POST(
 
     if (contactsError) throw contactsError;
 
+    const launchContacts = (contacts || []) as LaunchContact[];
     const skipped = [...saved.skipped];
-    const eligibleContacts = (contacts || []).filter((contact) => {
+    const eligibleContacts = launchContacts.filter((contact) => {
       const reason = getSkipReason(contact);
       if (reason) skipped.push({ prospectId: contact.id, reason });
       return !reason;
@@ -145,14 +161,14 @@ export async function POST(
       .select();
 
     if (stepsError) throw stepsError;
-    const sortedSteps = (insertedSteps || []).sort((a: any, b: any) => a.step_order - b.step_order);
+    const sortedSteps = ((insertedSteps || []) as SequenceStepRow[]).sort((a, b) => a.step_order - b.step_order);
     const firstStep = sortedSteps[0];
     if (!firstStep) throw new Error('Sequence has no first step');
 
     const nextSendAt = new Date();
     nextSendAt.setDate(nextSendAt.getDate() + (steps[0]?.delayDays || 0));
 
-    const enrollments = eligibleContacts.map((contact: any) => ({
+    const enrollments = eligibleContacts.map((contact) => ({
       workspace_id: ctx.workspaceId,
       sequence_id: sequence.id,
       contact_id: contact.id,
@@ -168,7 +184,7 @@ export async function POST(
 
     if (enrollError) throw enrollError;
 
-    await supabase.from('contact_timeline').insert(eligibleContacts.map((contact: any) => ({
+    await supabase.from('contact_timeline').insert(eligibleContacts.map((contact) => ({
       workspace_id: ctx.workspaceId,
       contact_id: contact.id,
       event_type: 'outreach_launched',

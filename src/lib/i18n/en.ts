@@ -143,6 +143,11 @@ export const en: Translations = {
       launched: (n: number) => `${n} prospect(s) queued`,
       automated: 'Automation created',
     },
+    chat: {
+      assistant: 'isimple agent',
+      thinking: 'I am finding a first verifiable list.',
+      ready: (n: number) => `${n} prospects found. Select who you want to enrich.`,
+    },
   },
   outbound: {
     title: 'Outbound',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Bot, Loader2, Pause, Play, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,7 +35,7 @@ export function AutomationsPanel() {
   const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState<string | null>(null);
 
-  async function loadAutomations() {
+  const loadAutomations = useCallback(async () => {
     setLoading(true);
     try {
       const data = await requestJson<{ automations: Automation[] }>('/api/outreach/automations');
@@ -45,11 +45,11 @@ export function AutomationsPanel() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [t.common.networkError]);
 
   useEffect(() => {
     void loadAutomations();
-  }, []);
+  }, [loadAutomations]);
 
   async function updateAutomation(id: string, status: 'active' | 'paused' | 'archived') {
     setActingId(id);

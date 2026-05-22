@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 import {
+  ArrowUp,
   CalendarClock,
   Check,
   ExternalLink,
@@ -10,7 +11,6 @@ import {
   RefreshCw,
   Rocket,
   Save,
-  Search,
   Send,
   Sparkles,
   Users,
@@ -36,7 +36,7 @@ type Stage = 'search' | 'enrich' | 'sequence' | 'launch' | 'automate';
 interface OutreachSession {
   id: string;
   prompt: string;
-  structured_brief: Record<string, any>;
+  structured_brief: Record<string, unknown>;
   status: string;
 }
 
@@ -115,13 +115,17 @@ function isUsableEmail(prospect: Prospect) {
   return Boolean(email && status !== 'INVALID');
 }
 
+function briefValue(brief: Record<string, unknown>, key: string, fallback = '—') {
+  const value = brief[key];
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
 export default function LaunchPage() {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState('');
   const [session, setSession] = useState<OutreachSession | null>(null);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft | null>(null);
   const [sequenceName, setSequenceName] = useState('');
   const [steps, setSteps] = useState<EmailStep[]>([]);
   const [revisionPrompt, setRevisionPrompt] = useState('');
@@ -143,6 +147,10 @@ export default function LaunchPage() {
   );
   const usableEmailCount = selectedProspects.filter(isUsableEmail).length;
   const selectedProspectIds = useMemo(() => selectedProspects.map((prospect) => prospect.id), [selectedProspects]);
+  const showWorkingLayout = Boolean(session) || searching;
+  const showProspects = Boolean(session && prospects.length > 0);
+  const showSequenceEditor = Boolean(session && (steps.length > 0 || stage === 'sequence' || stage === 'launch' || stage === 'automate'));
+  const showSidebar = Boolean(session && (showProspects || showSequenceEditor || launchResult));
 
   async function loadSession(sessionId: string) {
     const data = await requestJson<{
@@ -154,7 +162,6 @@ export default function LaunchPage() {
     setSession(data.session);
     setProspects(data.prospects || []);
     if (data.sequenceDraft) {
-      setSequenceDraft(data.sequenceDraft);
       setSequenceName(data.sequenceDraft.name);
       setSteps(data.sequenceDraft.steps || []);
     }
@@ -187,7 +194,6 @@ export default function LaunchPage() {
       setSession(created.session);
       setProspects([]);
       setSelectedIds(new Set());
-      setSequenceDraft(null);
       setSteps([]);
       setSequenceName('');
 
@@ -270,7 +276,6 @@ export default function LaunchPage() {
           prospectIds: selectedProspectIds,
         }),
       });
-      setSequenceDraft(data.sequenceDraft);
       setSequenceName(data.sequenceDraft.name);
       setSteps(data.sequenceDraft.steps || []);
       setStage('launch');
@@ -342,158 +347,222 @@ export default function LaunchPage() {
       <SiteHeader title={t.launch.title} />
       <div className="page-container">
         <div className="page-content bg-muted/20">
-          <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4">
-            <section className="rounded-lg border bg-background p-4 shadow-xs">
-              <form onSubmit={handlePromptSubmit} className="flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Rocket className="h-4 w-4 text-emerald-700" />
-                  {t.launch.heading}
-                </div>
-                <div className="flex flex-col gap-2 md:flex-row">
-                  <Textarea
-                    value={prompt}
-                    onChange={(event) => setPrompt(event.target.value)}
-                    placeholder={t.launch.promptPlaceholder}
-                    className="min-h-20 flex-1 resize-none text-base"
-                  />
-                  <Button type="submit" className="h-auto min-h-12 gap-2 md:w-48" disabled={searching}>
-                    {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                    {searching ? t.launch.searching : t.launch.runSearch}
-                  </Button>
-                </div>
-                {!session && (
-                  <div className="flex flex-wrap gap-2">
-                    {t.launch.examples.map((example) => (
-                      <button
-                        key={example}
-                        type="button"
-                        onClick={() => setPrompt(example)}
-                        className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        {example}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </form>
-            </section>
+          <main className={cn(
+            'mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4',
+            !showWorkingLayout && 'max-w-3xl justify-center'
+          )}>
+            {!showWorkingLayout ? (
+              <ChatStart />
+            ) : (
+              <>
+                <ChatThread />
+                <div className={cn(
+                  'grid min-h-0 flex-1 gap-4',
+                  showSidebar && 'xl:grid-cols-[minmax(0,1fr)_360px]'
+                )}>
+                  <div className="flex min-w-0 flex-col gap-4">
+                    <WorkflowRail active={stage} />
 
-            <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="flex min-w-0 flex-col gap-4">
-                <WorkflowRail active={stage} />
+                    {searching && prospects.length === 0 && <SearchSkeleton />}
 
-                {searching && prospects.length === 0 ? (
-                  <SearchSkeleton />
-                ) : (
-                  <ProspectList
-                    prospects={prospects}
-                    selectedIds={selectedIds}
-                    onSelect={(id, checked) => {
-                      setSelectedIds((current) => {
-                        const next = new Set(current);
-                        if (checked) next.add(id);
-                        else next.delete(id);
-                        return next;
-                      });
-                    }}
-                    onSelectAll={() => setSelectedIds(new Set(prospects.map((prospect) => prospect.id)))}
-                    onClear={() => setSelectedIds(new Set())}
-                  />
-                )}
+                    {showProspects && (
+                      <ProspectList
+                        prospects={prospects}
+                        selectedIds={selectedIds}
+                        onSelect={(id, checked) => {
+                          setSelectedIds((current) => {
+                            const next = new Set(current);
+                            if (checked) next.add(id);
+                            else next.delete(id);
+                            return next;
+                          });
+                        }}
+                        onSelectAll={() => setSelectedIds(new Set(prospects.map((prospect) => prospect.id)))}
+                        onClear={() => setSelectedIds(new Set())}
+                      />
+                    )}
 
-                {session && (
-                  <SequenceEditor
-                    name={sequenceName}
-                    setName={setSequenceName}
-                    steps={steps}
-                    updateStep={updateStep}
-                    revisionPrompt={revisionPrompt}
-                    setRevisionPrompt={setRevisionPrompt}
-                    onGenerate={() => void handleSequence()}
-                    onRevise={() => void handleSequence(revisionPrompt)}
-                    generating={sequencing}
-                  />
-                )}
-              </div>
-
-              <aside className="flex min-w-0 flex-col gap-4">
-                <BriefPanel session={session} />
-
-                <section className="rounded-lg border bg-background p-4 shadow-xs">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold">{t.launch.launchBox.title}</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">{t.launch.launchBox.saveOnly}</p>
-                    </div>
-                    {session && (
-                      <Button variant="ghost" size="sm" onClick={handleRefresh}>
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
+                    {showSequenceEditor && (
+                      <SequenceEditor
+                        name={sequenceName}
+                        setName={setSequenceName}
+                        steps={steps}
+                        updateStep={updateStep}
+                        revisionPrompt={revisionPrompt}
+                        setRevisionPrompt={setRevisionPrompt}
+                        onGenerate={() => void handleSequence()}
+                        onRevise={() => void handleSequence(revisionPrompt)}
+                        generating={sequencing}
+                      />
                     )}
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <Metric label={t.launch.prospects.selected(selectedProspects.length)} value={selectedProspects.length} />
-                    <Metric label={t.launch.launchBox.verified} value={usableEmailCount} />
-                    <Metric label={t.launch.launchBox.skipped} value={launchResult?.skipped.length || 0} />
-                  </div>
+                  {showSidebar && (
+                    <aside className="flex min-w-0 flex-col gap-4">
+                      <BriefPanel session={session} />
 
-                  <div className="mt-4 grid gap-2">
-                    <Button variant="outline" size="sm" onClick={handleSaveProspects} disabled={!session || selectedProspects.length === 0 || saving}>
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      {t.launch.actions.save}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleEnrich} disabled={!session || selectedProspects.length === 0 || enriching}>
-                      {enriching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                      {t.launch.actions.enrich}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => void handleSequence()} disabled={!session || selectedProspects.length === 0 || sequencing}>
-                      {sequencing ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-                      {t.launch.actions.draftSequence}
-                    </Button>
-                    <Button size="sm" onClick={handleLaunch} disabled={!session || selectedProspects.length === 0 || launching}>
-                      {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {t.launch.actions.launch}
-                    </Button>
-                  </div>
-                </section>
+                      {showProspects && <LaunchPanel />}
 
-                {launchResult && (
-                  <section className="rounded-lg border bg-background p-4 shadow-xs">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
-                        <CalendarClock className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <h2 className="text-sm font-semibold">{t.launch.automation.title}</h2>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {launchResult.sequenceName} · {t.launch.launchBox.next} {new Date(launchResult.nextSendAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">{t.launch.automation.dailyLimit}</Label>
-                        <Input type="number" min={1} max={100} value={dailyLimit} onChange={(event) => setDailyLimit(event.target.value)} className="h-9" />
-                      </div>
-                      <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                        <Label className="text-xs">{t.launch.automation.approval}</Label>
-                        <Switch checked={approvalRequired} onCheckedChange={setApprovalRequired} />
-                      </div>
-                      <Button size="sm" onClick={handleAutomate} disabled={automating || automationCreated}>
-                        {automating ? <Loader2 className="h-4 w-4 animate-spin" /> : automationCreated ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
-                        {automationCreated ? t.launch.automation.created : t.launch.actions.automate}
-                      </Button>
-                    </div>
-                  </section>
-                )}
-              </aside>
-            </div>
+                      {launchResult && (
+                        <section className="rounded-lg border bg-background p-4 shadow-xs">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                              <CalendarClock className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h2 className="text-sm font-semibold">{t.launch.automation.title}</h2>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {launchResult.sequenceName} · {t.launch.launchBox.next} {new Date(launchResult.nextSendAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">{t.launch.automation.dailyLimit}</Label>
+                              <Input type="number" min={1} max={100} value={dailyLimit} onChange={(event) => setDailyLimit(event.target.value)} className="h-9" />
+                            </div>
+                            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                              <Label className="text-xs">{t.launch.automation.approval}</Label>
+                              <Switch checked={approvalRequired} onCheckedChange={setApprovalRequired} />
+                            </div>
+                            <Button size="sm" onClick={handleAutomate} disabled={automating || automationCreated}>
+                              {automating ? <Loader2 className="h-4 w-4 animate-spin" /> : automationCreated ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+                              {automationCreated ? t.launch.automation.created : t.launch.actions.automate}
+                            </Button>
+                          </div>
+                        </section>
+                      )}
+                    </aside>
+                  )}
+                </div>
+              </>
+            )}
           </main>
         </div>
       </div>
     </>
   );
+
+  function ChatStart() {
+    return (
+      <section className="mx-auto w-full max-w-3xl px-2">
+        <div className="mb-5 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border bg-background text-emerald-700 shadow-xs">
+            <Rocket className="h-4 w-4" />
+          </div>
+          <h1 className="text-xl font-semibold tracking-tight">{t.launch.heading}</h1>
+        </div>
+
+        <form onSubmit={handlePromptSubmit} className="flex flex-col gap-3">
+          <div className="rounded-[28px] border bg-background p-2 shadow-lg shadow-black/5 transition-shadow focus-within:shadow-xl focus-within:shadow-black/10">
+            <Textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              placeholder={t.launch.promptPlaceholder}
+              className="min-h-24 resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+            />
+            <div className="flex items-center justify-end px-2 pb-1">
+              <Button
+                type="submit"
+                size="icon-sm"
+                className="rounded-full"
+                disabled={searching || !prompt.trim()}
+                aria-label={t.launch.runSearch}
+                title={t.launch.runSearch}
+              >
+                {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2 px-1">
+            {t.launch.examples.map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => setPrompt(example)}
+                className="rounded-full border bg-background/80 px-3 py-1.5 text-xs text-muted-foreground shadow-xs transition-colors hover:bg-background hover:text-foreground"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+        </form>
+      </section>
+    );
+  }
+
+  function ChatThread() {
+    const userPrompt = session?.prompt || prompt;
+    const assistantText = searching && prospects.length === 0
+      ? t.launch.chat.thinking
+      : t.launch.chat.ready(prospects.length);
+
+    return (
+      <section className="mx-auto w-full max-w-4xl px-1 py-2">
+        <div className="flex justify-end">
+          <div className="max-w-[82%] rounded-[24px] bg-background px-4 py-3 text-sm leading-relaxed shadow-xs ring-1 ring-border">
+            {userPrompt}
+          </div>
+        </div>
+        <div className="mt-4 flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background text-emerald-700 shadow-xs">
+            {searching && prospects.length === 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          </div>
+          <div className="max-w-3xl py-1 text-sm leading-relaxed">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">{t.launch.chat.assistant}</div>
+            <p>{assistantText}</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function LaunchPanel() {
+    return (
+      <section className="rounded-lg border bg-background p-4 shadow-xs">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">{t.launch.launchBox.title}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t.launch.launchBox.saveOnly}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <Metric label={t.launch.prospects.selected(selectedProspects.length)} value={selectedProspects.length} />
+          <Metric label={t.launch.launchBox.verified} value={usableEmailCount} />
+          <Metric label={t.launch.launchBox.skipped} value={launchResult?.skipped.length || 0} />
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          <Button variant="outline" size="sm" onClick={handleSaveProspects} disabled={selectedProspects.length === 0 || saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {t.launch.actions.save}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleEnrich} disabled={selectedProspects.length === 0 || enriching}>
+            {enriching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+            {t.launch.actions.enrich}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void handleSequence()} disabled={selectedProspects.length === 0 || sequencing}>
+            {sequencing ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+            {t.launch.actions.draftSequence}
+          </Button>
+          <Button size="sm" onClick={handleLaunch} disabled={selectedProspects.length === 0 || launching}>
+            {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {t.launch.actions.launch}
+          </Button>
+        </div>
+      </section>
+    );
+  }
 
   function WorkflowRail({ active }: { active: Stage }) {
     const stages: Stage[] = ['search', 'enrich', 'sequence', 'launch', 'automate'];
@@ -683,10 +752,10 @@ export default function LaunchPage() {
         </div>
         {session ? (
           <div className="mt-3 space-y-3 text-sm">
-            <BriefLine label={t.launch.brief.target} value={brief.target || session.prompt} />
-            <BriefLine label={t.launch.brief.location} value={brief.location || '—'} />
-            <BriefLine label={t.launch.brief.size} value={brief.companySize || '—'} />
-            <BriefLine label={t.launch.brief.angle} value={brief.outreachAngle || '—'} />
+            <BriefLine label={t.launch.brief.target} value={briefValue(brief, 'target', session.prompt)} />
+            <BriefLine label={t.launch.brief.location} value={briefValue(brief, 'location')} />
+            <BriefLine label={t.launch.brief.size} value={briefValue(brief, 'companySize')} />
+            <BriefLine label={t.launch.brief.angle} value={briefValue(brief, 'outreachAngle')} />
           </div>
         ) : (
           <div className="mt-4 space-y-2">

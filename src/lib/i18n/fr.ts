@@ -141,6 +141,11 @@ export const fr = {
       launched: (n: number) => `${n} prospect(s) mis en séquence`,
       automated: 'Automation créée',
     },
+    chat: {
+      assistant: 'Agent isimple',
+      thinking: 'Je cherche une première liste vérifiable.',
+      ready: (n: number) => `${n} prospects trouvés. Sélectionne ceux que tu veux enrichir.`,
+    },
   },
   outbound: {
     title: 'Outbound',

@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, GalleryVerticalEnd } from 'lucide-react';
 import { setStoredWorkspaceId } from '@/lib/api';
+
+interface Invitation {
+  email: string;
+  expires_at: string;
+  status: string;
+  workspaces: { name: string | null } | null;
+}
 
 export default function InvitePage() {
   const router = useRouter();
@@ -16,8 +24,8 @@ export default function InvitePage() {
 
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
-  const [invitation, setInvitation] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
+  const [invitation, setInvitation] = useState<Invitation | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +50,7 @@ export default function InvitePage() {
       } else if (new Date(data.expires_at) < new Date()) {
         setError('Cette invitation a expiré');
       } else {
-        setInvitation(data);
+        setInvitation(data as Invitation);
       }
 
       setLoading(false);
@@ -63,7 +71,7 @@ export default function InvitePage() {
       const data = await res.json();
       if (res.ok) {
         setStoredWorkspaceId(data.workspace_id);
-        router.push('/dashboard');
+        router.push('/launch');
       } else {
         setError(data.error || "Erreur lors de l'acceptation");
       }
@@ -104,8 +112,8 @@ export default function InvitePage() {
           {error ? (
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-4">{error}</p>
-              <Button variant="outline" onClick={() => router.push('/dashboard')}>
-                Retour au tableau de bord
+              <Button variant="outline" onClick={() => router.push('/launch')}>
+                Retour au lancement
               </Button>
             </div>
           ) : user ? (

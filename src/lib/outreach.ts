@@ -13,6 +13,94 @@ export interface SavedProspectResult {
   skipped: Array<{ prospectId: string; reason: string }>;
 }
 
+export type OutreachThreadRole = 'user' | 'assistant' | 'tool' | 'system';
+export type OutreachEventStatus = 'running' | 'complete' | 'failed';
+
+export interface OutreachThreadMessageInput {
+  workspaceId: string;
+  sessionId: string;
+  role: OutreachThreadRole;
+  content: string;
+  metadata?: Record<string, unknown>;
+  status?: OutreachEventStatus;
+}
+
+export interface OutreachThreadEventInput {
+  workspaceId: string;
+  sessionId: string;
+  kind: string;
+  title: string;
+  detail?: string | null;
+  metadata?: Record<string, unknown>;
+  status?: OutreachEventStatus;
+}
+
+export type OutreachRunStatus = 'running' | 'waiting_confirmation' | 'complete' | 'failed' | 'cancelled';
+export type OutreachToolCallStatus = 'pending_confirmation' | 'running' | 'complete' | 'failed' | 'cancelled';
+
+export interface OutreachRunInput {
+  workspaceId: string;
+  sessionId: string;
+  userId: string;
+  input?: Record<string, unknown>;
+  modelProvider?: string | null;
+  traceId?: string | null;
+}
+
+export interface OutreachToolCallInput {
+  workspaceId: string;
+  sessionId: string;
+  runId?: string | null;
+  toolName: string;
+  specialist?: string | null;
+  permission?: string;
+  status?: OutreachToolCallStatus;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: string | null;
+  confirmationRequired?: boolean;
+}
+
+function isMissingThreadTableError(error: unknown) {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    ((error as { code?: string }).code === '42P01' || (error as { code?: string }).code === 'PGRST205')
+  );
+}
+
+function isMissingThreadCrudColumnError(error: unknown) {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    ((error as { code?: string }).code === 'PGRST204' || (error as { code?: string }).code === '42703')
+  );
+}
+
+function warnThreadPersistenceSkipped(error: unknown) {
+  if (isMissingThreadTableError(error)) {
+    console.warn('[Outreach] Thread persistence tables are not available yet. Apply migration 025_outreach_thread_events.');
+    return true;
+  }
+  return false;
+}
+
+function warnThreadMetadataSkipped(error: unknown) {
+  if (isMissingThreadCrudColumnError(error)) {
+    console.warn('[Outreach] Thread CRUD metadata columns are not available yet. Apply migration 026_agentic_threads_and_runs.');
+    return true;
+  }
+  return false;
+}
+
+export function deriveOutreachThreadTitle(prompt: string) {
+  const cleaned = prompt.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return 'New outreach';
+  return cleaned.length > 80 ? `${cleaned.slice(0, 77)}...` : cleaned;
+}
+
 export function parseJsonFromText<T>(text: string, fallback: T): T {
   try {
     const cleaned = text
@@ -93,7 +181,7 @@ export async function getOutreachSessionBundle(
   workspaceId: string,
   sessionId: string
 ) {
-  const [sessionResult, prospectsResult, draftResult] = await Promise.all([
+  const [sessionResult, prospectsResult, draftResult, messagesResult, eventsResult] = await Promise.all([
     db
       .from('outreach_sessions')
       .select('*')
@@ -126,17 +214,251 @@ export async function getOutreachSessionBundle(
       .eq('session_id', sessionId)
       .eq('workspace_id', workspaceId)
       .maybeSingle(),
+    db
+      .from('outreach_session_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: true }),
+    db
+      .from('outreach_session_events')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: true }),
   ]);
 
   if (sessionResult.error) throw sessionResult.error;
   if (prospectsResult.error) throw prospectsResult.error;
   if (draftResult.error) throw draftResult.error;
+  if (messagesResult.error && !warnThreadPersistenceSkipped(messagesResult.error)) throw messagesResult.error;
+  if (eventsResult.error && !warnThreadPersistenceSkipped(eventsResult.error)) throw eventsResult.error;
 
   return {
     session: sessionResult.data,
     prospects: prospectsResult.data || [],
     sequenceDraft: draftResult.data || null,
+    messages: messagesResult.error ? [] : messagesResult.data || [],
+    events: eventsResult.error ? [] : eventsResult.data || [],
   };
+}
+
+export async function appendOutreachMessage(db: SupabaseClient, input: OutreachThreadMessageInput) {
+  const { data, error } = await db
+    .from('outreach_session_messages')
+    .insert({
+      workspace_id: input.workspaceId,
+      session_id: input.sessionId,
+      role: input.role,
+      content: input.content,
+      metadata: input.metadata || {},
+      status: input.status || 'complete',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  const { error: touchError } = await db
+    .from('outreach_sessions')
+    .update({
+      last_message_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.sessionId)
+    .eq('workspace_id', input.workspaceId);
+  if (touchError && !warnThreadMetadataSkipped(touchError)) throw touchError;
+
+  return data;
+}
+
+export async function createOutreachEvent(db: SupabaseClient, input: OutreachThreadEventInput) {
+  const { data, error } = await db
+    .from('outreach_session_events')
+    .insert({
+      workspace_id: input.workspaceId,
+      session_id: input.sessionId,
+      kind: input.kind,
+      title: input.title,
+      detail: input.detail || null,
+      metadata: input.metadata || {},
+      status: input.status || 'running',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function createOutreachRun(db: SupabaseClient, input: OutreachRunInput) {
+  const { data, error } = await db
+    .from('outreach_agent_runs')
+    .insert({
+      workspace_id: input.workspaceId,
+      session_id: input.sessionId,
+      user_id: input.userId,
+      provider: 'langgraph',
+      model_provider: input.modelProvider || null,
+      trace_id: input.traceId || null,
+      input: input.input || {},
+      status: 'running',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateOutreachRun(
+  db: SupabaseClient,
+  input: {
+    workspaceId: string;
+    runId: string | null;
+    status: OutreachRunStatus;
+    output?: Record<string, unknown>;
+    error?: string | null;
+  }
+) {
+  if (!input.runId) return null;
+
+  const patch: Record<string, unknown> = {
+    status: input.status,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.status !== 'running' && input.status !== 'waiting_confirmation') patch.finished_at = new Date().toISOString();
+  if (input.output !== undefined) patch.output = input.output;
+  if (input.error !== undefined) patch.error = input.error;
+
+  const { data, error } = await db
+    .from('outreach_agent_runs')
+    .update(patch)
+    .eq('id', input.runId)
+    .eq('workspace_id', input.workspaceId)
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function createOutreachToolCall(db: SupabaseClient, input: OutreachToolCallInput) {
+  const { data, error } = await db
+    .from('outreach_agent_tool_calls')
+    .insert({
+      workspace_id: input.workspaceId,
+      session_id: input.sessionId,
+      run_id: input.runId || null,
+      tool_name: input.toolName,
+      specialist: input.specialist || null,
+      permission: input.permission || 'read',
+      status: input.status || 'running',
+      input: input.input || {},
+      output: input.output || {},
+      error: input.error || null,
+      confirmation_required: Boolean(input.confirmationRequired),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateOutreachToolCall(
+  db: SupabaseClient,
+  input: {
+    workspaceId: string;
+    toolCallId: string | null;
+    status: OutreachToolCallStatus;
+    output?: Record<string, unknown>;
+    error?: string | null;
+    confirmedBy?: string | null;
+  }
+) {
+  if (!input.toolCallId) return null;
+
+  const patch: Record<string, unknown> = {
+    status: input.status,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.output !== undefined) patch.output = input.output;
+  if (input.error !== undefined) patch.error = input.error;
+  if (input.confirmedBy) {
+    patch.confirmed_by = input.confirmedBy;
+    patch.confirmed_at = new Date().toISOString();
+  }
+
+  const { data, error } = await db
+    .from('outreach_agent_tool_calls')
+    .update(patch)
+    .eq('id', input.toolCallId)
+    .eq('workspace_id', input.workspaceId)
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateOutreachEvent(
+  db: SupabaseClient,
+  input: {
+    workspaceId: string;
+    eventId: string | null;
+    status: OutreachEventStatus;
+    detail?: string | null;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  if (!input.eventId) return null;
+
+  const patch: Record<string, unknown> = {
+    status: input.status,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (input.detail !== undefined) patch.detail = input.detail;
+  if (input.metadata !== undefined) patch.metadata = input.metadata;
+
+  const { data, error } = await db
+    .from('outreach_session_events')
+    .update(patch)
+    .eq('id', input.eventId)
+    .eq('workspace_id', input.workspaceId)
+    .select()
+    .single();
+
+  if (error) {
+    if (warnThreadPersistenceSkipped(error)) return null;
+    throw error;
+  }
+
+  return data;
 }
 
 export async function saveSessionProspectsAsContacts(input: {

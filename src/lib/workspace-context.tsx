@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase-browser';
 import { getStoredWorkspaceId, setStoredWorkspaceId } from '@/lib/api';
+import { E2E_MOCK_WORKSPACE, isE2EMockMode } from '@/lib/e2e-mock';
 
 interface Workspace {
   id: string;
@@ -50,12 +51,29 @@ export function WorkspaceProvider({
   onNoWorkspace?: () => void;
 }) {
   const supabase = createClient();
+  const mockMode = isE2EMockMode();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadWorkspaces = useCallback(async () => {
+    if (mockMode) {
+      const mockWorkspace = E2E_MOCK_WORKSPACE;
+      setWorkspaces([mockWorkspace]);
+      setWorkspace(mockWorkspace);
+      setStoredWorkspaceId(mockWorkspace.id);
+      setMembers([{
+        id: '00000000-0000-4000-8000-000000000201',
+        user_id: userId,
+        email: 'victor.soto@example.test',
+        display_name: 'Victor Soto',
+        role: 'owner',
+      }]);
+      setIsLoading(false);
+      return;
+    }
+
     // Get all workspaces user belongs to
     const { data: memberships } = await supabase
       .from('workspace_members')
@@ -96,7 +114,7 @@ export function WorkspaceProvider({
 
     setMembers(memberData || []);
     setIsLoading(false);
-  }, [userId, supabase, onNoWorkspace]);
+  }, [mockMode, userId, supabase, onNoWorkspace]);
 
   useEffect(() => {
     loadWorkspaces();
@@ -105,6 +123,7 @@ export function WorkspaceProvider({
 
   const switchWorkspace = useCallback(
     (id: string) => {
+      if (mockMode) return;
       const ws = workspaces.find((w) => w.id === id);
       if (!ws) return;
       setWorkspace(ws);
@@ -122,7 +141,7 @@ export function WorkspaceProvider({
       // Reload the page to refresh all data with new workspace context
       window.location.reload();
     },
-    [workspaces, supabase]
+    [mockMode, workspaces, supabase]
   );
 
   return (

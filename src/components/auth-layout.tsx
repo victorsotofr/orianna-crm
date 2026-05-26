@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Session, User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-browser';
 import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
@@ -11,6 +12,9 @@ import { LanguageProvider, type Language } from '@/lib/i18n';
 import { WorkspaceProvider } from '@/lib/workspace-context';
 import { BackgroundJobProvider } from '@/lib/background-jobs';
 import { BackgroundJobsPanel } from '@/components/background-jobs-panel';
+import { E2E_MOCK_USER, isE2EMockMode } from '@/lib/e2e-mock';
+
+type LayoutUser = Pick<User, 'id' | 'email' | 'user_metadata'>;
 
 function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
   useKeyboardShortcuts();
@@ -23,12 +27,15 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [language, setLanguage] = useState<Language>('fr');
+  const mockMode = isE2EMockMode();
+  const [user, setUser] = useState<LayoutUser | null>(() => mockMode ? E2E_MOCK_USER : null);
+  const [loading, setLoading] = useState(() => !mockMode);
+  const [language, setLanguage] = useState<Language>(() => mockMode ? 'en' : 'fr');
   const supabase = createClient();
 
   useEffect(() => {
+    if (mockMode) return;
+
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
@@ -50,7 +57,7 @@ export default function AuthLayout({
 
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
       if (!session?.user) {
         router.push('/login');
       } else {
@@ -59,7 +66,7 @@ export default function AuthLayout({
     });
 
     return () => subscription.unsubscribe();
-  }, [router, supabase]);
+  }, [mockMode, router, supabase]);
 
   const handleNoWorkspace = useCallback(() => {
     router.push('/create-workspace');

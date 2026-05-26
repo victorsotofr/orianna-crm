@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bot,
@@ -18,8 +19,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { SiteHeader } from '@/components/site-header';
-import { AutomationsPanel } from '@/components/outreach/automations-panel';
+import { OutreachActivityStrip } from '@/components/outreach/outreach-activity-strip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -213,6 +213,7 @@ export default function OutboundPage() {
   const visibleIds = useMemo(() => items.map((item) => item.id), [items]);
   const primaryAction = getPrimaryAction(queue, status, view, t);
   const checklist = buildChecklist(status, queue, t);
+  const nextRunLabel = enabled ? t.outbound.agent.dailySchedule : t.outbound.agent.pausedSchedule;
   const settings: SetupSettings = {
     enabled,
     setEnabled,
@@ -352,31 +353,30 @@ export default function OutboundPage() {
     || (primaryAction.kind === 'enrich_visible' && visibleIds.length === 0);
 
   return (
-    <>
-      <SiteHeader title={t.sidebar.control} />
-      <div className="page-container">
-        <div className="page-content bg-muted/20">
-          <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
-            {workspaceLoading || (loading && !status) ? (
-              <LoadingState />
-            ) : (
-              <>
-                <AutomationsPanel />
-                <section className="rounded-xl border bg-background px-4 py-4 shadow-xs sm:px-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="flex h-[calc(100dvh-1rem)] min-h-0 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col bg-muted/20 px-3 py-3 lg:px-5">
+        <main className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col">
+          {workspaceLoading || (loading && !status) ? (
+            <LoadingState />
+          ) : (
+            <>
+              <OutreachActivityStrip className="mb-3" />
+              <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background shadow-xs">
+                <header className="shrink-0 border-b px-4 py-4 sm:px-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <StatusPill active={enabled}>
                           {enabled ? t.outbound.agent.statusOn : t.outbound.agent.statusOff}
                         </StatusPill>
                         <StatusPill active={requiresApproval}>
                           {requiresApproval ? t.outbound.agent.reviewOn : t.outbound.agent.reviewOff}
                         </StatusPill>
+                        <span>{t.outbound.metrics.nextRun}: {nextRunLabel}</span>
                       </div>
-                      <h1 className="truncate text-2xl font-semibold">
+                      <h1 className="mt-2 truncate text-xl font-semibold">
                         {t.outbound.heading(workspace?.name || t.outbound.workspaceFallback)}
                       </h1>
-                      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t.outbound.subtitle}</p>
                     </div>
 
                     <div className="flex shrink-0 flex-wrap gap-2">
@@ -394,54 +394,59 @@ export default function OutboundPage() {
                       </Button>
                     </div>
                   </div>
+                </header>
 
-                  <div className="mt-5 rounded-lg bg-muted/45 p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <Bot className="h-4 w-4 text-emerald-700" />
-                          {primaryAction.title}
-                        </div>
-                        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{primaryAction.detail}</p>
-                      </div>
-                      <div className="shrink-0 text-sm text-muted-foreground">
-                        {t.outbound.agent.summary(
-                          queue?.counts.ready || 0,
-                          queue?.counts.blocked || 0,
-                          queue?.counts.queued || 0,
-                          status?.metrics.addedToday || 0
-                        )}
-                      </div>
+                <div className="shrink-0 border-b bg-muted/15 px-4 py-3 sm:px-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      <InlineMetric label={t.outbound.metrics.today} value={status?.metrics.addedToday || 0} />
+                      <InlineMetric label={t.outbound.metrics.ready} value={queue?.counts.ready || 0} />
+                      <InlineMetric label={t.outbound.metrics.blocked} value={queue?.counts.blocked || 0} />
+                      <InlineMetric label={t.outbound.metrics.queued} value={queue?.counts.queued || 0} />
+                      <InlineMetric label={t.outbound.metrics.active} value={status?.metrics.activeEnrollments || 0} />
+                    </div>
+                    <div className="min-w-0 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">{primaryAction.title}</span>
+                      <span className="hidden sm:inline"> · {primaryAction.detail}</span>
                     </div>
                   </div>
-                </section>
+                </div>
 
-                <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-xs">
-                  <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0">
-                      <h2 className="text-base font-semibold">{t.outbound.queue.title}</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">{t.outbound.queue.description}</p>
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-2 overflow-x-auto">
-                      <QueueViewButton
-                        active={view === 'needs_work'}
-                        label={t.outbound.queue.needsWork}
-                        count={queue?.counts.blocked || 0}
-                        onClick={() => setView('needs_work')}
-                      />
-                      <QueueViewButton
-                        active={view === 'ready'}
-                        label={t.outbound.queue.ready}
-                        count={queue?.counts.ready || 0}
-                        onClick={() => setView('ready')}
-                      />
-                      <QueueViewButton
-                        active={view === 'queued'}
-                        label={t.outbound.queue.queued}
-                        count={queue?.counts.queued || 0}
-                        onClick={() => setView('queued')}
-                      />
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="shrink-0 border-b px-4 py-3 sm:px-5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-semibold">{t.outbound.queue.title}</h2>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {t.outbound.agent.summary(
+                            queue?.counts.ready || 0,
+                            queue?.counts.blocked || 0,
+                            queue?.counts.queued || 0,
+                            status?.metrics.addedToday || 0
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 overflow-x-auto">
+                        <QueueViewButton
+                          active={view === 'needs_work'}
+                          label={t.outbound.queue.needsWork}
+                          count={queue?.counts.blocked || 0}
+                          onClick={() => setView('needs_work')}
+                        />
+                        <QueueViewButton
+                          active={view === 'ready'}
+                          label={t.outbound.queue.ready}
+                          count={queue?.counts.ready || 0}
+                          onClick={() => setView('ready')}
+                        />
+                        <QueueViewButton
+                          active={view === 'queued'}
+                          label={t.outbound.queue.queued}
+                          count={queue?.counts.queued || 0}
+                          onClick={() => setView('queued')}
+                        />
+                        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                      </div>
                     </div>
                   </div>
 
@@ -464,37 +469,37 @@ export default function OutboundPage() {
                       <EmptyQueue status={status} view={view} onRun={runOutbound} running={running} t={t} />
                     )}
                   </div>
-                </section>
+                </div>
+              </section>
 
-                <Sheet open={setupOpen} onOpenChange={setSetupOpen}>
-                  <SheetContent side="right" className="flex w-[min(520px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
-                    <SetupSheetContent
-                      status={status}
-                      checklist={checklist}
-                      settings={settings}
-                      saving={saving}
-                      onSave={saveSettings}
-                      t={t}
-                    />
-                  </SheetContent>
-                </Sheet>
+              <Sheet open={setupOpen} onOpenChange={setSetupOpen}>
+                <SheetContent side="right" className="flex w-[min(520px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
+                  <SetupSheetContent
+                    status={status}
+                    checklist={checklist}
+                    settings={settings}
+                    saving={saving}
+                    onSave={saveSettings}
+                    t={t}
+                  />
+                </SheetContent>
+              </Sheet>
 
-                <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-                  <SheetContent side="right" className="flex w-[min(600px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
-                    <ProspectDetailSheetContent
-                      item={selectedItem}
-                      acting={selectedItem ? actingIds.has(selectedItem.id) : false}
-                      onAction={(action) => selectedItem && applyAction(action, [selectedItem.id])}
-                      t={t}
-                    />
-                  </SheetContent>
-                </Sheet>
-              </>
-            )}
-          </main>
-        </div>
+              <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+                <SheetContent side="right" className="flex w-[min(600px,calc(100vw-1rem))] max-w-none flex-col p-0 sm:max-w-none">
+                  <ProspectDetailSheetContent
+                    item={selectedItem}
+                    acting={selectedItem ? actingIds.has(selectedItem.id) : false}
+                    onAction={(action) => selectedItem && applyAction(action, [selectedItem.id])}
+                    t={t}
+                  />
+                </SheetContent>
+              </Sheet>
+            </>
+          )}
+        </main>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -507,6 +512,21 @@ function StatusPill({ active, children }: { active: boolean; children: ReactNode
       )}
     >
       {children}
+    </span>
+  );
+}
+
+function InlineMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 text-sm">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-mono text-sm font-semibold tabular-nums">{value}</span>
     </span>
   );
 }
@@ -526,13 +546,13 @@ function QueueViewButton({
     <button
       type="button"
       className={cn(
-        'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors',
-        active ? 'border-foreground bg-foreground text-background' : 'border-border bg-background text-muted-foreground hover:text-foreground'
+        'inline-flex h-8 shrink-0 items-center gap-2 rounded-md border px-2.5 text-xs font-medium transition-colors',
+        active ? 'border-border bg-background text-foreground shadow-xs' : 'border-transparent text-muted-foreground hover:bg-background/80 hover:text-foreground'
       )}
       onClick={onClick}
     >
       <span>{label}</span>
-      <span className={cn('font-mono text-xs tabular-nums', active ? 'text-background/80' : 'text-muted-foreground')}>{count}</span>
+      <span className="font-mono text-xs text-muted-foreground tabular-nums">{count}</span>
     </button>
   );
 }
@@ -568,26 +588,22 @@ function ProspectTaskRow({
         }
       }}
       className={cn(
-        'grid cursor-pointer gap-3 px-4 py-4 outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/50 sm:px-5 md:grid-cols-[minmax(0,1fr)_auto]',
-        selected && 'bg-muted/40'
+        'grid cursor-pointer gap-3 px-4 py-3 outline-none transition-colors hover:bg-muted/35 focus-visible:bg-muted/45 sm:px-5 md:grid-cols-[minmax(0,1fr)_auto]',
+        selected && 'bg-muted/45'
       )}
     >
       <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="truncate text-sm font-semibold" title={item.name}>{item.name}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-semibold">{item.name}</span>
           <ReadinessBadge item={item} t={t} />
-          {item.aiScoreLabel && <span className="text-xs uppercase text-muted-foreground">{item.aiScoreLabel}</span>}
           {acting && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
         </div>
-        <div className="mt-1 truncate text-sm text-muted-foreground" title={subtitle}>{subtitle}</div>
-        <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-relaxed text-muted-foreground" title={note}>{note}</p>
+        <div className="mt-1 truncate text-xs text-muted-foreground">{subtitle}</div>
+        <p className="mt-1.5 line-clamp-1 max-w-3xl text-sm leading-6 text-muted-foreground">{note}</p>
       </div>
 
       <div className="flex items-center justify-between gap-3 md:justify-end">
-        <div className="min-w-0 text-sm text-muted-foreground md:text-right">
-          <div className="truncate">{item.email || t.outbound.noEmail}</div>
-          <div className="text-xs">{item.emailVerifiedStatus || t.outbound.emailUnknown}</div>
-        </div>
+        <EmailStatePill item={item} t={t} />
         <Button
           size="sm"
           variant={action.action === 'approve_queue' ? 'default' : 'outline'}
@@ -606,6 +622,23 @@ function ProspectTaskRow({
         </Button>
       </div>
     </div>
+  );
+}
+
+function EmailStatePill({ item, t }: { item: ReviewItem; t: Translations }) {
+  const hasEmail = Boolean(item.email);
+
+  return (
+    <span
+      className={cn(
+        'hidden h-7 max-w-[180px] items-center rounded-full border px-2.5 text-xs md:inline-flex',
+        hasEmail
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : 'border-border bg-background text-muted-foreground'
+      )}
+    >
+      <span className="truncate">{hasEmail ? item.emailVerifiedStatus || item.email : t.outbound.noEmail}</span>
+    </span>
   );
 }
 
@@ -724,7 +757,7 @@ function SettingToggle({
   );
 }
 
-function ProspectDetailSheetContent({
+function ProspectInspectorContent({
   item,
   acting,
   onAction,
@@ -735,26 +768,27 @@ function ProspectDetailSheetContent({
   onAction: (action: ReviewAction) => void;
   t: Translations;
 }) {
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <SheetHeader className="border-b px-5 py-4 pr-12 text-left">
-        <SheetTitle className="text-base">{item ? item.name : t.outbound.detail.title}</SheetTitle>
-        <SheetDescription>
-          {item
-            ? [item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany
-            : t.outbound.detail.description}
-        </SheetDescription>
-      </SheetHeader>
+  const subtitle = item
+    ? [item.jobTitle, item.companyName, item.location].filter(Boolean).join(' · ') || t.outbound.noCompany
+    : t.outbound.detail.description;
 
-      <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="border-b px-4 py-4 sm:px-5">
+        {item && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <ReadinessBadge item={item} t={t} />
+            <Badge variant="outline">{item.emailVerifiedStatus || t.outbound.emailUnknown}</Badge>
+          </div>
+        )}
+        <h2 className="truncate text-base font-semibold">{item ? item.name : t.outbound.detail.title}</h2>
+        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{subtitle}</p>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5">
         {item ? (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <ReadinessBadge item={item} t={t} />
-              <Badge variant="outline">{item.emailVerifiedStatus || t.outbound.emailUnknown}</Badge>
-            </div>
-
-            <InfoBlock icon={<Mail className="h-4 w-4" />} title={t.outbound.detail.preview}>
+            <InspectorSection icon={<Mail className="h-4 w-4" />} title={t.outbound.detail.preview}>
               {item.preview.subject || item.preview.text ? (
                 <div className="space-y-3">
                   <div className="text-sm font-semibold">{item.preview.subject}</div>
@@ -763,13 +797,13 @@ function ProspectDetailSheetContent({
               ) : (
                 <p className="text-sm text-muted-foreground">{t.outbound.noPreview}</p>
               )}
-            </InfoBlock>
+            </InspectorSection>
 
-            <InfoBlock icon={<Sparkles className="h-4 w-4" />} title={t.outbound.detail.personalization}>
+            <InspectorSection icon={<Sparkles className="h-4 w-4" />} title={t.outbound.detail.personalization}>
               <p className="text-sm leading-6 text-muted-foreground">
                 {item.personalizedLine || item.icpFit || t.outbound.detail.noPersonalization}
               </p>
-            </InfoBlock>
+            </InspectorSection>
 
             {(item.blockers.length > 0 || item.warnings.length > 0) && (
               <div className="flex flex-wrap gap-1.5">
@@ -782,7 +816,7 @@ function ProspectDetailSheetContent({
               </div>
             )}
 
-            <details className="rounded-lg border bg-background p-4">
+            <details className="border-t pt-4">
               <summary className="cursor-pointer text-sm font-medium">{t.outbound.detail.details}</summary>
               <div className="mt-3 space-y-3 text-sm text-muted-foreground">
                 <div className="flex flex-wrap gap-3 text-xs">
@@ -807,13 +841,16 @@ function ProspectDetailSheetContent({
             </details>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
-            {t.outbound.empty}
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
+            <div>
+              <Sparkles className="mx-auto mb-3 h-6 w-6" />
+              {t.outbound.empty}
+            </div>
           </div>
         )}
       </div>
 
-      <div className="border-t px-5 py-4">
+      <div className="border-t px-4 py-4 sm:px-5">
         <div className="grid grid-cols-2 gap-2">
           <Button size="sm" onClick={() => onAction('approve_queue')} disabled={!item?.readyForApproval || Boolean(item?.isQueued) || acting}>
             {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -842,9 +879,26 @@ function ProspectDetailSheetContent({
   );
 }
 
-function InfoBlock({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
+function ProspectDetailSheetContent(props: {
+  item: ReviewItem | null;
+  acting: boolean;
+  onAction: (action: ReviewAction) => void;
+  t: Translations;
+}) {
   return (
-    <section className="rounded-lg border bg-background p-4">
+    <>
+      <SheetHeader className="sr-only">
+        <SheetTitle>{props.item ? props.item.name : props.t.outbound.detail.title}</SheetTitle>
+        <SheetDescription>{props.t.outbound.detail.description}</SheetDescription>
+      </SheetHeader>
+      <ProspectInspectorContent {...props} />
+    </>
+  );
+}
+
+function InspectorSection({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="border-b pb-4 last:border-b-0">
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
         {title}
@@ -863,7 +917,7 @@ function ReadinessBadge({ item, t }: { item: ReviewItem; t: Translations }) {
         ? 'border-red-200 bg-red-50 text-red-700'
         : 'border-zinc-200 bg-zinc-50 text-zinc-700';
 
-  return <Badge variant="outline" className={tone}>{t.outbound.readiness[item.readiness]}</Badge>;
+  return <Badge variant="outline" className={cn('h-5 px-1.5 text-[11px]', tone)}>{t.outbound.readiness[item.readiness]}</Badge>;
 }
 
 function EmptyQueue({

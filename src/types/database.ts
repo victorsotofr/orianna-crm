@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Database types for Supabase tables
 export interface Contact {
   id: string;
@@ -81,9 +82,33 @@ export interface OutreachSession {
   user_id: string | null;
   prompt: string;
   structured_brief: Record<string, unknown>;
-  status: 'draft' | 'searching' | 'ready' | 'enriching' | 'sequence_draft' | 'saved' | 'launched' | 'automated' | 'failed';
+  status: 'draft' | 'searching' | 'ready' | 'empty' | 'enriching' | 'sequence_draft' | 'saved' | 'launched' | 'automated' | 'failed';
   raw_search_result: string | null;
   error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutreachSessionMessage {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  content: string;
+  metadata: Record<string, any>;
+  status: 'running' | 'complete' | 'failed';
+  created_at: string;
+}
+
+export interface OutreachSessionEvent {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  kind: string;
+  title: string;
+  detail: string | null;
+  status: 'running' | 'complete' | 'failed';
+  metadata: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
@@ -372,7 +397,7 @@ export interface MailboxMessage {
   folder: string | null;
   imap_uid: number | null;
   is_auto_reply: boolean;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -392,7 +417,7 @@ export interface CalendarEvent {
   meet_url: string | null;
   google_event_url: string | null;
   status: 'confirmed' | 'cancelled' | 'deleted';
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }

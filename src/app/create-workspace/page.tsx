@@ -43,7 +43,7 @@ export default function CreateWorkspacePage() {
       const data = await res.json();
       if (res.ok) {
         setStoredWorkspaceId(data.workspace.id);
-        router.push('/dashboard');
+        router.push('/launch');
       } else {
         toast.error(data.error || 'Erreur lors de la création');
       }

@@ -16,7 +16,7 @@ export const siteConfig = {
     'MCP CRM',
   ],
   publicRoutes: ['/login'],
-  appRoutes: ['/dashboard', '/contacts', '/campaigns', '/conversations', '/templates', '/follow-ups', '/settings'],
+  appRoutes: ['/launch', '/threads', '/automations', '/outbound', '/contacts', '/conversations', '/settings'],
   agentRoutes: ['/llms.txt', '/llms-full.txt', '/.well-known/ai-actions', '/.well-known/mcp', '/api/openapi'],
 };
 

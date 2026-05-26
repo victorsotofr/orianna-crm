@@ -40,11 +40,11 @@ function LoginFormContent() {
       if (error) throw error;
 
       if (data.user && data.session) {
-        router.push('/dashboard');
+        router.push('/launch');
         router.refresh(); // Refresh to update middleware
       }
-    } catch (error: any) {
-      setError(error.message || 'An error occurred during login');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'An error occurred during login');
     } finally {
       setLoading(false);
     }

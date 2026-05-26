@@ -4,10 +4,7 @@ import * as React from "react"
 import { useState, useEffect, useMemo } from "react"
 import { usePathname } from "next/navigation"
 import {
-  Home,
   Users,
-  FileText,
-  Send,
   Settings,
   Bot,
   GalleryVerticalEnd,
@@ -15,10 +12,11 @@ import {
   ChevronsUpDown,
   Plus,
   Check,
-  Reply,
-  MoreHorizontal,
   MessageSquareText,
   Rocket,
+  Loader2,
+  CalendarClock,
+  History,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -44,6 +42,7 @@ import {
 import { useTranslation } from "@/lib/i18n"
 import { useWorkspace } from "@/lib/workspace-context"
 import { supabase } from "@/lib/supabase"
+import { isE2EMockMode } from "@/lib/e2e-mock"
 
 export function AppSidebar({
   user,
@@ -56,13 +55,15 @@ export function AppSidebar({
   }
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
-  const [followUpCount, setFollowUpCount] = useState(0)
   const [unreadConversations, setUnreadConversations] = useState(0)
+  const [runningOutreachTasks, setRunningOutreachTasks] = useState(0)
   const pathname = usePathname()
   const { t } = useTranslation()
   const { workspace, workspaces, switchWorkspace } = useWorkspace()
+  const mockMode = isE2EMockMode()
 
   useEffect(() => {
+    if (mockMode) return
     if (!workspace?.id) {
       return
     }
@@ -80,43 +81,28 @@ export function AppSidebar({
     fetchUnreadConversations()
     const interval = setInterval(fetchUnreadConversations, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [workspace?.id])
+  }, [mockMode, workspace?.id])
 
   useEffect(() => {
+    if (mockMode) return
     if (!workspace?.id) {
       return
     }
 
-    const fetchFollowUpCount = async () => {
-      const todayStr = new Date().toISOString().split('T')[0]
+    const fetchRunningTasks = async () => {
+      const { count, error } = await supabase
+        .from('outreach_session_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspace.id)
+        .eq('status', 'running')
 
-      const [tab1, tab2] = await Promise.all([
-        supabase
-          .from('contacts')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', workspace.id)
-          .eq('status', 'contacted')
-          .not('first_contact', 'is', null)
-          .is('second_contact', null)
-          .lte('follow_up_1', todayStr),
-        supabase
-          .from('contacts')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', workspace.id)
-          .eq('status', 'contacted')
-          .not('second_contact', 'is', null)
-          .is('third_contact', null)
-          .lte('follow_up_2', todayStr),
-      ])
-
-      setFollowUpCount((tab1.count ?? 0) + (tab2.count ?? 0))
+      if (!error) setRunningOutreachTasks(count ?? 0)
     }
 
-    fetchFollowUpCount()
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchFollowUpCount, 5 * 60 * 1000)
+    fetchRunningTasks()
+    const interval = setInterval(fetchRunningTasks, 30 * 1000)
     return () => clearInterval(interval)
-  }, [workspace?.id])
+  }, [mockMode, workspace?.id])
 
   const navMain = useMemo(() => [
     {
@@ -125,9 +111,19 @@ export function AppSidebar({
       icon: Rocket,
     },
     {
+      title: t.sidebar.threads,
+      url: "/threads",
+      icon: History,
+    },
+    {
       title: t.sidebar.control,
       url: "/outbound",
       icon: Bot,
+    },
+    {
+      title: t.sidebar.automations,
+      url: "/automations",
+      icon: CalendarClock,
     },
     {
       title: t.sidebar.people,
@@ -142,31 +138,6 @@ export function AppSidebar({
     },
   ], [t, unreadConversations])
 
-  const moreItems = useMemo(() => [
-    {
-      title: t.sidebar.dashboard,
-      url: "/dashboard",
-      icon: Home,
-    },
-    {
-      title: t.sidebar.campaigns,
-      url: "/campaigns",
-      icon: Send,
-    },
-    {
-      title: t.sidebar.followUps,
-      url: "/follow-ups",
-      icon: Reply,
-      badge: followUpCount,
-    },
-    {
-      title: t.sidebar.templates,
-      url: "/templates",
-      icon: FileText,
-    },
-  ], [t, followUpCount])
-
-  const moreActive = moreItems.some((item) => pathname === item.url || pathname.startsWith(item.url + '/'))
   const settingsActive = pathname === '/settings' || pathname.startsWith('/settings/')
 
   const showSwitcher = workspaces.length > 0
@@ -223,38 +194,19 @@ export function AppSidebar({
         </SidebarHeader>
         <SidebarContent>
           <NavMain items={navMain} />
-          <SidebarMenu className="px-2">
-            <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <SidebarMenuButton tooltip={t.sidebar.advanced} isActive={moreActive}>
-                    <MoreHorizontal className="size-4" />
-                    <span>{t.sidebar.advanced}</span>
-                  </SidebarMenuButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start" className="w-56">
-                  {moreItems.map((item) => (
-                    <DropdownMenuItem key={item.url} asChild>
-                      <a href={item.url} className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <item.icon className="size-4 shrink-0" />
-                          <span className="truncate">{item.title}</span>
-                        </span>
-                        {item.badge != null && item.badge > 0 && (
-                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
-                            {item.badge}
-                          </span>
-                        )}
-                      </a>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
+            {runningOutreachTasks > 0 && (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t.sidebar.outreachRunning}>
+                  <a href="/launch">
+                    <Loader2 className="size-4 animate-spin text-emerald-700" />
+                    <span>{t.sidebar.outreachRunning}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => setFeedbackOpen(true)}

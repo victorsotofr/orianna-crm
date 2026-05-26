@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 
 import { aiModel } from '@/lib/ai-provider';
-import { parseJsonFromText } from '@/lib/outreach';
+import { deriveOutreachThreadTitle, parseJsonFromText } from '@/lib/outreach';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 
 export const maxDuration = 60;
+
+const THREAD_COLUMNS = 'id, prompt, title, structured_brief, status, error, archived_at, deleted_at, duplicated_from_session_id, last_message_at, metadata, created_at, updated_at';
+const LEGACY_THREAD_COLUMNS = 'id, prompt, structured_brief, status, error, created_at, updated_at';
 
 interface OutreachBrief {
   target: string;
@@ -25,8 +28,25 @@ function fallbackBrief(prompt: string): OutreachBrief {
     companySize: '',
     roles: [],
     exclusions: [],
-    outreachAngle: 'Operational automation and faster customer follow-up',
+    outreachAngle: 'Relevant, truthful B2B outreach based on the workspace offer and the user request',
     searchQuery: prompt,
+  };
+}
+
+function isMissingThreadCrudColumnError(error: unknown) {
+  const err = error as { code?: string; message?: string } | null;
+  return err?.code === 'PGRST204' || err?.code === '42703' || Boolean(err?.message?.includes('archived_at'));
+}
+
+function normalizeThread(row: Record<string, unknown>) {
+  const prompt = typeof row.prompt === 'string' ? row.prompt : '';
+  return {
+    ...row,
+    title: typeof row.title === 'string' && row.title.trim() ? row.title : deriveOutreachThreadTitle(prompt),
+    archived_at: row.archived_at || null,
+    deleted_at: row.deleted_at || null,
+    last_message_at: row.last_message_at || row.updated_at || row.created_at,
+    metadata: row.metadata || {},
   };
 }
 
@@ -42,15 +62,53 @@ export async function GET(request: NextRequest) {
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
-    const { data: sessions, error } = await supabase
+    const searchParams = request.nextUrl.searchParams;
+    const query = searchParams.get('query')?.trim();
+    const status = searchParams.get('status')?.trim();
+    const archivedMode = searchParams.get('archived');
+    const deletedMode = searchParams.get('deleted');
+    const includeArchived = archivedMode === 'true' || archivedMode === 'include';
+    const onlyArchived = archivedMode === 'only';
+    const includeDeleted = deletedMode === 'true' || deletedMode === 'include';
+    const onlyDeleted = deletedMode === 'only';
+
+    let sessionsQuery = supabase
       .from('outreach_sessions')
-      .select('id, prompt, structured_brief, status, created_at, updated_at')
+      .select(THREAD_COLUMNS)
       .eq('workspace_id', ctx.workspaceId)
-      .order('created_at', { ascending: false })
-      .limit(12);
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(50);
+
+    if (onlyDeleted) sessionsQuery = sessionsQuery.not('deleted_at', 'is', null);
+    else if (!includeDeleted) sessionsQuery = sessionsQuery.is('deleted_at', null);
+    if (onlyArchived) sessionsQuery = sessionsQuery.not('archived_at', 'is', null);
+    if (!onlyDeleted && !includeArchived && !onlyArchived) sessionsQuery = sessionsQuery.is('archived_at', null);
+    if (status && status !== 'all') sessionsQuery = sessionsQuery.eq('status', status);
+    if (query) {
+      const escapedQuery = query.replace(/[%_]/g, '\\$&');
+      sessionsQuery = sessionsQuery.or(`prompt.ilike.%${escapedQuery}%,title.ilike.%${escapedQuery}%`);
+    }
+
+    const sessionsResult = await sessionsQuery;
+    let sessions = sessionsResult.data as Record<string, unknown>[] | null;
+    let error = sessionsResult.error;
+
+    if (error && isMissingThreadCrudColumnError(error)) {
+      let legacyQuery = supabase
+        .from('outreach_sessions')
+        .select(LEGACY_THREAD_COLUMNS)
+        .eq('workspace_id', ctx.workspaceId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (status && status !== 'all') legacyQuery = legacyQuery.eq('status', status);
+      if (query) legacyQuery = legacyQuery.ilike('prompt', `%${query}%`);
+      const legacyResult = await legacyQuery;
+      sessions = legacyResult.data as Record<string, unknown>[] | null;
+      error = legacyResult.error;
+    }
 
     if (error) throw error;
-    return NextResponse.json({ sessions: sessions || [] });
+    return NextResponse.json({ sessions: (sessions || []).map((row) => normalizeThread(row)) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load outreach sessions';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -69,12 +127,13 @@ export async function POST(request: NextRequest) {
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
-    const { prompt } = await request.json();
+    const { prompt, title } = await request.json();
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
     }
 
     const cleanPrompt = prompt.trim();
+    const threadTitle = typeof title === 'string' && title.trim() ? deriveOutreachThreadTitle(title) : deriveOutreachThreadTitle(cleanPrompt);
     let structuredBrief = fallbackBrief(cleanPrompt);
 
     try {
@@ -94,9 +153,10 @@ Return ONLY valid JSON with this exact shape:
 }
 
 Rules:
-- Preserve the user's language and geography.
-- Keep searchQuery specific enough for web prospecting.
-- Do not invent a product feature beyond operational automation, tenant/request handling, maintenance, reporting, and follow-ups.`,
+- Preserve the user's language, industry, roles, geography, exclusions, and company-size intent.
+- If the user asks for status, automations, inbox, or pipeline instead of prospecting, keep target/searchQuery as the raw request.
+- Keep searchQuery specific enough for named-person web prospecting only when the request is prospecting-related.
+- Be industry agnostic. Do not assume real estate, property management, or any fixed ICP unless the user says it.`,
         prompt: cleanPrompt,
       });
       structuredBrief = {
@@ -107,17 +167,36 @@ Rules:
       console.warn('Outreach brief generation failed:', error);
     }
 
-    const { data: session, error } = await supabase
+    let { data: session, error } = await supabase
       .from('outreach_sessions')
       .insert({
         workspace_id: ctx.workspaceId,
         user_id: user.id,
         prompt: cleanPrompt,
+        title: threadTitle,
         structured_brief: structuredBrief,
         status: 'draft',
+        metadata: { source: 'chat' },
+        last_message_at: new Date().toISOString(),
       })
       .select()
       .single();
+
+    if (error && isMissingThreadCrudColumnError(error)) {
+      const fallback = await supabase
+        .from('outreach_sessions')
+        .insert({
+          workspace_id: ctx.workspaceId,
+          user_id: user.id,
+          prompt: cleanPrompt,
+          structured_brief: structuredBrief,
+          status: 'draft',
+        })
+        .select()
+        .single();
+      session = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) throw error;
     return NextResponse.json({ session }, { status: 201 });

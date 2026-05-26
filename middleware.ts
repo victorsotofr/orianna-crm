@@ -2,6 +2,13 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
+  const protectedPaths = ['/launch', '/threads', '/automations', '/outbound', '/conversations', '/dashboard', '/settings', '/templates', '/contacts', '/campaigns', '/follow-ups'];
+  const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path));
+
+  if ((process.env.E2E_MOCK_OUTREACH === '1' || process.env.NEXT_PUBLIC_E2E_MOCK_OUTREACH === '1') && isProtectedPath) {
+    return NextResponse.next();
+  }
+
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     console.error('[Middleware] Missing Supabase environment variables');
     return NextResponse.next();
@@ -32,9 +39,6 @@ export async function middleware(request: NextRequest) {
     );
 
     const { data: { user } } = await supabase.auth.getUser();
-
-    const protectedPaths = ['/launch', '/outbound', '/conversations', '/dashboard', '/settings', '/templates', '/contacts', '/campaigns', '/follow-ups'];
-    const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path));
 
     if (!user && isProtectedPath) {
       const url = request.nextUrl.clone();

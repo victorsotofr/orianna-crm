@@ -76,8 +76,49 @@ export async function POST(request: NextRequest) {
       workspace_id: workspaceId,
     });
 
+    try {
+      const enrichmentStatus = email ? 'found' : 'not_found';
+      const { data: sessionProspects } = await supabase
+        .from('outreach_session_prospects')
+        .update({
+          enrichment_status: enrichmentStatus,
+          email: email || contact.email || null,
+          email_verified_status: emailStatus || contact.email_verified_status || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('workspace_id', workspaceId)
+        .eq('contact_id', contactId)
+        .select('session_id');
+
+      const sessionIds = Array.from(new Set((sessionProspects || []).map((row) => row.session_id).filter(Boolean)));
+      for (const sessionId of sessionIds) {
+        const { count: remaining } = await supabase
+          .from('outreach_session_prospects')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('session_id', sessionId)
+          .eq('enrichment_status', 'requested');
+
+        if ((remaining || 0) === 0) {
+          await supabase
+            .from('outreach_session_events')
+            .update({
+              status: 'complete',
+              detail: 'Email enrichment finished.',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('workspace_id', workspaceId)
+            .eq('session_id', sessionId)
+            .eq('kind', 'enrich_prospects')
+            .eq('status', 'running');
+        }
+      }
+    } catch (threadError) {
+      console.warn('FullEnrich outreach thread update skipped:', threadError);
+    }
+
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('FullEnrich webhook error:', error);
     // Sentry.captureException(error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });

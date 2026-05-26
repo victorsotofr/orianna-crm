@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Configuration optimized for Vercel serverless deployment
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   serverExternalPackages: ['nodemailer', 'imapflow'],
 };
 

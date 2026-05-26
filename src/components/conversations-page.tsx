@@ -3,13 +3,14 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { format, formatDistanceToNow } from "date-fns"
-import { AlertTriangle, BriefcaseBusiness, CalendarPlus, Check, Copy, Download, Loader2, MailSearch, RefreshCw, Send, Sparkles, Trash2, UserRound } from "lucide-react"
+import { AlertTriangle, BriefcaseBusiness, CalendarPlus, Check, Copy, Download, Inbox, Loader2, MailSearch, RefreshCw, Send, Sparkles, Trash2, UserRound } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { OutreachActivityStrip } from "@/components/outreach/outreach-activity-strip"
 import { Textarea } from "@/components/ui/textarea"
 import {
   AlertDialog,
@@ -51,6 +52,20 @@ interface ConversationMessage extends MailboxMessage {
   } | null
 }
 
+type MeetingPrepData = {
+  brief: {
+    company_summary: string
+    contact_role: string
+    engagement_recap: string
+    recent_signals: string[]
+    talking_points: string[]
+    suggested_questions: string[]
+    red_flags: string[]
+  }
+  contact: { name: string; company: string; jobTitle: string; score: number | null; scoreLabel: string | null }
+  hasWebResearch: boolean
+}
+
 function getDisplayName(thread: ConversationThread) {
   const fullName = [thread.contacts?.first_name, thread.contacts?.last_name].filter(Boolean).join(" ").trim()
   if (fullName) return fullName
@@ -72,6 +87,10 @@ function getMessageBody(message: ConversationMessage) {
 function getProviderLabel(message: ConversationMessage) {
   if (!message.provider) return null
   return message.provider === "imap" ? "IMAP" : message.provider === "gmail" ? "Gmail" : "Outlook"
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message || fallback : fallback
 }
 
 export function ConversationsPage() {
@@ -101,19 +120,7 @@ export function ConversationsPage() {
   const [creatingMeeting, setCreatingMeeting] = useState(false)
   const [meetingPrepOpen, setMeetingPrepOpen] = useState(false)
   const [meetingPrepLoading, setMeetingPrepLoading] = useState(false)
-  const [meetingPrepData, setMeetingPrepData] = useState<{
-    brief: {
-      company_summary: string
-      contact_role: string
-      engagement_recap: string
-      recent_signals: string[]
-      talking_points: string[]
-      suggested_questions: string[]
-      red_flags: string[]
-    }
-    contact: { name: string; company: string; jobTitle: string; score: number | null; scoreLabel: string | null }
-    hasWebResearch: boolean
-  } | null>(null)
+  const [meetingPrepData, setMeetingPrepData] = useState<MeetingPrepData | null>(null)
   const [deleteThreadId, setDeleteThreadId] = useState<string | null>(null)
   const syncingRef = React.useRef(false)
 
@@ -136,8 +143,15 @@ export function ConversationsPage() {
     })
   }, [search, threads])
 
+  const unreadTotal = useMemo(
+    () => threads.reduce((sum, thread) => sum + (thread.unread_count || 0), 0),
+    [threads]
+  )
+
   useEffect(() => {
     void loadThreads(true)
+    // The load function intentionally reads the latest component state; this effect is scoped to the URL filter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactId])
 
   // Auto-refresh every 60 seconds
@@ -146,6 +160,8 @@ export function ConversationsPage() {
       void handleSync(true)
     }, 60_000)
     return () => clearInterval(interval)
+    // Keep one mailbox polling interval alive for this page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -158,6 +174,8 @@ export function ConversationsPage() {
     setMeetingPrepData(null)
     void loadThread(selectedThreadId)
     void fetchExistingMeetingPrep(selectedThreadId)
+    // Thread detail loading is keyed only by the selected thread id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedThreadId])
 
   async function loadThreads(triggerSync: boolean) {
@@ -183,9 +201,9 @@ export function ConversationsPage() {
       if (triggerSync) {
         void handleSync(true)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Conversations load error:", error)
-      toast.error(error.message || t.conversations.loadError)
+      toast.error(getErrorMessage(error, t.conversations.loadError))
     } finally {
       setLoading(false)
     }
@@ -211,9 +229,9 @@ export function ConversationsPage() {
         )
       )
       setDraftBody("")
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Conversation detail error:", error)
-      toast.error(error.message || t.conversations.loadError)
+      toast.error(getErrorMessage(error, t.conversations.loadError))
     } finally {
       setDetailLoading(false)
     }
@@ -275,10 +293,10 @@ export function ConversationsPage() {
       if (selectedThreadId) {
         await loadThread(selectedThreadId)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Conversation sync error:", error)
       if (!silent) {
-        toast.error(error.message || t.conversations.syncError)
+        toast.error(getErrorMessage(error, t.conversations.syncError))
       }
     } finally {
       syncingRef.current = false
@@ -301,8 +319,8 @@ export function ConversationsPage() {
       } else {
         toast.error(t.bounce.recoveryFailed.replace("{name}", contactId), { duration: 8000 })
       }
-    } catch (error: any) {
-      toast.error(error.message || "Recovery failed")
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Recovery failed"))
     }
   }
 
@@ -335,9 +353,9 @@ export function ConversationsPage() {
         setMeetingDialogOpen(true)
         toast.info(t.conversations.meetingDialog.proposalReady)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Suggest reply error:", error)
-      toast.error(error.message || t.conversations.suggestError)
+      toast.error(getErrorMessage(error, t.conversations.suggestError))
     } finally {
       setSuggesting(false)
     }
@@ -362,9 +380,9 @@ export function ConversationsPage() {
       setDraftBody("")
       await loadThreads(false)
       await loadThread(selectedThreadId)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Send reply error:", error)
-      toast.error(error.message || t.conversations.replyError)
+      toast.error(getErrorMessage(error, t.conversations.replyError))
     } finally {
       setSending(false)
     }
@@ -392,9 +410,9 @@ export function ConversationsPage() {
       }
       setDeleteThreadId(null)
       toast.success(t.conversations.deleteSuccess)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Delete conversation error:", error)
-      toast.error(error.message || t.conversations.deleteError)
+      toast.error(getErrorMessage(error, t.conversations.deleteError))
     } finally {
       setDeleting(false)
     }
@@ -427,9 +445,9 @@ export function ConversationsPage() {
       if (!response.ok) throw new Error(data.error || t.conversations.meetingPrep.error)
       setMeetingPrepData(data)
       toast.success(t.conversations.meetingPrep.ready)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Meeting prep error:", error)
-      toast.error(error.message || t.conversations.meetingPrep.error)
+      toast.error(getErrorMessage(error, t.conversations.meetingPrep.error))
       if (!meetingPrepData) setMeetingPrepOpen(false)
     } finally {
       setMeetingPrepLoading(false)
@@ -527,9 +545,9 @@ export function ConversationsPage() {
       }
 
       setMeetingDialogOpen(false)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Create meeting error:", error)
-      toast.error(error.message || t.conversations.meetingDialog.error)
+      toast.error(getErrorMessage(error, t.conversations.meetingDialog.error))
     } finally {
       setCreatingMeeting(false)
     }
@@ -537,20 +555,43 @@ export function ConversationsPage() {
 
   return (
     <>
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b">
-        <div className="flex w-full items-center justify-between gap-1.5 px-4 lg:px-6">
-          <h1 className="text-sm font-medium tracking-tight">{t.conversations.title}</h1>
-          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleSync(false)} disabled={syncing}>
-            {syncing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-            {syncing ? t.conversations.syncing : t.common.refresh}
-          </Button>
+      <header className="flex shrink-0 items-center border-b bg-background">
+        <div className="flex w-full flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-muted/40">
+                <Inbox className="h-4 w-4 text-emerald-700" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-semibold tracking-tight">{t.conversations.inbox}</h1>
+                <p className="truncate text-xs text-muted-foreground">
+                  {contactId ? t.conversations.filteredToContact : t.conversations.subtitle}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
+              <span className="rounded-full border bg-background px-2.5 py-1">
+                {t.conversations.unread}: <span className="font-medium text-foreground">{unreadTotal}</span>
+              </span>
+              <span className="rounded-full border bg-background px-2.5 py-1">
+                {t.conversations.threads}: <span className="font-medium text-foreground">{threads.length}</span>
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={syncing}>
+              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {syncing ? t.conversations.syncing : t.common.refresh}
+            </Button>
+          </div>
         </div>
       </header>
       <div className="page-container">
         <div className="page-content">
+          <OutreachActivityStrip />
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="flex min-h-0 flex-col rounded-xl border bg-card">
+            <div className="flex min-h-0 flex-col rounded-lg border bg-background shadow-xs">
               <div className="border-b p-3">
                 <Input
                   value={search}
@@ -613,7 +654,7 @@ export function ConversationsPage() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-col rounded-xl border bg-card">
+            <div className="flex min-h-0 flex-col rounded-lg border bg-background shadow-xs">
               {!selectedThread ? (
                 <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
                   {t.conversations.noSelection}
@@ -735,12 +776,12 @@ export function ConversationsPage() {
                   </div>
 
                   <div className="px-4 py-3">
-                    <div className="rounded-xl border bg-background shadow-sm">
+                    <div className="rounded-lg border bg-background shadow-sm">
                       <Textarea
                         value={draftBody}
                         onChange={(event) => setDraftBody(event.target.value)}
                         placeholder={t.conversations.replyPlaceholder}
-                        className="min-h-[40px] border-0 shadow-none focus-visible:ring-0 resize-none rounded-xl rounded-b-none"
+                        className="min-h-[40px] resize-none rounded-lg rounded-b-none border-0 shadow-none focus-visible:ring-0"
                       />
                       <div className="flex items-center justify-between px-3 py-2">
                         <button
@@ -869,7 +910,7 @@ export function ConversationsPage() {
   )
 }
 
-function MeetingPrepContent({ data, t, onRegenerate, regenerating }: { data: NonNullable<ReturnType<typeof useMeetingPrepData>>; t: ReturnType<typeof useTranslation>["t"]; onRegenerate: () => void; regenerating: boolean }) {
+function MeetingPrepContent({ data, t, onRegenerate, regenerating }: { data: MeetingPrepData; t: ReturnType<typeof useTranslation>["t"]; onRegenerate: () => void; regenerating: boolean }) {
   const [copied, setCopied] = useState(false)
   const brief = data.brief
   const contact = data.contact
@@ -1011,22 +1052,6 @@ function MeetingPrepContent({ data, t, onRegenerate, regenerating }: { data: Non
       )}
     </div>
   )
-}
-
-function useMeetingPrepData() {
-  return null as {
-    brief: {
-      company_summary: string
-      contact_role: string
-      engagement_recap: string
-      recent_signals: string[]
-      talking_points: string[]
-      suggested_questions: string[]
-      red_flags: string[]
-    }
-    contact: { name: string; company: string; jobTitle: string; score: number | null; scoreLabel: string | null }
-    hasWebResearch: boolean
-  } | null
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

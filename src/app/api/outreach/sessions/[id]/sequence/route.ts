@@ -41,6 +41,10 @@ export async function POST(
     if (!session) return NextResponse.json({ error: 'Outreach session not found' }, { status: 404 });
 
     const body = await request.json().catch(() => ({}));
+    const brief = session.structured_brief && typeof session.structured_brief === 'object'
+      ? session.structured_brief as Record<string, unknown>
+      : {};
+    const activeObjective = String(brief.searchQuery || brief.target || session.prompt);
     const providedSteps = normalizeSteps(body.steps);
     const revisionPrompt = typeof body.revisionPrompt === 'string' ? body.revisionPrompt.trim() : '';
     let steps = providedSteps.length ? providedSteps : [];
@@ -87,11 +91,11 @@ Rules:
 - Do not overpromise.
 - Avoid hype, emojis, and long paragraphs.
 - Email 1 opens the conversation; email 2 adds operational value; email 3 politely closes the loop.`,
-        prompt: `Original outreach request:
-${session.prompt}
+        prompt: `Current outreach objective:
+${activeObjective}
 
 Structured brief:
-${JSON.stringify(session.structured_brief || {}, null, 2)}
+${JSON.stringify(brief, null, 2)}
 
 Selected prospect examples:
 ${JSON.stringify(prospects || [], null, 2)}
@@ -108,7 +112,7 @@ ${revisionPrompt ? `User revision request: ${revisionPrompt}` : 'Create the best
     }
 
     if (!steps.length) steps = defaultSteps();
-    const name = String(body.name || `Outreach - ${session.prompt.slice(0, 48)}`).trim();
+    const name = String(body.name || `Outreach - ${activeObjective.slice(0, 48)}`).trim();
 
     const { data: draft, error } = await supabase
       .from('outreach_sequence_drafts')

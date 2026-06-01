@@ -3,14 +3,13 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type OutreachAgentTool =
-  | 'answer_directly'
-  | 'redirect_off_domain'
+  | 'answer_product_question'
+  | 'refuse_out_of_scope'
   | 'get_workspace_status'
   | 'list_automations'
+  | 'list_campaigns'
   | 'get_inbox_attention'
   | 'get_pipeline_attention'
-  | 'parse_outreach_brief'
-  | 'plan_search_queries'
   | 'search_prospects'
   | 'save_prospects'
   | 'find_emails'
@@ -22,6 +21,7 @@ export type OutreachAgentTool =
 export type OutreachArtifactKind =
   | 'status_snapshot'
   | 'automation_list'
+  | 'campaign_list'
   | 'inbox_attention'
   | 'pipeline_attention'
   | 'prospect_list'
@@ -49,18 +49,18 @@ export interface OutreachAgentToolDefinition {
 
 export const OUTREACH_AGENT_TOOLS: OutreachAgentToolDefinition[] = [
   {
-    name: 'answer_directly',
-    label: 'Answer directly',
-    description: 'Answer a product, capability, model, or workflow question without reading or mutating workspace data.',
+    name: 'answer_product_question',
+    label: 'Answer product question',
+    description: 'Answer scoped questions about the webapp, its capabilities, workflow, or how to use the agent.',
     permission: 'read',
-    guardrail: 'Stay inside outreach/CRM scope. No database writes, no external calls, and no invented workspace facts.',
+    guardrail: 'Stay inside the Orianna/isimple product scope. Do not invent workspace facts; use data tools for current state.',
   },
   {
-    name: 'redirect_off_domain',
-    label: 'Redirect off-domain',
-    description: 'Redirect casual, trivia, math, general knowledge, or unrelated requests back to outreach/CRM.',
+    name: 'refuse_out_of_scope',
+    label: 'Refuse out of scope',
+    description: 'Briefly refuse trivia, math, general knowledge, coding, or unrelated assistant work.',
     permission: 'read',
-    guardrail: 'Never answer the unrelated topic and never use it as prospecting context.',
+    guardrail: 'Do not answer the unrelated topic and do not use it as prospecting context.',
   },
   {
     name: 'get_workspace_status',
@@ -77,6 +77,13 @@ export const OUTREACH_AGENT_TOOLS: OutreachAgentToolDefinition[] = [
     guardrail: 'Read-only; archived automations are hidden unless explicitly requested later.',
   },
   {
+    name: 'list_campaigns',
+    label: 'List campaigns',
+    description: 'List current campaign sequences, manual campaigns, drafts, and active enrollment counts.',
+    permission: 'read',
+    guardrail: 'Read-only; never creates, launches, pauses, or edits campaigns.',
+  },
+  {
     name: 'get_inbox_attention',
     label: 'Inbox attention',
     description: 'Find unread replies and conversations that likely need a response.',
@@ -91,23 +98,9 @@ export const OUTREACH_AGENT_TOOLS: OutreachAgentToolDefinition[] = [
     guardrail: 'Read-only; approvals and queueing require explicit user action.',
   },
   {
-    name: 'parse_outreach_brief',
-    label: 'Parse brief',
-    description: 'Convert a user request into industry, role, geography, size, exclusions, and offer angle.',
-    permission: 'read',
-    guardrail: 'Industry agnostic; never assumes real estate or a fixed ICP.',
-  },
-  {
-    name: 'plan_search_queries',
-    label: 'Plan search queries',
-    description: 'Plan the web research queries before spending Linkup credits.',
-    permission: 'read',
-    guardrail: 'Queries must target named people and verifiable sources.',
-  },
-  {
     name: 'search_prospects',
     label: 'Search prospects',
-    description: 'Run Linkup prospecting and extract named people.',
+    description: 'Run Linkup prospecting and extract named people from an audience/ICP request.',
     permission: 'external',
     guardrail: 'External call; must stream progress and preserve sources.',
   },
@@ -155,6 +148,8 @@ export const OUTREACH_AGENT_TOOLS: OutreachAgentToolDefinition[] = [
   },
 ];
 
+export const OUTREACH_AGENT_TOOL_NAMES = OUTREACH_AGENT_TOOLS.map((tool) => tool.name) as [OutreachAgentTool, ...OutreachAgentTool[]];
+
 export function artifact(kind: OutreachArtifactKind, title: string, data: Record<string, unknown>, summary?: string): OutreachArtifact {
   return {
     id: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -180,18 +175,21 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function textIncludes(text: string, words: string[]) {
-  const haystack = text
+function normalizeText(text: string) {
+  return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[’']/g, ' ');
+    .replace(/[’']/g, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function textIncludes(text: string, words: string[]) {
+  const haystack = normalizeText(text);
   return words.some((word) => {
-    const needle = word
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[’']/g, ' ');
+    const needle = normalizeText(word);
     if (needle.includes(' ')) {
       return haystack.includes(needle);
     }
@@ -199,8 +197,12 @@ function textIncludes(text: string, words: string[]) {
   });
 }
 
-function hasProspectSearchIntent(text: string) {
-  const hasSearchVerb = textIncludes(text, [
+function outreachSearchScore(text: string) {
+  const normalized = normalizeText(text);
+  let score = 0;
+
+  if (/\b\d{1,3}\b/.test(normalized)) score += 2;
+  if (textIncludes(normalized, [
     'find',
     'search',
     'look for',
@@ -215,8 +217,16 @@ function hasProspectSearchIntent(text: string) {
     'identifier',
     'liste',
     'lister',
-  ]);
-  const hasProspectObject = textIncludes(text, [
+  ])) score += 2;
+  if (textIncludes(normalized, [
+    'reach out',
+    'outreach',
+    'prospection',
+    'contacter',
+    'cible',
+    'target',
+  ])) score += 2;
+  if (textIncludes(normalized, [
     'prospect',
     'prospects',
     'contact',
@@ -243,23 +253,70 @@ function hasProspectSearchIntent(text: string) {
     'directeurs',
     'fondateur',
     'fondateurs',
-    'independant',
-    'independants',
-    'locatif',
-    'locatifs',
     'property manager',
     'property managers',
-  ]);
-  const hasOutreachObject = textIncludes(text, ['reach out', 'contacter', 'prospection', 'cible', 'target']);
+  ])) score += 2;
+  if (textIncludes(normalized, [
+    'property management',
+    'gestion locative',
+    'gestion immobiliere',
+    'locatif',
+    'locatifs',
+    'real estate',
+    'immobilier',
+    'immobiliers',
+    'saas',
+    'software',
+    'industrie',
+    'finance',
+    'retail',
+    'agency',
+    'agence',
+    'cabinet',
+  ])) score += 2;
+  if (textIncludes(normalized, [
+    'lyon',
+    'paris',
+    'lille',
+    'marseille',
+    'bordeaux',
+    'nantes',
+    'toulouse',
+    'france',
+    'region',
+    'area',
+    'autour',
+    'around',
+    'near',
+  ])) score += 1;
+  if (textIncludes(normalized, [
+    'independant',
+    'independants',
+    'small',
+    'mid',
+    'smb',
+    'pme',
+    'eti',
+    'startup',
+    'startups',
+    'local',
+    'locaux',
+  ])) score += 1;
 
-  return (hasSearchVerb && hasProspectObject) || hasOutreachObject;
+  return score;
+}
+
+function hasProspectSearchIntent(text: string) {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+  return outreachSearchScore(normalized) >= 3;
 }
 
 export function inferOutreachTool(message: string, fallbackHasProspects: boolean, hasSequenceDraft: boolean): OutreachAgentTool {
-  const lower = message.toLowerCase();
+  const lower = normalizeText(message);
 
-  if (textIncludes(lower, ['what can you do', 'help', 'aide', 'tu peux m aider', 'tu peux m’aider', 'comment ça marche', 'comment ca marche', 'model', 'modèle', 'modele', 'openai', 'gpt', 'propulse'])) {
-    return 'answer_directly';
+  if (textIncludes(lower, ['what can you do', 'help', 'aide', 'tu peux m aider', 'tu peux m’aider', 'comment ça marche', 'comment ca marche', 'model', 'modèle', 'modele', 'openai', 'gpt', 'propulse', 'scope', 'webapp', 'app', 'crm', 'product', 'produit'])) {
+    return 'answer_product_question';
   }
   if (textIncludes(lower, ['find emails', 'email search', 'enrich', 'enrichir', 'trouver email', 'emails'])) {
     if (!textIncludes(lower, ['sequence', 'séquence'])) return 'find_emails';
@@ -268,11 +325,18 @@ export function inferOutreachTool(message: string, fallbackHasProspects: boolean
     return 'search_prospects';
   }
   if (textIncludes(lower, ['hello', 'hi', 'hey', 'bonjour', 'salut', 'ça va', 'ca va', 'how are you', 'how are u', 'thanks', 'thank you', 'merci'])) {
-    return 'redirect_off_domain';
+    return 'answer_product_question';
   }
   if (textIncludes(lower, ['automate', 'automation', 'automatisation', 'every morning', 'tous les matins', 'recurring'])) {
     if (textIncludes(lower, ['create', 'make', 'set up', 'run this', 'crée', 'creer', 'mets en place'])) return 'create_automation';
     return 'list_automations';
+  }
+  if (
+    textIncludes(lower, ['campaign', 'campaigns', 'campagne', 'campagnes']) ||
+    (textIncludes(lower, ['sequence', 'sequences', 'séquence', 'séquences']) &&
+      textIncludes(lower, ['show', 'list', 'check', 'status', 'update', 'updates', 'ongoing', 'current', 'existing', 'past', 'active', 'voir', 'liste', 'etat', 'point']))
+  ) {
+    return 'list_campaigns';
   }
   if (textIncludes(lower, ['inbox', 'reply', 'replies', 'answer', 'respond', 'répond', 'repond', 'réponse', 'conversation'])) {
     return 'get_inbox_attention';
@@ -288,11 +352,14 @@ export function inferOutreachTool(message: string, fallbackHasProspects: boolean
     return hasSequenceDraft ? 'revise_sequence' : 'draft_sequence';
   }
   if (textIncludes(lower, ['save', 'import', 'keep these', 'sauve', 'importe'])) return 'save_prospects';
-  if (textIncludes(lower, ['find', 'search', 'prospect', 'reach out', 'target', 'contact ', 'contacts ', 'trouve', 'trouver', 'cherche', 'chercher', 'contacter', 'prospection', 'cible'])) {
+  if (textIncludes(lower, ['find', 'search', 'reach out', 'target', 'trouve', 'trouver', 'cherche', 'chercher', 'contacter', 'prospection', 'cible'])) {
     return 'search_prospects';
   }
 
-  if (!fallbackHasProspects) return 'redirect_off_domain';
+  if (textIncludes(lower, ['zidane', 'hadamard', 'haldemar', 'math', 'multiplication', 'football', 'movie', 'weather', 'recipe', 'code'])) {
+    return 'refuse_out_of_scope';
+  }
+  if (!fallbackHasProspects) return 'refuse_out_of_scope';
   if (!hasSequenceDraft) return 'get_pipeline_attention';
   return 'get_workspace_status';
 }
@@ -364,6 +431,64 @@ export async function listAutomationsArtifact(db: SupabaseClient, workspaceId: s
   const rows = data || [];
   const active = rows.filter((row) => row.status === 'active').length;
   return artifact('automation_list', 'Automations', { automations: rows }, `${active} active automation(s), ${rows.length} total.`);
+}
+
+export async function listCampaignsArtifact(db: SupabaseClient, workspaceId: string) {
+  const [campaignsResult, sequencesResult, draftsResult, activeEnrollmentsResult] = await Promise.all([
+    db
+      .from('campaigns')
+      .select('id, name, industry, status, total_contacts, sent_count, failed_count, created_at')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: false })
+      .limit(10),
+    db
+      .from('campaign_sequences')
+      .select(`
+        id,
+        name,
+        status,
+        created_at,
+        updated_at,
+        steps:campaign_sequence_steps(id, step_order, delay_days)
+      `)
+      .eq('workspace_id', workspaceId)
+      .order('updated_at', { ascending: false })
+      .limit(10),
+    db
+      .from('outreach_sequence_drafts')
+      .select('id, session_id, sequence_id, name, status, updated_at, created_at')
+      .eq('workspace_id', workspaceId)
+      .order('updated_at', { ascending: false })
+      .limit(10),
+    db
+      .from('campaign_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'active'),
+  ]);
+
+  if (campaignsResult.error) throw campaignsResult.error;
+  if (sequencesResult.error) throw sequencesResult.error;
+  if (draftsResult.error) throw draftsResult.error;
+  if (activeEnrollmentsResult.error) throw activeEnrollmentsResult.error;
+
+  const campaigns = campaignsResult.data || [];
+  const sequences = sequencesResult.data || [];
+  const drafts = draftsResult.data || [];
+  const activeSequences = sequences.filter((sequence) => sequence.status === 'active').length;
+  const draftCount = drafts.filter((draft) => draft.status === 'draft').length;
+
+  return artifact(
+    'campaign_list',
+    'Campaigns and sequences',
+    {
+      campaigns,
+      sequences,
+      drafts,
+      activeEnrollments: activeEnrollmentsResult.count || 0,
+    },
+    `${activeSequences} active sequence(s), ${draftCount} draft(s), ${activeEnrollmentsResult.count || 0} active enrollment(s).`
+  );
 }
 
 export async function getInboxAttentionArtifact(db: SupabaseClient, workspaceId: string, userId: string) {

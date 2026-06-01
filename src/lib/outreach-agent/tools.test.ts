@@ -4,27 +4,35 @@ import { extractRequestedProspectLimit, inferOutreachTool } from './tools';
 
 describe('inferOutreachTool', () => {
   it.each([
-    ['ça va ?', 'redirect_off_domain'],
-    ['hello', 'redirect_off_domain'],
-    ['bonjour', 'redirect_off_domain'],
-    ['merci', 'redirect_off_domain'],
-    ['qui est zidane ?', 'redirect_off_domain'],
-    ["multiplication d'hadamard", 'redirect_off_domain'],
-    ["dis moi à quoi correspond la multiplication d'haldemar", 'redirect_off_domain'],
-  ] as const)('redirects off-domain chat "%s" to %s', (message, tool) => {
+    ['ça va ?', 'answer_product_question'],
+    ['hello', 'answer_product_question'],
+    ['bonjour', 'answer_product_question'],
+    ['merci', 'answer_product_question'],
+  ] as const)('keeps greetings scoped "%s" to %s', (message, tool) => {
     expect(inferOutreachTool(message, false, false)).toBe(tool);
   });
 
   it.each([
-    ['what can you do?', 'answer_directly'],
-    ["tu peux m'aider sur quoi ?", 'answer_directly'],
-    ['quel modèle te propulse ?', 'answer_directly'],
+    ['qui est zidane ?', 'refuse_out_of_scope'],
+    ["multiplication d'hadamard", 'refuse_out_of_scope'],
+    ["dis moi à quoi correspond la multiplication d'haldemar", 'refuse_out_of_scope'],
+  ] as const)('refuses off-domain chat "%s" to %s', (message, tool) => {
+    expect(inferOutreachTool(message, false, false)).toBe(tool);
+  });
+
+  it.each([
+    ['what can you do?', 'answer_product_question'],
+    ["tu peux m'aider sur quoi ?", 'answer_product_question'],
+    ['quel modèle te propulse ?', 'answer_product_question'],
+    ["c'est dans ton scope", 'answer_product_question'],
   ] as const)('routes direct chat "%s" to %s', (message, tool) => {
     expect(inferOutreachTool(message, false, false)).toBe(tool);
   });
 
   it.each([
     ['show my active automations', 'list_automations'],
+    ['show my active campaigns', 'list_campaigns'],
+    ['what draft sequences are ongoing?', 'list_campaigns'],
     ['any replies to answer?', 'get_inbox_attention'],
     ['what prospects need review?', 'get_pipeline_attention'],
     ['what needs my attention today?', 'get_workspace_status'],
@@ -33,6 +41,8 @@ describe('inferOutreachTool', () => {
     ['je veux trouver 25 gestionnaires locatifs région lyon indépendants si possible', 'search_prospects'],
     ['bonjour, je veux trouver 25 gestionnaires locatifs région lyon indépendants si possible', 'search_prospects'],
     ['je veux identifier des profils de directeurs commerciaux à Lille', 'search_prospects'],
+    ['25 gestionnaires property management indépendant autour de lyon', 'search_prospects'],
+    ['bonjour, 25 gestionnaires property management indépendant autour de lyon', 'search_prospects'],
   ] as const)('routes workspace request "%s" to %s', (message, tool) => {
     expect(inferOutreachTool(message, false, false)).toBe(tool);
   });

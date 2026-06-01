@@ -165,6 +165,7 @@ export const en: Translations = {
       replies: 'replies',
       review: 'review',
       automations: 'automations',
+      drafts: 'drafts',
       unread: (n: number) => `${n} unread`,
       candidates: (n: number) => `${n} candidate(s) are ready below for review.`,
       confirmationRequired: 'This action changes workspace data and needs confirmation.',

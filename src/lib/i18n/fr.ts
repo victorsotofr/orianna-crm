@@ -163,6 +163,7 @@ export const fr = {
       replies: 'réponses',
       review: 'validation',
       automations: 'automatisations',
+      drafts: 'brouillons',
       unread: (n: number) => `${n} non lu(s)`,
       candidates: (n: number) => `${n} candidat(s) prêt(s) ci-dessous pour revue.`,
       confirmationRequired: 'Cette action modifie les données du workspace et demande confirmation.',

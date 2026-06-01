@@ -27,19 +27,19 @@ test('direct chat message creates a thread, renders assistant reply, and survive
 
   await expect(page).toHaveURL(/\/launch\?thread=thread-/);
   await expect(chatParagraph(page, 'ça va ?')).toBeVisible();
-  await expect(page.getByText(/spécialisé sur l.outreach/i)).toBeVisible();
-  await expect(page.getByText(/Routing request/i)).toBeVisible();
+  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
+  await expect(page.getByText(/Routing request/i)).toHaveCount(0);
 
   await page.reload();
   await expect(chatParagraph(page, 'ça va ?')).toBeVisible();
-  await expect(page.getByText(/spécialisé sur l.outreach/i)).toBeVisible();
+  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
 });
 
 test('thread composer supports Shift+Enter and Enter submit', async ({ page }) => {
   await installMockOutreach(page);
   await page.goto('/launch');
   await submitEmptyComposer(page, 'hello');
-  await expect(page.getByText(/spécialisé sur l.outreach/i)).toBeVisible();
+  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
 
   const composer = page.getByPlaceholder(/Ask the agent what to do next/i);
   await composer.fill('line one');
@@ -78,9 +78,9 @@ test('prospect search streams tool events and renders selectable prospects', asy
 
   await submitEmptyComposer(page, 'find 20 property managers in Lyon');
 
-  await expect(page.getByText('Interpreting target')).toBeVisible();
-  await expect(page.getByText('Validating candidates')).toBeVisible();
+  await expect(page.getByText('Refining prospect request')).toBeVisible();
   await expect(page.getByText('Searching prospects')).toBeVisible();
+  await expect(page.getByText('Preparing prospect review')).toBeVisible();
   await expect(page.getByText('First prospect list').first()).toBeVisible();
   await expect(page.getByText('Claire Martin')).toBeVisible();
   await expect(page.getByText('Nicolas Bernard')).toBeVisible();
@@ -88,20 +88,33 @@ test('prospect search streams tool events and renders selectable prospects', asy
   await expect(page.getByText(/2 selected/i).first()).toBeVisible();
 });
 
+test('mixed request runs prospect finder and campaign status in one thread', async ({ page }) => {
+  await installMockOutreach(page);
+  await page.goto('/launch');
+
+  await submitEmptyComposer(page, 'find 20 property managers in Lyon and show current campaign updates');
+
+  await expect(page.getByText('Campaigns and sequences').first()).toBeVisible();
+  await expect(page.getByText(/active sequence.*draft/i).first()).toBeVisible();
+  await expect(page.getByText('Searching prospects')).toBeVisible();
+  await expect(page.getByText('First prospect list').first()).toBeVisible();
+  await expect(page.getByText('Claire Martin')).toBeVisible();
+});
+
 test('off-domain chat is guarded and cannot contaminate the next prospect search', async ({ page }) => {
   await installMockOutreach(page);
   await page.goto('/launch');
 
   await submitEmptyComposer(page, 'ça va ?');
-  await expect(page.getByText(/spécialisé sur l.outreach/i)).toBeVisible();
+  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
 
   await submitThreadMessage(page, 'qui est zidane ?');
-  await expect(page.getByText(/spécialisé sur l.outreach/i).last()).toBeVisible();
+  await expect(page.getByText(/périmètre Orianna CRM/i).last()).toBeVisible();
 
   await submitThreadMessage(page, "multiplication d'hadamard");
-  await expect(page.getByText(/spécialisé sur l.outreach/i).last()).toBeVisible();
+  await expect(page.getByText(/périmètre Orianna CRM/i).last()).toBeVisible();
 
-  await submitThreadMessage(page, 'je veux trouver 25 gestionnaires locatifs région lyon indépendants si possible');
+  await submitThreadMessage(page, '25 gestionnaires property management indépendant autour de lyon');
   await expect(page.getByText(/2 strict verified match\(es\) found out of 25/i).first()).toBeVisible();
   await expect(page.getByText('Claire Martin')).toBeVisible();
   await expect(page.getByText('Nicolas Bernard')).toBeVisible();

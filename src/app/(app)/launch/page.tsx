@@ -32,14 +32,13 @@ import { useTranslation } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 type AgentAction =
-  | 'answer_directly'
-  | 'redirect_off_domain'
+  | 'answer_product_question'
+  | 'refuse_out_of_scope'
   | 'get_workspace_status'
   | 'list_automations'
+  | 'list_campaigns'
   | 'get_inbox_attention'
   | 'get_pipeline_attention'
-  | 'parse_outreach_brief'
-  | 'plan_search_queries'
   | 'search_prospects'
   | 'save_prospects'
   | 'find_emails'
@@ -47,6 +46,7 @@ type AgentAction =
   | 'create_automation'
   | 'workspace_status'
   | 'automations'
+  | 'campaigns'
   | 'inbox'
   | 'pipeline'
   | 'search'
@@ -89,7 +89,7 @@ interface ThreadEvent {
 
 interface AgentArtifact {
   id: string;
-  kind: 'status_snapshot' | 'automation_list' | 'inbox_attention' | 'pipeline_attention' | 'prospect_list' | 'sequence_draft' | 'automation_created' | 'enrichment_status' | 'confirmation_required';
+  kind: 'status_snapshot' | 'automation_list' | 'campaign_list' | 'inbox_attention' | 'pipeline_attention' | 'prospect_list' | 'sequence_draft' | 'automation_created' | 'enrichment_status' | 'confirmation_required';
   title: string;
   summary?: string;
   data: Record<string, unknown>;
@@ -776,7 +776,9 @@ function ThreadTimeline({
 }) {
   const items = [
     ...messages.map((message) => ({ type: 'message' as const, date: message.created_at, item: message })),
-    ...events.map((event) => ({ type: 'event' as const, date: event.created_at, item: event })),
+    ...events
+      .filter((event) => event.kind !== 'agent_router')
+      .map((event) => ({ type: 'event' as const, date: event.created_at, item: event })),
     ...artifacts.map((item) => ({ type: 'artifact' as const, date: item.created_at, item })),
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -903,6 +905,9 @@ function ArtifactCard({
 }) {
   const data = artifact.data || {};
   const automations = Array.isArray(data.automations) ? data.automations as Array<Record<string, unknown>> : [];
+  const campaigns = Array.isArray(data.campaigns) ? data.campaigns as Array<Record<string, unknown>> : [];
+  const sequences = Array.isArray(data.sequences) ? data.sequences as Array<Record<string, unknown>> : [];
+  const drafts = Array.isArray(data.drafts) ? data.drafts as Array<Record<string, unknown>> : [];
   const threads = Array.isArray(data.threads) ? data.threads as Array<Record<string, unknown>> : [];
   const artifactProspects = Array.isArray(data.prospects) ? data.prospects as Prospect[] : [];
   const prospects = artifact.kind === 'prospect_list' && currentProspects.length ? currentProspects : artifactProspects;
@@ -992,6 +997,36 @@ function ArtifactCard({
               <p className="mt-1 truncate text-xs text-muted-foreground">{String(automation.prompt || '')}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {artifact.kind === 'campaign_list' && (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <Metric label={t.sidebar.campaigns} value={campaigns.length} />
+            <Metric label={t.sequences.title} value={sequences.length} />
+            <Metric label={t.launch.artifacts.drafts} value={drafts.length} />
+          </div>
+          {[...sequences, ...campaigns, ...drafts].length > 0 && (
+            <div className="divide-y rounded-md border">
+              {[...sequences, ...campaigns, ...drafts].slice(0, 8).map((item, index) => {
+                const timestamp = typeof item.updated_at === 'string' ? item.updated_at : typeof item.created_at === 'string' ? item.created_at : '';
+                return (
+                  <div key={String(item.id || index)} className="px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{String(item.name || t.sidebar.campaigns)}</span>
+                      <Badge variant={item.status === 'active' || item.status === 'sending' ? 'default' : 'outline'}>{String(item.status || '')}</Badge>
+                    </div>
+                    {timestamp && (
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {new Date(timestamp).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

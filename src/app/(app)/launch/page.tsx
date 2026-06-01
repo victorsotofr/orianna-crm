@@ -153,6 +153,13 @@ class OutreachStreamError extends Error {
   }
 }
 
+const HIDDEN_EVENT_KINDS = new Set([
+  'agent_router',
+  'parse_outreach_brief',
+  'plan_search_queries',
+  'validate_search_quality',
+]);
+
 function messageClientId(message: ThreadMessage) {
   const value = message.metadata?.clientMessageId;
   return typeof value === 'string' ? value : null;
@@ -259,6 +266,18 @@ function isRunningStatus(status: string | undefined | null) {
   return status === 'searching' || status === 'enriching';
 }
 
+function clientFriendlyError(message: string, t: ReturnType<typeof useTranslation>['t']) {
+  const raw = String(message || '').trim();
+  const lower = raw.toLowerCase();
+  if (!raw || /network error|fetch failed|failed to fetch|load failed|connection|socket|timeout|timed out/.test(lower)) {
+    return t.launch.errors.network;
+  }
+  if (/mock agent failure|agent failed|tool failed|search failed/.test(lower)) {
+    return t.launch.errors.generic;
+  }
+  return raw;
+}
+
 export default function LaunchPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -335,11 +354,11 @@ export default function LaunchPage() {
       const bundle = await requestJson<ThreadBundle>(`/api/outreach/sessions/${id}`);
       applyBundle(bundle, { preserveCurrent });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t.common.networkError);
+      toast.error(clientFriendlyError(error instanceof Error ? error.message : t.common.networkError, t));
     } finally {
       setLoadingThread(false);
     }
-  }, [applyBundle, t.common.networkError]);
+  }, [applyBundle, t]);
 
   useEffect(() => {
     if (!threadId) {
@@ -459,7 +478,7 @@ export default function LaunchPage() {
       }
       await consumeAgentStream(response);
     } catch (error) {
-      const message = error instanceof Error ? error.message : t.common.networkError;
+      const message = clientFriendlyError(error instanceof Error ? error.message : t.common.networkError, t);
       if (!(error instanceof OutreachStreamError && error.hasStreamedFailure)) {
         appendMessage(createLocalMessage({
           sessionId,
@@ -504,7 +523,7 @@ export default function LaunchPage() {
       router.push(`/launch?thread=${created.session.id}`);
       await runAgent(created.session.id, { message: cleanPrompt });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t.common.networkError);
+      toast.error(clientFriendlyError(error instanceof Error ? error.message : t.common.networkError, t));
     } finally {
       setAgentRunning(false);
     }
@@ -535,6 +554,13 @@ export default function LaunchPage() {
       approvalRequired,
     });
     if (action === 'revise_sequence') setRevisionPrompt('');
+  }
+
+  function retryProspectSearch(retryPrompt?: string) {
+    if (!session) return;
+    const cleanPrompt = String(retryPrompt || session.prompt || '').trim();
+    if (!cleanPrompt) return;
+    void runAgent(session.id, { message: cleanPrompt, prospectIds: selectedProspectIds, steps, sequenceName });
   }
 
   function updateStep(index: number, patch: Partial<EmailStep>) {
@@ -586,6 +612,7 @@ export default function LaunchPage() {
                     updateStep={updateStep}
                     agentRunning={agentRunning}
                     onAction={runAction}
+                    onRetrySearch={retryProspectSearch}
                     t={t}
                   />
                   <div ref={bottomRef} />
@@ -755,6 +782,7 @@ function ThreadTimeline({
   updateStep,
   agentRunning,
   onAction,
+  onRetrySearch,
   t,
 }: {
   session: OutreachSession | null;
@@ -772,12 +800,27 @@ function ThreadTimeline({
   updateStep: (index: number, patch: Partial<EmailStep>) => void;
   agentRunning: boolean;
   onAction: (action: AgentAction) => void;
+  onRetrySearch: (retryPrompt?: string) => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
+  const latestFailedAssistantAt = Math.max(
+    0,
+    ...messages
+      .filter((message) => message.role === 'assistant' && message.status === 'failed')
+      .map((message) => new Date(message.created_at).getTime())
+  );
+  const visibleEvents = events
+    .filter((event) => !HIDDEN_EVENT_KINDS.has(event.kind))
+    .map((event) => {
+      const createdAt = new Date(event.created_at).getTime();
+      if (event.status === 'running' && !agentRunning && latestFailedAssistantAt && createdAt <= latestFailedAssistantAt) {
+        return { ...event, status: 'failed' as const, detail: event.detail || t.launch.errors.interrupted };
+      }
+      return event;
+    });
   const items = [
     ...messages.map((message) => ({ type: 'message' as const, date: message.created_at, item: message })),
-    ...events
-      .filter((event) => event.kind !== 'agent_router')
+    ...visibleEvents
       .map((event) => ({ type: 'event' as const, date: event.created_at, item: event })),
     ...artifacts.map((item) => ({ type: 'artifact' as const, date: item.created_at, item })),
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -795,7 +838,7 @@ function ThreadTimeline({
       {items.map((entry) => entry.type === 'message' ? (
         <MessageBubble key={`message-${entry.item.id}`} message={entry.item} t={t} />
       ) : entry.type === 'event' ? (
-        <ToolEventCard key={`event-${entry.item.id}`} event={entry.item} />
+        <ToolEventCard key={`event-${entry.item.id}`} event={entry.item} t={t} />
       ) : (
         <ArtifactCard
           key={`artifact-${entry.item.id}`}
@@ -811,6 +854,7 @@ function ThreadTimeline({
           updateStep={updateStep}
           agentRunning={agentRunning}
           onAction={onAction}
+          onRetrySearch={onRetrySearch}
           t={t}
         />
       ))}
@@ -829,6 +873,7 @@ function ThreadTimeline({
 function MessageBubble({ message, t }: { message: ThreadMessage; t: ReturnType<typeof useTranslation>['t'] }) {
   if (message.role === 'tool' || message.role === 'system') return null;
   const isUser = message.role === 'user';
+  const content = !isUser && message.status === 'failed' ? clientFriendlyError(message.content, t) : message.content;
 
   return (
     <div className={cn('flex items-start gap-3', isUser && 'justify-end')}>
@@ -842,18 +887,41 @@ function MessageBubble({ message, t }: { message: ThreadMessage; t: ReturnType<t
         isUser ? 'bg-background' : message.status === 'failed' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-muted/35'
       )}>
         {!isUser && <div className="mb-1 text-xs font-medium text-muted-foreground">{t.launch.chat.assistant}</div>}
-        <p className="whitespace-pre-line">{message.content}</p>
+        <p className="whitespace-pre-line">{content}</p>
       </div>
     </div>
   );
 }
 
-function ToolEventCard({ event }: { event: ThreadEvent }) {
+function eventDisplay(event: ThreadEvent, t: ReturnType<typeof useTranslation>['t']) {
+  const labels: Record<string, string> = {
+    profiles_finder_refine: t.launch.events.target,
+    search_prospects: t.launch.events.search,
+    profiles_finder_review: t.launch.events.review,
+    list_campaigns: t.launch.events.campaigns,
+    campaign_list: t.launch.events.campaigns,
+    get_workspace_status: t.launch.events.workspace,
+    list_automations: t.launch.events.automations,
+    get_inbox_attention: t.launch.events.inbox,
+    get_pipeline_attention: t.launch.events.outboundQueue,
+  };
+  return {
+    title: labels[event.kind] || event.title,
+    status: event.status === 'running'
+      ? t.launch.events.running
+      : event.status === 'failed'
+        ? t.launch.events.failed
+        : t.launch.events.complete,
+  };
+}
+
+function ToolEventCard({ event, t }: { event: ThreadEvent; t: ReturnType<typeof useTranslation>['t'] }) {
   const icon = event.status === 'running'
     ? <Loader2 className="h-4 w-4 animate-spin" />
     : event.status === 'failed'
       ? <Trash2 className="h-4 w-4" />
       : <Check className="h-4 w-4" />;
+  const display = eventDisplay(event, t);
 
   return (
     <div className="flex items-start gap-3">
@@ -865,8 +933,8 @@ function ToolEventCard({ event }: { event: ThreadEvent }) {
       </div>
       <div className="min-w-0 rounded-lg border bg-background px-3 py-2 text-sm shadow-xs">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{event.title}</span>
-          <Badge variant="outline" className="h-5 text-[11px]">{event.status}</Badge>
+          <span className="font-medium">{display.title}</span>
+          <Badge variant="outline" className="h-5 text-[11px]">{display.status}</Badge>
         </div>
         {event.detail && <p className="mt-1 text-xs text-muted-foreground">{event.detail}</p>}
       </div>
@@ -887,6 +955,7 @@ function ArtifactCard({
   updateStep,
   agentRunning,
   onAction,
+  onRetrySearch,
   t,
 }: {
   artifact: AgentArtifact;
@@ -901,6 +970,7 @@ function ArtifactCard({
   updateStep: (index: number, patch: Partial<EmailStep>) => void;
   agentRunning: boolean;
   onAction: (action: AgentAction) => void;
+  onRetrySearch: (retryPrompt?: string) => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const data = artifact.data || {};
@@ -923,6 +993,14 @@ function ArtifactCard({
     : typeof data.toolName === 'string'
       ? data.toolName as AgentAction
       : null;
+  const failedProspectSearch = artifact.kind === 'prospect_list' && data.failed === true;
+  const failedSearchError = typeof data.error === 'string' && data.error.trim()
+    ? data.error.trim()
+    : t.launch.emptySearch.description;
+  const retryPrompt = typeof data.retryPrompt === 'string' ? data.retryPrompt : '';
+  const suggestedQueries = Array.isArray(data.suggestedQueries)
+    ? data.suggestedQueries.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
 
   return (
     <div className="ml-11 rounded-lg border bg-background p-3 shadow-xs">
@@ -1044,7 +1122,39 @@ function ArtifactCard({
         </div>
       )}
 
-      {artifact.kind === 'prospect_list' && (
+      {artifact.kind === 'prospect_list' && failedProspectSearch && (
+        <div className="mt-3 space-y-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">{t.launch.emptySearch.title}</span>
+            {data.retryable !== false && <Badge variant="outline" className="border-red-200 bg-background/70 text-red-700">{t.launch.errors.retryable}</Badge>}
+          </div>
+          <p>{clientFriendlyError(failedSearchError, t)}</p>
+          {suggestedQueries.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-red-700">{t.launch.emptySearch.suggestions}</p>
+              <div className="flex flex-wrap gap-2">
+                {suggestedQueries.slice(0, 3).map((query) => (
+                  <button
+                    key={query}
+                    type="button"
+                    className="rounded-full border border-red-200 bg-background px-3 py-1.5 text-xs text-red-800 transition-colors hover:border-red-300 disabled:opacity-50"
+                    disabled={agentRunning}
+                    onClick={() => onRetrySearch(query)}
+                  >
+                    {query}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <Button size="sm" variant="outline" onClick={() => onRetrySearch(retryPrompt)} disabled={agentRunning || data.retryable === false}>
+            {agentRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {t.launch.emptySearch.retry}
+          </Button>
+        </div>
+      )}
+
+      {artifact.kind === 'prospect_list' && !failedProspectSearch && (
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-3 gap-2 text-center">
             <Metric label={t.launch.prospects.selected(selectedCount)} value={selectedCount} />

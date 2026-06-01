@@ -3,6 +3,7 @@ import { generateText } from 'ai';
 
 import { aiModel } from '@/lib/ai-provider';
 import { searchProspecting } from '@/lib/linkup';
+import { detectAgentLanguage, normalizeAgentError } from '@/lib/outreach-agent/copy';
 import { getOutreachSession, parseJsonFromText } from '@/lib/outreach';
 import { getServiceSupabase } from '@/lib/supabase';
 import { createServerClient } from '@/lib/supabase-server';
@@ -38,6 +39,27 @@ interface SearchAttempt {
   label: string;
   rawResults: string;
   prospects: ExtractedProspect[];
+}
+
+function searchTimeoutMs(depth: 'standard' | 'deep') {
+  const configured = Number(process.env.LINKUP_SEARCH_TIMEOUT_MS || 0);
+  const fallback = depth === 'standard' ? 60_000 : 90_000;
+  if (!Number.isFinite(configured) || configured <= 0) return fallback;
+  return Math.min(Math.max(configured, 10_000), 180_000);
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function isUsefulProspect(value: unknown, brief: Record<string, unknown>): value is ExtractedProspect {
@@ -295,6 +317,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let activePromptForError = '';
+  let limitForError = 20;
+  let briefForError: Record<string, unknown> = {};
+  let workspaceIdForError: string | null = null;
   try {
     const { id } = await params;
     const { supabase, error: clientError } = await createServerClient();
@@ -306,6 +332,7 @@ export async function POST(
     const wsId = request.headers.get('x-workspace-id');
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
+    workspaceIdForError = ctx.workspaceId;
 
     const session = await getOutreachSession(supabase, ctx.workspaceId, id);
     if (!session) return NextResponse.json({ error: 'Outreach session not found' }, { status: 404 });
@@ -315,6 +342,8 @@ export async function POST(
       ? body.prompt.trim()
       : session.prompt;
     const limit = Number.isInteger(Number(body.limit)) ? Math.min(Math.max(Number(body.limit), 5), 50) : 20;
+    activePromptForError = activePrompt;
+    limitForError = limit;
     const serviceSupabase = getServiceSupabase();
 
     const { data: userSettings } = await serviceSupabase
@@ -324,7 +353,19 @@ export async function POST(
       .maybeSingle();
 
     if (!userSettings?.linkup_api_key_encrypted) {
-      return NextResponse.json({ error: 'Linkup API key not configured. Go to Settings > Integrations.' }, { status: 400 });
+      const normalized = normalizeAgentError(
+        new Error('Linkup API key not configured. Go to Settings > Integrations.'),
+        detectAgentLanguage(activePrompt),
+        'search'
+      );
+      return NextResponse.json({
+        error: normalized.message,
+        userMessage: normalized.message,
+        retryable: normalized.retryable,
+        retryPrompt: activePrompt,
+        requestedLimit: limit,
+        suggestedQueries: suggestedQueries(activePrompt, fallbackBrief(activePrompt)),
+      }, { status: 400 });
     }
 
     const { data: workspace } = await serviceSupabase
@@ -343,15 +384,20 @@ export async function POST(
       ? session.structured_brief
       : {}) as Record<string, unknown>;
     const brief = await buildSearchBrief(activePrompt, existingBrief);
+    briefForError = brief;
     const minUsefulProspects = Math.min(3, limit);
     const attempts: SearchAttempt[] = [];
 
-    const rawResults = await searchProspecting(
-      userSettings.linkup_api_key_encrypted,
-      buildInitialSearchQuery(limit, activePrompt, brief),
-      workspace?.linkup_prospecting_query,
-      'standard',
-      'sourcedAnswer'
+    const rawResults = await withTimeout(
+      searchProspecting(
+        userSettings.linkup_api_key_encrypted,
+        buildInitialSearchQuery(limit, activePrompt, brief),
+        workspace?.linkup_prospecting_query,
+        'standard',
+        'sourcedAnswer'
+      ),
+      searchTimeoutMs('standard'),
+      'Linkup standard prospect search'
     );
     attempts.push({
       label: 'initial',
@@ -361,12 +407,16 @@ export async function POST(
 
     if (dedupeProspects(attempts.flatMap((attempt) => attempt.prospects)).length < minUsefulProspects) {
       try {
-        const retryRawResults = await searchProspecting(
-          userSettings.linkup_api_key_encrypted,
-          buildRetrySearchQuery(limit, activePrompt, brief),
-          workspace?.linkup_prospecting_query,
-          'deep',
-          'sourcedAnswer'
+        const retryRawResults = await withTimeout(
+          searchProspecting(
+            userSettings.linkup_api_key_encrypted,
+            buildRetrySearchQuery(limit, activePrompt, brief),
+            workspace?.linkup_prospecting_query,
+            'deep',
+            'sourcedAnswer'
+          ),
+          searchTimeoutMs('deep'),
+          'Linkup deep prospect search'
         );
         attempts.push({
           label: 'retry_named_people',
@@ -449,15 +499,30 @@ export async function POST(
       suggestedQueries: prospects.length === 0 ? suggestedQueries(activePrompt, brief) : [],
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Search failed';
+    const lang = detectAgentLanguage(activePromptForError);
+    const normalized = normalizeAgentError(error, lang, 'search');
     console.error('Outreach search error:', error);
     const { id } = await params;
     try {
       const { supabase } = await createServerClient();
       if (supabase) {
-        await supabase.from('outreach_sessions').update({ status: 'failed', error: message }).eq('id', id);
+        let query = supabase
+          .from('outreach_sessions')
+          .update({ status: 'failed', error: normalized.message, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (workspaceIdForError) query = query.eq('workspace_id', workspaceIdForError);
+        await query;
       }
     } catch {}
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = normalized.code === 'timeout' ? 504 : normalized.code === 'missing_configuration' ? 400 : 500;
+    return NextResponse.json({
+      error: normalized.message,
+      userMessage: normalized.message,
+      retryable: normalized.retryable,
+      retryPrompt: activePromptForError,
+      requestedLimit: limitForError,
+      brief: briefForError,
+      suggestedQueries: activePromptForError ? suggestedQueries(activePromptForError, briefForError) : [],
+    }, { status });
   }
 }

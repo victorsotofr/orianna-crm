@@ -27,19 +27,20 @@ test('direct chat message creates a thread, renders assistant reply, and survive
 
   await expect(page).toHaveURL(/\/launch\?thread=thread-/);
   await expect(chatParagraph(page, 'ça va ?')).toBeVisible();
-  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
+  await expect(page.getByText(/agent GTM isimple/i)).toBeVisible();
+  await expect(page.getByText(/Je peux t.aider sur les prospects/i)).toHaveCount(0);
   await expect(page.getByText(/Routing request/i)).toHaveCount(0);
 
   await page.reload();
   await expect(chatParagraph(page, 'ça va ?')).toBeVisible();
-  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
+  await expect(page.getByText(/agent GTM isimple/i)).toBeVisible();
 });
 
 test('thread composer supports Shift+Enter and Enter submit', async ({ page }) => {
   await installMockOutreach(page);
   await page.goto('/launch');
   await submitEmptyComposer(page, 'hello');
-  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
+  await expect(page.getByText(/isimple GTM agent/i)).toBeVisible();
 
   const composer = page.getByPlaceholder(/Ask the agent what to do next/i);
   await composer.fill('line one');
@@ -78,9 +79,9 @@ test('prospect search streams tool events and renders selectable prospects', asy
 
   await submitEmptyComposer(page, 'find 20 property managers in Lyon');
 
-  await expect(page.getByText('Refining prospect request')).toBeVisible();
-  await expect(page.getByText('Searching prospects')).toBeVisible();
-  await expect(page.getByText('Preparing prospect review')).toBeVisible();
+  await expect(page.getByText('Target').first()).toBeVisible();
+  await expect(page.getByText('Search').first()).toBeVisible();
+  await expect(page.getByText('Review').first()).toBeVisible();
   await expect(page.getByText('First prospect list').first()).toBeVisible();
   await expect(page.getByText('Claire Martin')).toBeVisible();
   await expect(page.getByText('Nicolas Bernard')).toBeVisible();
@@ -96,9 +97,28 @@ test('mixed request runs prospect finder and campaign status in one thread', asy
 
   await expect(page.getByText('Campaigns and sequences').first()).toBeVisible();
   await expect(page.getByText(/active sequence.*draft/i).first()).toBeVisible();
-  await expect(page.getByText('Searching prospects')).toBeVisible();
+  await expect(page.getByText('Search').first()).toBeVisible();
   await expect(page.getByText('First prospect list').first()).toBeVisible();
   await expect(page.getByText('Claire Martin')).toBeVisible();
+});
+
+test('mixed request keeps campaign result and shows retryable prospect search failure', async ({ page }) => {
+  const controls = await installMockOutreach(page);
+  controls.failNextSearch();
+  await page.goto('/launch');
+
+  await submitEmptyComposer(page, 'je veux trouver environ 50 prospects dirigeants de petites pme industrielles de la région lyonnaise et vérifier les campagnes en cours');
+
+  await expect(page.getByText('Campaigns and sequences').first()).toBeVisible();
+  await expect(page.getByText(/active sequence.*draft/i).first()).toBeVisible();
+  await expect(page.getByText(/La recherche a pris trop longtemps/i).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /retry search/i })).toBeVisible();
+  await expect(page.getByText(/dirigeants PME industrielles/i)).toBeVisible();
+  await expect(page.getByText(/network error/i)).toHaveCount(0);
+  await expect(page.getByText(/Routing request/i)).toHaveCount(0);
+  await expect(page.getByText(/Interpreting target/i)).toHaveCount(0);
+  await expect(page.getByText(/Planning search/i)).toHaveCount(0);
+  await expect(page.getByText(/Validating candidates/i)).toHaveCount(0);
 });
 
 test('off-domain chat is guarded and cannot contaminate the next prospect search', async ({ page }) => {
@@ -106,16 +126,16 @@ test('off-domain chat is guarded and cannot contaminate the next prospect search
   await page.goto('/launch');
 
   await submitEmptyComposer(page, 'ça va ?');
-  await expect(page.getByText(/prospects, l.inbox, les séquences/i)).toBeVisible();
+  await expect(page.getByText(/agent GTM isimple/i)).toBeVisible();
 
   await submitThreadMessage(page, 'qui est zidane ?');
-  await expect(page.getByText(/périmètre Orianna CRM/i).last()).toBeVisible();
+  await expect(page.getByText(/Je reste sur Orianna\/isimple/i).last()).toBeVisible();
 
   await submitThreadMessage(page, "multiplication d'hadamard");
-  await expect(page.getByText(/périmètre Orianna CRM/i).last()).toBeVisible();
+  await expect(page.getByText(/Je reste sur Orianna\/isimple/i).last()).toBeVisible();
 
   await submitThreadMessage(page, '25 gestionnaires property management indépendant autour de lyon');
-  await expect(page.getByText(/2 strict verified match\(es\) found out of 25/i).first()).toBeVisible();
+  await expect(page.getByText(/2 prospect\(s\) strictement vérifiés sur 25/i).first()).toBeVisible();
   await expect(page.getByText('Claire Martin')).toBeVisible();
   await expect(page.getByText('Nicolas Bernard')).toBeVisible();
   await expect(page.getByText('Matthew J. Rowe')).toHaveCount(0);
@@ -145,5 +165,6 @@ test('agent failure keeps user message and renders a failed assistant bubble', a
   await submitEmptyComposer(page, 'ça va ?');
 
   await expect(chatParagraph(page, 'ça va ?')).toBeVisible();
-  await expect(chatParagraph(page, 'Mock agent failure')).toBeVisible();
+  await expect(chatParagraph(page, /could not complete this action/i)).toBeVisible();
+  await expect(page.getByText('Mock agent failure')).toHaveCount(0);
 });

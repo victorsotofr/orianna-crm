@@ -7,6 +7,16 @@ import { z } from 'zod';
 
 import { chatModel, langChainProviderLabel, type AgentModelTask } from '@/lib/ai-langchain-provider';
 import {
+  agentCopy,
+  agentToolDetail,
+  agentToolTitle,
+  detectAgentLanguage,
+  isSimpleGreeting,
+  normalizeAgentError,
+  searchResultSummary,
+  type AgentLanguage,
+} from '@/lib/outreach-agent/copy';
+import {
   appendOutreachMessage,
   createOutreachEvent,
   createOutreachRun,
@@ -149,6 +159,11 @@ const SupervisorResponseSchema = z.object({
   response: z.string().max(900),
 });
 
+interface EndpointError extends Error {
+  status?: number;
+  payload?: Record<string, unknown>;
+}
+
 function selectedProspectIds(prospects: Array<{ id: string; selected?: boolean; ignored?: boolean }>) {
   return prospects
     .filter((prospect) => prospect.selected !== false && prospect.ignored !== true)
@@ -242,103 +257,64 @@ function summarizeToolInput(body: AgentRuntimeBody, task?: AgentTask) {
   };
 }
 
-function fallbackAssistantText(toolName: OutreachAgentTool, output: unknown, message = '') {
+function fallbackAssistantText(toolName: OutreachAgentTool, output: unknown, message = '', lang: AgentLanguage = detectAgentLanguage(message)) {
   const data = output && typeof output === 'object' ? output as Record<string, unknown> : {};
+  const copy = agentCopy(lang);
 
   switch (toolName) {
     case 'answer_product_question':
-      if (/^(hello|hi|hey|bonjour|salut|ça va|ca va|merci|thanks|thank you)[\s!.?]*$/i.test(message.trim())) {
-        return 'Bonjour. Je peux t’aider sur les prospects, l’inbox, les séquences, les automatisations et la file outbound.';
-      }
-      return 'Je peux t’aider à piloter Orianna CRM: chercher des prospects, vérifier les réponses, revoir la file outbound, préparer une séquence, lancer les contacts approuvés et créer des automatisations.';
+      return isSimpleGreeting(message) ? copy.greeting : copy.capabilities;
     case 'refuse_out_of_scope':
-      return 'Je reste dans le périmètre Orianna CRM: prospects, contacts, inbox, séquences, enrichissement, automatisations et suivi outbound.';
+      return copy.refusal;
     case 'get_workspace_status':
-      return data.summary ? String(data.summary) : 'Here is the current workspace status.';
+      return data.summary ? String(data.summary) : (lang === 'fr' ? 'Statut workspace récupéré.' : 'Workspace status is ready.');
     case 'list_automations':
-      return data.summary ? String(data.summary) : 'Here are the current automations.';
+      return data.summary ? String(data.summary) : (lang === 'fr' ? 'Automatisations récupérées.' : 'Automations are ready.');
     case 'list_campaigns':
-      return data.summary ? String(data.summary) : 'Here are the current campaigns and sequences.';
+      return data.summary ? String(data.summary) : (lang === 'fr' ? 'Campagnes et séquences récupérées.' : 'Campaigns and sequences are ready.');
     case 'get_inbox_attention':
-      return data.summary ? String(data.summary) : 'Here is what needs attention in the inbox.';
+      return data.summary ? String(data.summary) : (lang === 'fr' ? 'Inbox vérifiée.' : 'Inbox attention is ready.');
     case 'get_pipeline_attention':
-      return data.summary ? String(data.summary) : 'Here is what needs attention in the outbound queue.';
+      return data.summary ? String(data.summary) : (lang === 'fr' ? 'File outbound vérifiée.' : 'Outbound queue attention is ready.');
     case 'search_prospects': {
       const found = (data.prospects as unknown[] | undefined)?.length || 0;
       const requested = Number(data.requestedLimit || 0);
-      return requested && found < requested
-        ? `I found ${found} strict verified match(es) out of ${requested}. I did not include weak or off-target candidates.`
-        : `I found ${found} strict verified prospect(s).`;
+      return searchResultSummary({ found, requested, lang, failed: data.failed === true });
     }
     case 'find_emails':
-      return `I started email enrichment for ${data.contactCount || 0} contact(s).`;
+      return lang === 'fr'
+        ? `Enrichissement email lancé pour ${data.contactCount || 0} contact(s).`
+        : `Email enrichment started for ${data.contactCount || 0} contact(s).`;
     case 'draft_sequence':
     case 'revise_sequence':
-      return 'I drafted the outreach sequence. You can edit it directly or ask me to revise it.';
+      return lang === 'fr'
+        ? 'Séquence prête. Tu peux l’éditer ou me demander une révision ciblée.'
+        : 'Sequence ready. You can edit it or ask for a focused revision.';
     case 'launch_sequence':
-      return `I queued ${data.enrolled || 0} prospect(s) into the sequence.`;
+      return lang === 'fr'
+        ? `${data.enrolled || 0} prospect(s) mis en file dans la séquence.`
+        : `${data.enrolled || 0} prospect(s) queued into the sequence.`;
     case 'create_automation':
-      return 'I created the recurring automation for this outreach thread.';
+      return lang === 'fr'
+        ? 'Automatisation récurrente créée pour ce fil.'
+        : 'Recurring automation created for this thread.';
     case 'save_prospects':
-      return `I saved ${data.saved || 0} prospect(s) to contacts.`;
+      return lang === 'fr'
+        ? `${data.saved || 0} prospect(s) sauvegardé(s) dans les contacts.`
+        : `${data.saved || 0} prospect(s) saved to contacts.`;
   }
 }
 
-function artifactAssistantText(artifactPayload: OutreachArtifact) {
-  return artifactPayload.summary || fallbackAssistantText('get_workspace_status', artifactPayload);
+function artifactAssistantText(artifactPayload: OutreachArtifact, lang: AgentLanguage) {
+  return artifactPayload.summary || fallbackAssistantText('get_workspace_status', artifactPayload, '', lang);
 }
 
-function toolTitle(toolName: OutreachAgentTool) {
-  switch (toolName) {
-    case 'get_workspace_status':
-      return 'Checking workspace';
-    case 'list_automations':
-      return 'Checking automations';
-    case 'list_campaigns':
-      return 'Checking campaigns';
-    case 'get_inbox_attention':
-      return 'Checking inbox';
-    case 'get_pipeline_attention':
-      return 'Checking outbound queue';
-    case 'search_prospects':
-      return 'Searching prospects';
-    case 'save_prospects':
-      return 'Saving prospects';
-    case 'find_emails':
-      return 'Finding emails';
-    case 'draft_sequence':
-      return 'Drafting sequence';
-    case 'revise_sequence':
-      return 'Revising sequence';
-    case 'launch_sequence':
-      return 'Reviewing launch';
-    case 'create_automation':
-      return 'Reviewing automation';
-    case 'answer_product_question':
-      return 'Answering';
-    case 'refuse_out_of_scope':
-      return 'Guardrail';
-  }
+function toolTitle(toolName: OutreachAgentTool, lang: AgentLanguage) {
+  return agentToolTitle(toolName, lang);
 }
 
-function toolDetail(toolName: OutreachAgentTool) {
-  switch (toolName) {
-    case 'search_prospects':
-      return 'Running web research and keeping only named, sourced people.';
-    case 'find_emails':
-      return 'Starting verified email enrichment for selected prospects.';
-    case 'draft_sequence':
-    case 'revise_sequence':
-      return 'Writing a concise three-step outreach sequence.';
-    case 'launch_sequence':
-      return 'Checking eligibility before queueing prospects.';
-    case 'create_automation':
-      return 'Checking automation settings before scheduling recurring discovery.';
-    case 'list_campaigns':
-      return 'Reading current campaigns, sequences, drafts, and enrollments.';
-    default:
-      return 'Reading workspace data.';
-  }
+function toolDetail(toolName: OutreachAgentTool, lang: AgentLanguage) {
+  return agentToolDetail(toolName, lang);
 }
 
 function createTask(toolName: OutreachAgentTool, index: number, source: TaskSource, reason?: string, directAnswer?: string): AgentTask {
@@ -552,33 +528,35 @@ function orderTaskResults(tasks: AgentTask[], results: AgentTaskResult[]) {
   return tasks.map((task) => byId.get(task.id)).filter((result): result is AgentTaskResult => Boolean(result));
 }
 
-function fallbackSynthesis(tasks: AgentTask[], results: AgentTaskResult[]) {
+function fallbackSynthesis(tasks: AgentTask[], results: AgentTaskResult[], lang: AgentLanguage) {
   const ordered = orderTaskResults(tasks, results);
   const confirmations = ordered.filter((result) => result.requiresConfirmation);
   const failures = ordered.filter((result) => result.status === 'failed');
   const completed = ordered.filter((result) => result.status === 'complete' && result.responseText);
+  const copy = agentCopy(lang);
 
   if (confirmations.length) {
     const otherText = completed.map((result) => result.responseText).filter(Boolean).join('\n');
     const confirmationText = confirmations.map((result) => result.responseText).filter(Boolean).join('\n');
-    return [otherText, confirmationText].filter(Boolean).join('\n\n') || 'Please confirm before I continue.';
+    return [otherText, confirmationText].filter(Boolean).join('\n\n') || copy.confirmation;
   }
 
   if (completed.length) {
     const text = completed.map((result) => result.responseText).filter(Boolean).join('\n');
     if (failures.length) {
-      return `${text}\n\n${failures.length} task(s) failed: ${failures.map((result) => result.error).filter(Boolean).join('; ')}`;
+      const failureText = failures.map((result) => result.responseText || result.error).filter(Boolean).join('\n');
+      return [text, failureText || copy.partialFailureIntro].filter(Boolean).join('\n\n');
     }
     return text;
   }
 
-  if (failures.length) return failures.map((result) => result.error || 'Agent task failed').join('\n');
-  return 'I could not complete a useful outreach action from that request.';
+  if (failures.length) return failures.map((result) => result.responseText || result.error).filter(Boolean).join('\n');
+  return copy.noUsefulAction;
 }
 
-async function synthesizeWithModel(tasks: AgentTask[], results: AgentTaskResult[]) {
+async function synthesizeWithModel(tasks: AgentTask[], results: AgentTaskResult[], lang: AgentLanguage) {
   const successful = results.filter((result) => result.status === 'complete');
-  if (successful.length <= 1) return fallbackSynthesis(tasks, results);
+  if (successful.length <= 1) return fallbackSynthesis(tasks, results, lang);
 
   try {
     const output = await invokeStructured({
@@ -586,8 +564,9 @@ async function synthesizeWithModel(tasks: AgentTask[], results: AgentTaskResult[
       schema: SupervisorResponseSchema,
       schemaName: 'OutreachAgentFinalResponse',
       system: `You are the user-facing supervisor for Orianna/isimple CRM.
-Write one concise response that combines specialist results.
-Stay in CRM/outreach scope. Do not invent facts. Mention confirmations or failures only if present.`,
+Write one concise, operational response in ${lang === 'fr' ? 'French' : 'English'}.
+Stay inside CRM/outreach scope. Do not invent facts. Do not explain the architecture.
+Mention partial failures only if present, and keep successful results visible.`,
       prompt: `Tasks:
 ${JSON.stringify(tasks, null, 2)}
 
@@ -601,10 +580,10 @@ ${JSON.stringify(results.map((result) => ({
   artifactSummary: result.artifact?.summary,
 })), null, 2)}`,
     });
-    return output.response.trim() || fallbackSynthesis(tasks, results);
+    return output.response.trim() || fallbackSynthesis(tasks, results, lang);
   } catch (error) {
     console.warn('[OutreachAgent] Final synthesis model failed; using deterministic synthesis.', error);
-    return fallbackSynthesis(tasks, results);
+    return fallbackSynthesis(tasks, results, lang);
   }
 }
 
@@ -614,6 +593,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
   if (!bundle.session) throw new Error('Outreach session not found');
 
   const cleanMessage = typeof body.message === 'string' ? body.message.trim() : '';
+  const runLanguage = detectAgentLanguage(cleanMessage || bundle.session?.prompt || '');
   const run = await createOutreachRun(db, {
     workspaceId,
     sessionId,
@@ -643,8 +623,47 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || response.statusText);
+    if (!response.ok) {
+      const message = typeof data.userMessage === 'string'
+        ? data.userMessage
+        : typeof data.error === 'string'
+          ? data.error
+          : response.statusText;
+      const error = new Error(message) as EndpointError;
+      error.status = response.status;
+      error.payload = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+      throw error;
+    }
     return data;
+  };
+
+  const failedProspectArtifact = (error: unknown, prompt: string, requestedLimit: number | null) => {
+    const payload = (error as EndpointError)?.payload || {};
+    const normalized = normalizeAgentError(error, runLanguage, 'search');
+    const suggested = Array.isArray(payload.suggestedQueries)
+      ? payload.suggestedQueries.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : [];
+    const retryPrompt = typeof payload.retryPrompt === 'string' && payload.retryPrompt.trim()
+      ? payload.retryPrompt.trim()
+      : prompt;
+
+    return artifact(
+      'prospect_list',
+      runLanguage === 'fr' ? 'Recherche prospects à relancer' : 'Prospect search needs retry',
+      {
+        prospects: [],
+        requestedLimit,
+        verifiedCount: 0,
+        failed: true,
+        retryable: normalized.retryable,
+        errorCode: normalized.code,
+        error: normalized.message,
+        retryPrompt,
+        suggestedQueries: suggested,
+        brief: payload.brief && typeof payload.brief === 'object' ? payload.brief : null,
+      },
+      normalized.message
+    );
   };
 
   const emitToolStep = async (
@@ -727,8 +746,8 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
     artifactBuilder?: (output: T) => OutreachArtifact | null
   ) => {
     const permission = TOOL_PERMISSION.get(task.toolName) || 'read';
-    const title = toolTitle(task.toolName);
-    const detail = toolDetail(task.toolName);
+    const title = toolTitle(task.toolName, runLanguage);
+    const detail = toolDetail(task.toolName, runLanguage);
     const toolCall = await createOutreachToolCall(db, {
       workspaceId,
       sessionId,
@@ -758,11 +777,20 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
     try {
       const output = await execute();
       const outputRecord = output && typeof output === 'object' ? output as Record<string, unknown> : { output };
-      await completeToolStep(event.id, task.toolName, title, task.toolName === 'find_emails' ? 'Email enrichment is running.' : 'Done.', 'complete', {
-        ...outputRecord,
-        specialist: task.specialist,
-        taskId: task.id,
-      });
+      await completeToolStep(
+        event.id,
+        task.toolName,
+        title,
+        task.toolName === 'find_emails'
+          ? runLanguage === 'fr' ? 'Enrichissement email en cours.' : 'Email enrichment is running.'
+          : agentCopy(runLanguage).genericDone,
+        'complete',
+        {
+          ...outputRecord,
+          specialist: task.specialist,
+          taskId: task.id,
+        }
+      );
       await updateOutreachToolCall(db, {
         workspaceId,
         toolCallId: toolCall?.id || null,
@@ -780,8 +808,9 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       if (toolArtifact) emit('artifact', toolArtifact);
       return { output, artifact: toolArtifact || null };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Tool failed';
-      await completeToolStep(event.id, task.toolName, title, message, 'failed', {
+      const context = task.toolName === 'search_prospects' ? 'search' : task.toolName === 'find_emails' ? 'enrichment' : 'agent';
+      const normalized = normalizeAgentError(error, runLanguage, context);
+      await completeToolStep(event.id, task.toolName, title, normalized.message, 'failed', {
         specialist: task.specialist,
         taskId: task.id,
       });
@@ -789,14 +818,14 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         workspaceId,
         toolCallId: toolCall?.id || null,
         status: 'failed',
-        error: message,
+        error: normalized.message,
       });
       emit('tool_result', {
         id: toolCall?.id || null,
         tool_name: task.toolName,
         specialist: task.specialist,
         status: 'failed',
-        error: message,
+        error: normalized.message,
       });
       throw error;
     }
@@ -821,13 +850,14 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       specialist: task.specialist,
       permission,
       status: 'pending_confirmation',
-      title: toolTitle(task.toolName),
+      title: toolTitle(task.toolName, runLanguage),
       detail: task.reason,
     });
 
+    const copy = agentCopy(runLanguage);
     const confirmationArtifact = artifact(
       'confirmation_required',
-      'Confirmation required',
+      runLanguage === 'fr' ? 'Confirmation requise' : 'Confirmation required',
       {
         toolName: task.toolName,
         specialist: task.specialist,
@@ -836,8 +866,8 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         reason: task.reason,
       },
       task.toolName === 'launch_sequence'
-        ? 'Confirm before I launch this sequence.'
-        : 'Confirm before I create this recurring automation.'
+        ? copy.launchConfirmation
+        : copy.automationConfirmation
     );
     emit('confirmation_required', confirmationArtifact);
     emit('artifact', confirmationArtifact);
@@ -849,7 +879,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       status: 'waiting_confirmation',
       requiresConfirmation: true,
       artifact: confirmationArtifact,
-      responseText: confirmationArtifact.summary || 'Please confirm before I continue.',
+      responseText: confirmationArtifact.summary || copy.confirmation,
     };
   };
 
@@ -865,7 +895,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         specialist: task.specialist,
         status: 'complete',
         toolOutput: { scope: 'product_question', reason: task.reason },
-        responseText: task.directAnswer || fallbackAssistantText('answer_product_question', null, state.message),
+        responseText: task.directAnswer || fallbackAssistantText('answer_product_question', null, state.message, runLanguage),
       };
     }
 
@@ -876,7 +906,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         specialist: task.specialist,
         status: 'complete',
         toolOutput: { guardrail: 'out_of_scope', reason: task.reason },
-        responseText: task.directAnswer || fallbackAssistantText('refuse_out_of_scope', null, state.message),
+        responseText: task.directAnswer || fallbackAssistantText('refuse_out_of_scope', null, state.message, runLanguage),
       };
     }
 
@@ -911,7 +941,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         status: 'complete',
         toolOutput: output,
         artifact: artifactPayload || null,
-        responseText: artifactPayload ? artifactAssistantText(artifactPayload) : fallbackAssistantText(task.toolName, output),
+        responseText: artifactPayload ? artifactAssistantText(artifactPayload, runLanguage) : fallbackAssistantText(task.toolName, output, state.message, runLanguage),
       };
     }
 
@@ -920,8 +950,10 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       const requestedLimit = extractRequestedProspectLimit(activePrompt);
       await emitInstantStep(
         'profiles_finder_refine',
-        'Refining prospect request',
-        'Parsing role, geography, company type, exclusions, and review criteria.',
+        runLanguage === 'fr' ? 'Cible' : 'Target',
+        runLanguage === 'fr'
+          ? 'Lecture du rôle, de la zone, du type d’entreprise, des exclusions et des critères de revue.'
+          : 'Reading role, area, company type, exclusions, and review criteria.',
         { specialist: task.specialist, taskId: task.id }
       );
       const { output, artifact: toolArtifact } = await runTrackedTool(
@@ -931,16 +963,16 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
           const data = outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {};
           const found = (data.prospects as unknown[] | undefined)?.length || 0;
           const requested = Number(data.requestedLimit || requestedLimit);
-          const summary = requested && found < requested
-            ? `${found} strict verified match(es) found out of ${requested}.`
-            : `${found} strict verified prospect(s) found.`;
-          return artifact('prospect_list', 'First prospect list', data, summary);
+          const summary = searchResultSummary({ found, requested, lang: runLanguage });
+          return artifact('prospect_list', runLanguage === 'fr' ? 'Première liste prospects' : 'First prospect list', data, summary);
         }
       );
       await emitInstantStep(
         'profiles_finder_review',
-        'Preparing prospect review',
-        'Packaging sourced candidates for user review before enrichment or outreach.',
+        runLanguage === 'fr' ? 'Revue' : 'Review',
+        runLanguage === 'fr'
+          ? 'Préparation des candidats sourcés avant enrichissement ou outreach.'
+          : 'Preparing sourced candidates before enrichment or outreach.',
         { specialist: task.specialist, taskId: task.id }
       );
       return {
@@ -950,7 +982,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         status: 'complete',
         toolOutput: output,
         artifact: toolArtifact,
-        responseText: fallbackAssistantText('search_prospects', output),
+        responseText: fallbackAssistantText('search_prospects', output, activePrompt, runLanguage),
       };
     }
 
@@ -960,7 +992,12 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         async () => callSessionEndpoint('save-prospects', {
           prospectIds: body.prospectIds?.length ? body.prospectIds : selectedProspectIds(bundle.prospects),
         }),
-        (outputValue) => artifact('pipeline_attention', 'Prospects saved', outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {}, 'Selected prospects were saved to contacts.')
+        (outputValue) => artifact(
+          'pipeline_attention',
+          runLanguage === 'fr' ? 'Prospects sauvegardés' : 'Prospects saved',
+          outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {},
+          runLanguage === 'fr' ? 'Les prospects sélectionnés ont été sauvegardés dans les contacts.' : 'Selected prospects were saved to contacts.'
+        )
       );
       return {
         taskId: task.id,
@@ -969,7 +1006,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         status: 'complete',
         toolOutput: output,
         artifact: toolArtifact,
-        responseText: fallbackAssistantText('save_prospects', output),
+        responseText: fallbackAssistantText('save_prospects', output, state.message, runLanguage),
       };
     }
 
@@ -979,7 +1016,12 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         async () => callSessionEndpoint('enrich', {
           prospectIds: body.prospectIds?.length ? body.prospectIds : selectedProspectIds(bundle.prospects),
         }),
-        (outputValue) => artifact('enrichment_status', 'Email enrichment started', outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {}, 'Email enrichment is running in the background.')
+        (outputValue) => artifact(
+          'enrichment_status',
+          runLanguage === 'fr' ? 'Enrichissement email lancé' : 'Email enrichment started',
+          outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {},
+          runLanguage === 'fr' ? 'Enrichissement email en cours en arrière-plan.' : 'Email enrichment is running in the background.'
+        )
       );
       return {
         taskId: task.id,
@@ -988,7 +1030,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         status: 'complete',
         toolOutput: output,
         artifact: toolArtifact,
-        responseText: fallbackAssistantText('find_emails', output),
+        responseText: fallbackAssistantText('find_emails', output, state.message, runLanguage),
       };
     }
 
@@ -1000,7 +1042,12 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
           sequenceName: body.sequenceName,
           steps: body.steps,
         }),
-        (outputValue) => artifact('confirmation_required', 'Sequence launched', outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {}, 'Eligible prospects were queued.')
+        (outputValue) => artifact(
+          'confirmation_required',
+          runLanguage === 'fr' ? 'Séquence lancée' : 'Sequence launched',
+          outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {},
+          runLanguage === 'fr' ? 'Les prospects éligibles ont été mis en file.' : 'Eligible prospects were queued.'
+        )
       );
       return {
         taskId: task.id,
@@ -1009,7 +1056,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         status: 'complete',
         toolOutput: output,
         artifact: toolArtifact,
-        responseText: fallbackAssistantText('launch_sequence', output),
+        responseText: fallbackAssistantText('launch_sequence', output, state.message, runLanguage),
       };
     }
 
@@ -1020,7 +1067,12 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
           dailyLimit: body.dailyLimit || 20,
           approvalRequired: body.approvalRequired ?? true,
         }),
-        (outputValue) => artifact('automation_created', 'Automation created', outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {}, 'The recurring outreach automation is active.')
+        (outputValue) => artifact(
+          'automation_created',
+          runLanguage === 'fr' ? 'Automatisation créée' : 'Automation created',
+          outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {},
+          runLanguage === 'fr' ? 'L’automatisation récurrente est active.' : 'The recurring outreach automation is active.'
+        )
       );
       return {
         taskId: task.id,
@@ -1029,7 +1081,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         status: 'complete',
         toolOutput: output,
         artifact: toolArtifact,
-        responseText: fallbackAssistantText('create_automation', output),
+        responseText: fallbackAssistantText('create_automation', output, state.message, runLanguage),
       };
     }
 
@@ -1040,7 +1092,14 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         revisionPrompt,
         prospectIds: body.prospectIds?.length ? body.prospectIds : selectedProspectIds(bundle.prospects),
       }),
-      (outputValue) => artifact('sequence_draft', revisionPrompt ? 'Sequence revised' : 'Sequence drafted', outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {}, 'The sequence draft is ready to review.')
+      (outputValue) => artifact(
+        'sequence_draft',
+        revisionPrompt
+          ? runLanguage === 'fr' ? 'Séquence révisée' : 'Sequence revised'
+          : runLanguage === 'fr' ? 'Séquence préparée' : 'Sequence drafted',
+        outputValue && typeof outputValue === 'object' ? outputValue as Record<string, unknown> : {},
+        runLanguage === 'fr' ? 'Le brouillon de séquence est prêt à relire.' : 'The sequence draft is ready to review.'
+      )
     );
     return {
       taskId: task.id,
@@ -1049,7 +1108,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       status: 'complete',
       toolOutput: output,
       artifact: toolArtifact,
-      responseText: fallbackAssistantText(task.toolName, output),
+      responseText: fallbackAssistantText(task.toolName, output, state.message, runLanguage),
     };
   };
 
@@ -1107,22 +1166,29 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
         requiresConfirmation: Boolean(result.requiresConfirmation),
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Agent task failed';
+      const context = task.toolName === 'search_prospects' ? 'search' : task.toolName === 'find_emails' ? 'enrichment' : 'agent';
+      const normalized = normalizeAgentError(error, runLanguage, context);
+      const failedArtifact = task.toolName === 'search_prospects'
+        ? failedProspectArtifact(error, state.message || bundle.session?.prompt || '', extractRequestedProspectLimit(state.message || bundle.session?.prompt || ''))
+        : null;
+      if (failedArtifact) emit('artifact', failedArtifact);
       return {
         taskResults: [{
           taskId: task.id,
           toolName: task.toolName,
           specialist: task.specialist,
           status: 'failed',
-          error: message,
-          responseText: message,
+          error: normalized.message,
+          responseText: normalized.message,
+          artifact: failedArtifact,
         }],
+        artifacts: failedArtifact ? [failedArtifact] : [],
       };
     }
   };
 
   const finalResponseNode = async (state: AgentStateValue): Promise<AgentStateUpdate> => ({
-    responseText: await synthesizeWithModel(state.tasks, state.taskResults),
+    responseText: await synthesizeWithModel(state.tasks, state.taskResults, runLanguage),
   });
 
   const graph = new StateGraph(AgentState)
@@ -1141,7 +1207,7 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       action: body.action,
       confirmed: Boolean(body.confirmed),
     });
-    const assistantText = result.responseText || fallbackSynthesis(result.tasks, result.taskResults);
+    const assistantText = result.responseText || fallbackSynthesis(result.tasks, result.taskResults, runLanguage);
     const allFailed = result.taskResults.length > 0 && result.taskResults.every((taskResult) => taskResult.status === 'failed');
     const assistantMessage = await appendOutreachMessage(db, {
       workspaceId,
@@ -1211,7 +1277,8 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
     });
     return result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Agent failed';
+    const normalized = normalizeAgentError(error, runLanguage, 'agent');
+    const message = normalized.message;
     await updateOutreachRun(db, {
       workspaceId,
       runId: run?.id || null,
@@ -1236,6 +1303,6 @@ export async function runOutreachAgentGraph(input: AgentRuntimeInput) {
       metadata: { provider: 'langgraph', runId: run?.id || null, persisted: false },
       created_at: new Date().toISOString(),
     });
-    throw error;
+    throw new Error(message);
   }
 }

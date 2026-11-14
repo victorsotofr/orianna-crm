@@ -48,4 +48,3 @@ Deploy the `check-replies` and `process-sequences` Supabase Edge Functions when 
 [`vercel.json`](../vercel.json) declares a daily Telegram digest route at 07:00 UTC. It does not schedule daily GTM prospecting. That workflow has its own run endpoint, workspace configuration, and operator controls; scheduling it requires an explicitly configured caller.
 
 The isimple workspace initializer defaults GTM automation to disabled and review required. Depending on the selected run mode and workspace settings, a run can discover prospects, prepare them for review, or approve and enroll them automatically. Do not treat every run as an unsupervised send. Contact send checks apply separately to GTM-sourced prospects.
-

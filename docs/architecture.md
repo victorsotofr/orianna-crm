@@ -22,4 +22,3 @@ Workspace membership and `workspace_id` scope shared CRM data. SMTP/IMAP setting
 The shared provider helper selects OpenAI when `OPENAI_API_KEY` is configured, otherwise Anthropic. Model overrides are listed in [`.env.example`](../.env.example); this is configuration-based selection, not automatic failover on every provider error.
 
 For contact scoring and personalization, Linkup supplies external research when configured. Without successful Linkup research, the OpenAI path uses existing CRM context; the Anthropic path can use its web-search tool. The application does not always perform a fresh web search. Additional outreach-agent code and provider configuration live alongside these task-specific helpers.
-

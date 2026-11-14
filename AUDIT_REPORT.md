@@ -1,6 +1,6 @@
 # Orianna CRM - Audit Report
 
-> Generated: 2026-02-26
+> Historical report — generated February 26, 2026, before the repository was flattened. Paths, dependency notes, and proposed migration steps below describe that earlier snapshot. Use [README.md](README.md) for current setup and architecture.
 
 ---
 

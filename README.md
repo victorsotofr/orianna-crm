@@ -1,272 +1,100 @@
 # Orianna CRM
 
-> Your AI-powered outbound sales copilot. Built for teams who'd rather close deals than wrestle with spreadsheets.
+A B2B prospecting CRM built by [Victor Soto](https://github.com/victorsotofr). It brings contact research, personalized outreach, email sequences, and conversations into a shared workspace, with French and English interfaces.
 
-Orianna is a full-stack B2B prospecting CRM that combines contact management, email sequences, conversations, and AI-driven personalization into one sleek tool. Import your leads, let Claude score and research them, craft personalized emails at scale, automate multi-step follow-ups, and track everything — all from a single dashboard.
+## Capabilities
 
-## What Makes It Fun
+- Import contacts from CSV, research companies and people with Linkup, and enrich contact details with FullEnrich.
+- Score prospects and draft personalized opening lines, replies, and meeting briefings with AI.
+- Create email templates and multi-step sequences; send through user-configured SMTP and track replies through IMAP.
+- Manage threaded conversations, follow-ups, contact timelines, and team dashboards.
+- Connect Google Calendar through OAuth for availability and meeting management.
+- Review prospects before outreach, with Telegram notifications and operator actions for the isimple prospecting workflow.
 
-- **AI Contact Prospecting** — Type what you're looking for in plain language ("Find real estate agency directors in Paris"), and Linkup searches the web for matching contacts. Preview results, pick the ones you want, import in one click.
-- **AI Lead Scoring** — Claude + Linkup scour the web, score your contacts 0–100 across seniority, company fit, growth signals & digital presence, and slap a `HOT` / `WARM` / `COLD` label on them. No more gut feelings.
-- **AI Personalization** — One click generates a tailor-made opening line per contact, backed by real web research. Drop `{{ai_personalized_line}}` into any template and watch your reply rates climb.
-- **AI Meeting Prep** — Before any call, generate a comprehensive briefing with company summary, talking points, suggested questions, and red flags — powered by CRM data + Linkup web research + Claude.
-- **Email Sequences** — Build 3-step automated sequences (first contact → first follow-up → last contact) with configurable delays. Enroll contacts, launch, pause, resume — the sequence engine runs every 5 minutes and handles the rest.
-- **Conversations** — Full email inbox with threaded conversations, IMAP sync, and AI-powered reply suggestions. See all inbound and outbound messages in one place, linked to your contacts.
-- **Auto Bounce Recovery** — Automatically detect email bounces (NDR/DSN), mark contacts, and recover with FullEnrich email finder. Found a new email? The original message is auto-resent.
-- **Google Calendar** — Connect via OAuth, view your availability, and create meetings directly from conversation threads.
-- **Contact Enrichment** — FullEnrich finds verified emails and phone numbers for your contacts in the background. Verified data always takes priority over guesses.
-- **Rich Email Templates** — TipTap-powered WYSIWYG editor with 20+ dynamic variables (`{{first_name}}`, `{{company_name}}`, `{{ai_score_label}}`…). Write once, send to thousands.
-- **Follow-Up Tracking** — Dedicated follow-ups page shows which contacts need a first or second follow-up, with bulk send actions.
-- **CSV Import on Steroids** — Auto-detects headers in French or English, normalizes statuses, skips duplicates. Drag, drop, done.
-- **Multi-Tenant Workspaces** — Invite your team, share contacts, and keep data isolated between organizations. Role-based access (admin / member).
-- **Team Dashboard** — Real-time KPIs: total contacts, hot leads, daily sends, reply rate, per-member breakdown. Everyone stays in the loop.
-- **Bilingual** — Full French / English UI toggle, saved per user.
+These capabilities require their corresponding services and configuration. Cloning the repository does not activate scheduled prospecting or email delivery.
 
-## Tech Stack
+## Stack and architecture
 
-| Layer | Tech |
-|-------|------|
-| **Framework** | Next.js 16, React 19, TypeScript |
-| **Database** | Supabase (PostgreSQL + Auth + Edge Functions + RLS) |
-| **AI** | Claude Sonnet 4.5 via Vercel AI SDK |
-| **Web Research** | Linkup API (agentic web search) |
-| **Enrichment** | FullEnrich API (verified emails & phones) |
-| **Calendar** | Google Calendar API (OAuth 2.0) |
-| **UI** | Tailwind CSS, shadcn/ui, Radix UI, TipTap editor |
-| **Email** | Nodemailer (SMTP send), IMAPFlow (sync & reply detection) |
-| **Security** | AES-256 encrypted credentials, Row Level Security, HMAC-signed tracking |
-| **Deployment** | Vercel |
+| Area | Implementation |
+|---|---|
+| Application | Next.js 16 App Router, React 19, TypeScript |
+| UI | Tailwind CSS, Radix UI, TipTap |
+| Data and identity | Supabase PostgreSQL, Auth, row-level security |
+| AI | Vercel AI SDK with OpenAI and Anthropic integrations |
+| Research and enrichment | Linkup, FullEnrich |
+| Email | Nodemailer for SMTP; IMAPFlow for mailbox synchronization |
+| Background work | Supabase Edge Functions and configured cron jobs |
+| Hosting | Vercel, with Supabase services |
 
-## Quick Start
+Workspace membership and `workspace_id` scope shared CRM data. SMTP/IMAP settings are per user. Sensitive stored credentials are encrypted using the server-side `ENCRYPTION_KEY`; the Supabase service-role key must also remain server-side.
+
+### AI behavior
+
+The shared provider helper selects OpenAI when `OPENAI_API_KEY` is configured, otherwise Anthropic. Model overrides are listed in `.env.example`; this is configuration-based selection, not automatic failover on every provider error.
+
+For contact scoring and personalization, Linkup supplies external research when configured. Without successful Linkup research, the OpenAI path uses existing CRM context; the Anthropic path can use its web-search tool. The application does not always perform a fresh web search. Additional outreach-agent code and provider configuration live alongside these task-specific helpers.
+
+## Local setup
+
+Use a supported Node.js release for Next.js 16 (Node.js 22 is a suitable baseline), npm, and a Supabase project.
 
 ```bash
-# Install dependencies
-npm install
+git clone https://github.com/victorsotofr/orianna-crm.git
+cd orianna-crm
+npm ci
+cp .env.example .env.local
+```
 
-# Create .env.local with your Supabase + Anthropic keys
-cp .env.example .env.local  # then fill in your values
+1. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and a private, stable `ENCRYPTION_KEY` in `.env.local`.
+2. Review and apply the numbered SQL migrations in `supabase/migrations/` in order. `ROLLBACK_*.sql` files are rollback scripts, not forward migrations. Review scheduling statements before execution: migrations 010 and 013 contain project/key placeholders and require Supabase `pg_cron` and `pg_net` extensions. Substitute credentials only in the private deployment environment, never in committed SQL.
+3. Configure Supabase Auth for your local and deployed URLs. Sign in and create or join a workspace through the application.
+4. Configure the integrations you need, then start the app:
 
-# Start development server
+```bash
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000)
+Open http://localhost:3000. API keys, email credentials, and connected accounts are not bundled with the repository.
 
-## Environment Variables
+### Integration configuration
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-ENCRYPTION_KEY=your-encryption-key
-ANTHROPIC_API_KEY=your-anthropic-key
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-```
+`.env.example` is the configuration reference; do not commit `.env.local`.
 
-## Project Structure
+| Capability | Configuration |
+|---|---|
+| AI generation | `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`; optional model overrides |
+| Research and enrichment | Linkup and FullEnrich keys in the application's integration settings; server-side workflows also use environment configuration |
+| Sending and replies | Per-user SMTP and IMAP settings in the application |
+| Google Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and matching OAuth redirect configuration |
+| Tracking and scheduled routes | `NEXT_PUBLIC_APP_URL`, `TRACKING_SECRET`, `CRON_SECRET` |
+| Telegram | `TELEGRAM_BOT_TOKEN`, account/chat setup, and a configured webhook |
 
-```
-orianna-crm/
-├── src/
-│   ├── app/                     # Next.js App Router
-│   │   ├── api/                 # REST API routes (~60 endpoints)
-│   │   │   ├── ai/              # AI scoring, personalization, prospecting
-│   │   │   ├── campaigns/       # Campaign dispatch + sequence automation
-│   │   │   ├── contacts/        # CRUD, bulk ops, CSV import, enrichment
-│   │   │   ├── conversations/   # Threaded inbox, sync, AI reply suggestions
-│   │   │   ├── google-calendar/ # Calendar events, free/busy
-│   │   │   ├── templates/       # Template CRUD
-│   │   │   ├── settings/        # SMTP/IMAP, Google Calendar OAuth, integrations
-│   │   │   ├── webhooks/        # FullEnrich result callbacks
-│   │   │   ├── cron/            # Scheduled jobs (sequence processing)
-│   │   │   └── ...
-│   │   ├── (app)/               # Authenticated app shell
-│   │   │   ├── contacts/        # Contact list, detail, import, new
-│   │   │   ├── campaigns/       # Campaigns + email sequences
-│   │   │   ├── conversations/   # Email inbox & threads
-│   │   │   ├── templates/       # Template editor & list
-│   │   │   ├── follow-ups/      # Follow-up tracking & bulk send
-│   │   │   ├── dashboard/       # Analytics & KPIs
-│   │   │   └── settings/        # SMTP/IMAP, integrations, AI prompts, calendar
-│   │   └── login/               # Auth page
-│   ├── components/              # React components
-│   │   └── ui/                  # shadcn/ui primitives
-│   ├── lib/                     # Core utilities
-│   │   ├── supabase.ts          # Supabase clients (browser + service role)
-│   │   ├── supabase-server.ts   # SSR cookie-based auth client
-│   │   ├── ai-personalization.ts # Two-pass AI personalization engine
-│   │   ├── ai-scoring.ts        # AI lead scoring engine
-│   │   ├── ai-defaults.ts       # Default prompts & query templates
-│   │   ├── linkup.ts            # Linkup web search (company, contact, prospecting)
-│   │   ├── email-sender.ts      # Nodemailer SMTP integration
-│   │   ├── mailbox-sync.ts      # IMAP synchronization (inbox threading)
-│   │   ├── mailbox-store.ts     # Persist synced messages to DB
-│   │   ├── mailbox-utils.ts     # Message parsing, normalization, threading
-│   │   ├── google-calendar.ts   # Google Calendar API wrapper
-│   │   ├── google-oauth.ts      # OAuth 2.0 flow for Google
-│   │   ├── encryption.ts        # AES encrypt/decrypt for credentials
-│   │   ├── workspace.ts         # Multi-tenant workspace context
-│   │   ├── background-jobs.tsx  # Background job UI state tracking
-│   │   ├── i18n/                # FR / EN translations
-│   │   └── template-renderer.ts # {{variable}} replacement engine
-│   ├── types/                   # TypeScript interfaces
-│   └── hooks/                   # React hooks
-├── supabase/
-│   ├── migrations/              # SQL migrations
-│   └── functions/               # Edge Functions
-│       ├── check-replies/       # IMAP reply detection (every 15 min)
-│       └── process-sequences/   # Sequence email sending (every 5 min)
-└── middleware.ts                # Auth middleware
-```
+Keep the same encryption key when retaining encrypted records; changing it prevents existing credentials from being decrypted.
 
-## Features at a Glance
+## Automation and deployment
 
-### Contacts
-- Full CRUD with inline editing from the table view
-- CSV bulk import (auto-detect headers, skip dupes)
-- AI-powered prospecting: search for new contacts with natural language
-- FullEnrich integration: find verified emails & phone numbers
-- Status pipeline: `new` → `contacted` → `engaged` → `qualified` → `meeting_scheduled` → `opportunity` → `customer` / `lost`
-- Auto bounce detection: bounced emails flagged, contacts marked, recovery via FullEnrich
-- Activity timeline with comments
-- Assign contacts to team members
-- Bulk actions: score, personalize, enrich, assign, update status, delete
+Import the repository into Vercel and configure the relevant environment variables, Supabase Auth URLs, and external OAuth/webhook URLs for that deployment.
 
-### AI
-- **Prospecting**: Describe who you're looking for, Linkup finds them on the web, preview & import
-- **Lead Scoring**: 4-axis scoring (seniority, relevance, growth, digital presence) with Linkup web research
-- **Personalization**: Two-pass engine — Linkup researches company & contact, then Claude generates a clean opening line
-- **Reply Suggestions**: AI-generated reply drafts in conversations, based on thread context
-- **Meeting Prep**: Generate AI-powered briefings before calls with company summary, engagement recap, talking points, questions, and red flags. Stored in contact timeline for reuse.
-- **Meeting Extraction**: Pull meeting details from conversation threads into calendar events
-- **Customizable prompts**: Fine-tune every AI prompt and search query from Settings
+Deploy the `check-replies` and `process-sequences` Supabase Edge Functions when using those background features. Configure their service credentials and schedules separately. The SQL templates propose reply checks every 15 minutes and sequence processing every 5 minutes; their presence does not prove that either job is deployed or running.
 
-### Email Sequences
-- 3-step automated sequences: Premier Contact → Première Relance → Dernier Contact
-- Configurable delays between steps (default: 0, 3, 7 days)
-- Sequence lifecycle: `draft` → `active` → `paused` → `archived`
-- Per-contact enrollment tracking: `active`, `paused`, `completed`, `bounced`
-- Automatic processing every 5 minutes via Edge Function cron
-- Manual send option for immediate dispatch
+`vercel.json` declares a daily Telegram digest route at 07:00 UTC. It does not schedule daily GTM prospecting. That workflow has its own run endpoint, workspace configuration, and operator controls; scheduling it requires an explicitly configured caller.
 
-### Conversations
-- IMAP-synced inbox with threaded message view
-- Inbound & outbound message tracking
-- Contact association for each thread
-- AI-powered reply suggestions
-- Meeting prep briefings (per-thread or per-contact)
-- Auto bounce detection with email recovery flow
-- Meeting extraction from thread context
-- Per-user sync state with error tracking
-- Auto-refresh polling (60s)
+The isimple workspace initializer defaults GTM automation to disabled and review required. Depending on the selected run mode and workspace settings, a run can discover prospects, prepare them for review, or approve and enroll them automatically. Do not treat every run as an unsupervised send. Contact send checks apply separately to GTM-sourced prospects.
 
-### Email
-- WYSIWYG template editor with 20+ contact variables
-- Campaign bulk send with throttling & daily limits
-- BCC toggle for campaign sends
-- Open tracking (HMAC-signed pixel)
-- Reply detection via IMAP polling
-- Per-user SMTP/IMAP configuration with encrypted credentials
-
-### Follow-Ups
-- Dedicated page showing contacts due for first and second follow-ups
-- Auto-calculated follow-up dates based on first contact timestamp
-- Bulk send actions for each follow-up stage
-
-### Dashboard
-- Team & personal views
-- KPIs: contacts, hot leads, daily sends, reply rate
-- Per-member stats breakdown
-- Recent activity feed
-
-### Workspace & Team
-- Multi-tenant workspaces with invite system
-- Role-based access: admin / member
-- Shared contacts, templates, and campaigns within a workspace
-- Per-user API keys and AI prompts
-
-### Google Calendar
-- OAuth 2.0 connection flow from Settings
-- View calendars and check availability (free/busy)
-- Create, update, and delete events
-- Link events to contacts and conversation threads
-
-## How to Use It
-
-A typical workflow from setup to sending your first campaign:
-
-### 1. Set Up Your Account
-
-After logging in for the first time, head to **Settings**:
-
-- **Email** — Enter your SMTP server credentials (host, port, username, password). This is required to send emails. If your organization uses IMAP for reply tracking, configure that too.
-- **Integrations** — Paste your API keys for **FullEnrich** (contact enrichment) and **Linkup** (AI web search). Both are optional but unlock the best features.
-- **Google Calendar** — Connect your Google account to enable calendar features.
-- **Preferences** — Set your daily send limit and preferred language (French or English).
-
-### 2. Build Your Contact List
-
-You have three ways to add contacts:
-
-- **CSV Import** — Go to Contacts, click **CSV**, drag & drop your file. Orianna auto-detects column headers and skips duplicates.
-- **Search with AI** — Click **Search with AI**, describe who you're looking for in plain language (e.g. "Marketing directors at SaaS companies in Lyon"). Linkup searches the web, shows you what it found, and you pick which contacts to import.
-- **Manual** — Click **New** to add contacts one by one.
-
-### 3. Enrich & Score Your Contacts
-
-Select contacts in the table, then use the bulk action bar at the bottom:
-
-- **Enrich** — Sends contacts to FullEnrich to find verified email addresses and phone numbers. This runs in the background and takes a few minutes.
-- **ICP AI Score** — Claude + Linkup research each contact's company and role, then assign a score from 0 to 100. Contacts are labeled HOT / WARM / COLD automatically.
-- **Personalize** — Generates a one-line personalized opener for each contact, based on real web research about them and their company.
-
-### 4. Create Email Templates
-
-Go to **Templates** and create your email templates using the rich text editor. Use dynamic variables like:
-
-- `{{first_name}}`, `{{last_name}}`, `{{company_name}}` — basic contact info
-- `{{ai_personalized_line}}` — the AI-generated opening line
-- `{{ai_score_label}}` — HOT / WARM / COLD label
-
-### 5. Send Campaigns or Set Up Sequences
-
-**One-off campaigns**: Go to **Campaigns**, create a new campaign, pick a template, select your target contacts, and send.
-
-**Automated sequences**: Create a sequence with 3 email steps and configurable delays. Enroll your contacts, launch the sequence, and Orianna sends each step automatically on schedule.
-
-Both methods handle throttled sending, daily limits, open tracking, and reply detection.
-
-### 6. Manage Conversations
-
-Check the **Conversations** page to see threaded email exchanges with your contacts. Orianna syncs your inbox via IMAP and groups messages into threads. Use AI-powered reply suggestions to draft responses quickly.
-
-### 7. Track Results
-
-Your **Dashboard** shows real-time stats: emails sent today, open rate, reply rate, hot leads count, and a per-team-member breakdown. The **Follow-ups** page shows which contacts are due for their next touch.
-
-### Tips
-
-- **Customize AI behavior** — In Settings > Integrations, click "Configure" to open the AI Prompts panel. You can fine-tune every prompt Claude and Linkup use, and enhance them with AI.
-- **Invite your team** — In Settings > Members, invite colleagues by email. They'll join your workspace and see the same contacts.
-- **Filter smartly** — Use the status and owner filters on the Contacts page to focus on what matters. The "ICP Leads" view shows only hot-scored contacts.
-
-## Scripts
+## Development
 
 ```bash
-npm run dev       # Dev server (Turbopack)
-npm run build     # Production build
-npm run start     # Start production server
-npm run lint      # ESLint
+npm run dev          # Local development
+npx tsc --noEmit     # TypeScript check
+npm run test:unit    # Unit tests
+npm run test:e2e     # Playwright tests; inspect test configuration first
+npm run build       # Production build
+npm run start       # Serve the production build
+npm run lint        # ESLint
 ```
 
-## Deployment
-
-1. Push to GitHub
-2. Import in Vercel
-3. Add environment variables
-4. Deploy — that's it
+The app lives in `src/`; database migrations and Edge Functions are in `supabase/`. The older [audit report](AUDIT_REPORT.md) describes the pre-flattening repository layout and is retained as historical context, not current setup instructions.
 
 ## License
 
-MIT
+No license file is currently included in this repository.

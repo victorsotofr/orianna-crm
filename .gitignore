@@ -55,3 +55,8 @@ email-automation/
 *.sh
 TEST_*.md
 SEQUENCES_*.md
+
+# Isolated Next.js test output and browser reports
+/.next-*/
+/test-results/
+/playwright-report/

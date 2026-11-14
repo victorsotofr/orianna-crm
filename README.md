@@ -9,7 +9,7 @@ A B2B prospecting CRM built by [Victor Soto](https://github.com/victorsotofr), c
 - Keep conversations, contact history, and meeting preparation in one place.
 - Review prospects and manage outreach through the app and Telegram.
 
-**Stack:** Next.js · React · TypeScript · Supabase · Vercel AI SDK · OpenAI / Anthropic · Linkup · FullEnrich · SMTP / IMAP.
+**Stack:** Next.js · React · TypeScript · Supabase · LangGraph · Vercel AI SDK · multiple LLM providers · Linkup · FullEnrich · SMTP / IMAP.
 
 ## Run locally
 

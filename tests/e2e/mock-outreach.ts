@@ -53,6 +53,7 @@ interface MockSession {
 
 export interface MockOutreachControls {
   failNextAgent: () => void;
+  failNextSearch: () => void;
   seedSession: (prompt: string) => MockSession;
 }
 
@@ -205,26 +206,58 @@ function prospectRows() {
 }
 
 function classify(messageText: string) {
-  const lower = messageText.toLowerCase();
-  if (lower.includes('zidane') || lower.includes('hadamar') || lower.includes('hadamard') || lower.includes('ça va') || lower.includes('ca va') || lower === 'hello') return 'offdomain';
-  if (lower.includes('what can') || lower.includes('tu peux') || lower.includes('modèle') || lower.includes('modele') || lower.includes('model')) return 'direct';
+  const lower = messageText
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const prospectScore = [
+    /\b\d{1,3}\b/.test(lower),
+    /find|search|trouve|trouver|cherche|chercher|identify|identifier/.test(lower),
+    /prospect|contact|profil|profile|people|personne|lead|gestionnaire|responsable|directeur|manager/.test(lower),
+    /property management|gestion locative|locatif|immobilier|real estate/.test(lower),
+    /lyon|paris|lille|france|region|area|autour|around/.test(lower),
+    /independant|small|mid|pme|local/.test(lower),
+  ].filter(Boolean).length;
+  const hasCampaignState = /campaign|campagne/.test(lower) || (/sequence/.test(lower) && /show|list|check|status|update|updates|ongoing|current|existing|past|active/.test(lower));
+  if (lower.includes('zidane') || lower.includes('hadamar') || lower.includes('hadamard') || lower.includes('multiplication')) return 'offdomain';
+  if (prospectScore >= 2 && hasCampaignState) return 'search_campaigns';
+  if (prospectScore >= 2) return 'search';
+  if (lower.includes('what can') || lower.includes('tu peux') || lower.includes('modele') || lower.includes('model') || lower.includes('scope') || lower.includes('webapp')) return 'direct';
   if (lower.includes('automation') || lower.includes('automatisation')) return 'automations';
-  if (lower.includes('reply') || lower.includes('replies') || lower.includes('inbox') || lower.includes('répond')) return 'inbox';
+  if (hasCampaignState) return 'campaigns';
+  if (lower.includes('reply') || lower.includes('replies') || lower.includes('inbox') || lower.includes('repond')) return 'inbox';
   if (lower.includes('review') || lower.includes('blocked') || lower.includes('pipeline')) return 'pipeline';
   if (lower.includes('attention') || lower.includes('status') || lower.includes('today')) return 'status';
-  if (lower.includes('find') || lower.includes('trouve') || lower.includes('property manager') || lower.includes('prospect')) return 'search';
   if (lower.includes('launch') || lower.includes('send')) return 'confirmation';
   if (lower.includes('sequence') || lower.includes('email 1')) return 'sequence';
   return 'direct';
 }
 
+function isFrench(messageText: string) {
+  const lower = messageText
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return /[àâäçéèêëîïôöùûüÿœ]/i.test(messageText) || /\b(je|qui|est|veux|trouve|trouver|campagne|campagnes|bonjour|salut|merci|peux|gestionnaire|responsable|dirigeant|pme)\b/.test(lower);
+}
+
+function directAssistantText(messageText: string) {
+  return isFrench(messageText)
+    ? 'Bonjour. Je suis l’agent GTM isimple. Donne-moi une cible, une campagne, l’inbox ou la file outbound à vérifier.'
+    : 'Hi. I’m the isimple GTM agent. Give me a target, campaign, inbox, or outbound queue to check.';
+}
+
 export async function installMockOutreach(page: Page): Promise<MockOutreachControls> {
   const sessions = new Map<string, MockSession>();
   let failNextAgent = false;
+  let failNextSearch = false;
 
   const controls: MockOutreachControls = {
     failNextAgent: () => {
       failNextAgent = true;
+    },
+    failNextSearch: () => {
+      failNextSearch = true;
     },
     seedSession: (prompt: string) => {
       const session = makeSession(prompt);
@@ -385,14 +418,23 @@ export async function installMockOutreach(page: Page): Promise<MockOutreachContr
         outbound.push({ type: 'message', payload: userMessage });
       }
 
-      const routerRunning = event('agent_router', 'Routing request', 'Choosing the specialist and checking tool guardrails.', 'running');
-      const routerComplete = { ...routerRunning, status: 'complete' as const, detail: `The request matches ${kind}.`, updated_at: now() };
-      session.events.push(routerComplete);
-      outbound.push({ type: 'event', payload: routerRunning }, { type: 'event', payload: routerComplete });
-
-      let assistantText = 'Je peux chercher des prospects, vérifier les réponses, revoir la file outbound, préparer une séquence et gérer les automatisations.';
+      let assistantText = directAssistantText(userText);
       if (kind === 'offdomain') {
-        assistantText = 'Je suis spécialisé sur l’outreach, les prospects, les réponses, les automatisations et le CRM. Je peux lancer une recherche, vérifier l’inbox ou revoir la file outbound.';
+        assistantText = isFrench(userText)
+          ? 'Je reste sur Orianna/isimple: prospects, contacts, campagnes, inbox, enrichissement, séquences et automatisations outbound.'
+          : 'I stay inside Orianna/isimple: prospects, contacts, campaigns, inbox, enrichment, sequences, and outbound automations.';
+      }
+      let campaignSummary = '';
+      if (kind === 'search_campaigns') {
+        const item = artifact('campaign_list', 'Campaigns and sequences', {
+          campaigns: [{ id: 'campaign-1', name: 'Manual Q1 outreach', status: 'draft', created_at: now() }],
+          sequences: [{ id: 'seq-1', name: 'Intro sequence', status: 'active', updated_at: now() }],
+          drafts: [{ id: 'draft-1', name: 'Property manager intro', status: 'draft', updated_at: now() }],
+          activeEnrollments: 4,
+        }, '1 active sequence(s), 1 draft(s), 4 active enrollment(s).');
+        campaignSummary = item.summary || '';
+        session.events.push(event('campaign_list', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
+        outbound.push({ type: 'artifact', payload: item });
       }
       if (kind === 'status') {
         const item = artifact('status_snapshot', 'Workspace status', {
@@ -409,6 +451,16 @@ export async function installMockOutreach(page: Page): Promise<MockOutreachContr
         session.events.push(event('automation_list', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
         outbound.push({ type: 'artifact', payload: item });
         assistantText = item.summary || assistantText;
+      } else if (kind === 'campaigns') {
+        const item = artifact('campaign_list', 'Campaigns and sequences', {
+          campaigns: [{ id: 'campaign-1', name: 'Manual Q1 outreach', status: 'draft', created_at: now() }],
+          sequences: [{ id: 'seq-1', name: 'Intro sequence', status: 'active', updated_at: now() }],
+          drafts: [{ id: 'draft-1', name: 'Property manager intro', status: 'draft', updated_at: now() }],
+          activeEnrollments: 4,
+        }, '1 active sequence(s), 1 draft(s), 4 active enrollment(s).');
+        session.events.push(event('campaign_list', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
+        outbound.push({ type: 'artifact', payload: item });
+        assistantText = item.summary || assistantText;
       } else if (kind === 'inbox') {
         const item = artifact('inbox_attention', 'Inbox attention', { threads: [{ id: 'inbox-1', subject: 'Re: Demo', unread_count: 1, snippet: 'Can we talk next week?' }] }, '1 conversation(s) need a reply.');
         session.events.push(event('inbox_attention', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
@@ -419,18 +471,53 @@ export async function installMockOutreach(page: Page): Promise<MockOutreachContr
         session.events.push(event('pipeline_attention', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
         outbound.push({ type: 'artifact', payload: item });
         assistantText = item.summary || assistantText;
-      } else if (kind === 'search') {
-        const parseEvent = event('parse_outreach_brief', 'Interpreting target', 'Reading industry, role, geography, size, and exclusions from the request.');
-        const validateEvent = event('validate_search_quality', 'Validating candidates', 'Keeping only named people with role, geography, company-type fit, and usable sources.');
-        const searchEvent = event('search_prospects', 'Searching prospects', 'Running Linkup, extracting named people, deduping, and saving the first list.');
-        session.events.push(parseEvent, validateEvent, searchEvent);
+      } else if (kind === 'search' || kind === 'search_campaigns') {
+        const requestedLimit = Number(lower.match(/\b(\d{1,3})\b/)?.[1] || 20);
+        if (failNextSearch) {
+          failNextSearch = false;
+          const failedText = isFrench(userText)
+            ? 'La recherche a pris trop longtemps. Les autres résultats restent disponibles; relance ou resserre la cible.'
+            : 'The search took too long. Other results remain available; retry or narrow the target.';
+          const legacyEvents = [
+            event('agent_router', 'Routing request', 'The request matches the search prospects specialist.', 'complete'),
+            event('parse_outreach_brief', 'Interpreting target', 'Reading industry, role, geography, size, and exclusions from the request.', 'complete'),
+            event('plan_search_queries', 'Planning search', 'Preparing search queries.', 'complete'),
+            event('validate_search_quality', 'Validating candidates', 'Keeping only named people.', 'complete'),
+          ];
+          const searchEvent = event('search_prospects', 'Searching prospects', failedText, 'failed');
+          const item = artifact('prospect_list', 'Prospect search needs retry', {
+            prospects: [],
+            requestedLimit,
+            verifiedCount: 0,
+            failed: true,
+            retryable: true,
+            error: failedText,
+            retryPrompt: userText,
+            suggestedQueries: [
+              'dirigeants PME industrielles région lyonnaise LinkedIn',
+              'fondateurs petites entreprises industrielles Lyon équipe direction',
+            ],
+          }, failedText);
+          session.events.push(...legacyEvents, searchEvent, event('prospect_list', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
+          session.status = 'failed';
+          session.error = failedText;
+          outbound.push(...legacyEvents.map((payload) => ({ type: 'event', payload })), { type: 'event', payload: searchEvent }, { type: 'artifact', payload: item });
+          assistantText = campaignSummary ? `${campaignSummary}\n\n${failedText}` : failedText;
+        } else {
+        const refineEvent = event('profiles_finder_refine', 'Target', 'Reading role, area, company type, exclusions, and review criteria.', 'complete');
+        const searchEvent = event('search_prospects', 'Search', 'Running web research and keeping only named, sourced people.', 'complete');
+        const reviewEvent = event('profiles_finder_review', 'Review', 'Preparing sourced candidates before enrichment or outreach.', 'complete');
+        session.events.push(refineEvent, searchEvent, reviewEvent);
         session.prospects = prospectRows();
         session.status = 'ready';
-        const requestedLimit = Number(lower.match(/\b(\d{1,3})\b/)?.[1] || 20);
-        const item = artifact('prospect_list', 'First prospect list', { prospects: session.prospects, requestedLimit, verifiedCount: session.prospects.length }, `${session.prospects.length} strict verified match(es) found out of ${requestedLimit}.`);
+        const summary = isFrench(userText)
+          ? `${session.prospects.length} prospect(s) strictement vérifiés sur ${requestedLimit}. J’ai écarté les candidats faibles ou hors cible.`
+          : `${session.prospects.length} strict verified prospect(s) out of ${requestedLimit}. I skipped weak or off-target candidates.`;
+        const item = artifact('prospect_list', isFrench(userText) ? 'Première liste prospects' : 'First prospect list', { prospects: session.prospects, requestedLimit, verifiedCount: session.prospects.length }, summary);
         session.events.push(event('prospect_list', item.title, item.summary || 'Done.', 'complete', { artifact: item }));
-        outbound.push({ type: 'event', payload: parseEvent }, { type: 'event', payload: validateEvent }, { type: 'event', payload: searchEvent }, { type: 'artifact', payload: item });
-        assistantText = `I found ${session.prospects.length} strict verified match(es) out of ${requestedLimit}. I did not include weak or off-target candidates.`;
+        outbound.push({ type: 'event', payload: refineEvent }, { type: 'event', payload: searchEvent }, { type: 'event', payload: reviewEvent }, { type: 'artifact', payload: item });
+        assistantText = `${campaignSummary ? `${campaignSummary}\n` : ''}${summary}`;
+        }
       } else if (kind === 'sequence') {
         session.sequenceDraft = {
           id: 'draft-1',

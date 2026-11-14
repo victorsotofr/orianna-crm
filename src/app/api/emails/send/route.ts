@@ -14,7 +14,6 @@ export const maxDuration = 30;
 
 export async function POST(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -41,7 +40,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch contact
     const { data: contact, error: contactError } = await supabase
       .from('contacts')
       .select('*')
@@ -58,7 +56,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: gtmBlockReason, success: false }, { status: 403 });
     }
 
-    // Fetch template
     const { data: template, error: templateError } = await supabase
       .from('templates')
       .select('*')
@@ -69,7 +66,6 @@ export async function POST(request: Request) {
       throw new Error('Template not found');
     }
 
-    // Fetch user settings
     const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
       .select('*')
@@ -114,7 +110,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Prepare template variables from all contact fields
     const variables: Record<string, string> = {
       first_name: contact.first_name || '',
       last_name: contact.last_name || '',
@@ -139,7 +134,6 @@ export async function POST(request: Request) {
       ...templateVariables,
     };
 
-    // Render email template
     const renderedHtml = renderTemplate(template.html_content, variables);
     const renderedSubject = renderTemplate(template.subject, variables);
 
@@ -180,7 +174,6 @@ export async function POST(request: Request) {
     const finalHtml = `${composedHtml}\n${trackingPixel}`;
     const plainText = extractPlainText(undefined, composedHtml);
 
-    // Send email
     const emailData = {
       to: contact.email,
       subject: renderedSubject,

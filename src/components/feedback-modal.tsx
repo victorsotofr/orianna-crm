@@ -97,7 +97,6 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
     try {
       const imageUrls: string[] = []
 
-      // Upload all images to Supabase storage
       for (const { file } of files) {
         const ext = file.name.split('.').pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
@@ -119,7 +118,6 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
         imageUrls.push(urlData.publicUrl)
       }
 
-      // Submit feedback via API
       const response = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

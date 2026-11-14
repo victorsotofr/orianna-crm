@@ -140,7 +140,6 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Build template variables from contact fields
         const variables: Record<string, string> = {
           first_name: email.contact_first_name || '',
           last_name: email.contact_last_name || '',
@@ -158,7 +157,6 @@ export async function POST(request: Request) {
           ai_personalized_line: email.contact_ai_personalized_line || '',
         };
 
-        // Render subject and body
         const renderedSubject = renderTemplate(email.template_subject || '', variables);
         const renderedHtml = renderTemplate(email.template_html_content || '', variables);
 
@@ -231,7 +229,6 @@ export async function POST(request: Request) {
           );
 
         if (!result.success) {
-          // Increment retry count
           const newRetryCount = email.retry_count + 1;
 
           if (newRetryCount > email.max_retries) {
@@ -248,7 +245,6 @@ export async function POST(request: Request) {
 
             throw new Error(result.error || 'Email sending failed - max retries exceeded');
           } else {
-            // Update retry count and reschedule
             await supabase
               .from('emails_sent')
               .update({ status: 'failed', error_message: result.error || 'Email sending failed' })
@@ -299,7 +295,6 @@ export async function POST(request: Request) {
           await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
         }
 
-        // Update contact date field based on step order
         const dateField = email.step_order === 0 ? 'first_contact'
           : email.step_order === 1 ? 'second_contact'
           : email.step_order === 2 ? 'third_contact'
@@ -315,7 +310,6 @@ export async function POST(request: Request) {
             .eq('id', email.contact_id);
         }
 
-        // Get next step in sequence
         const { data: nextSteps } = await supabase
           .from('campaign_sequence_steps')
           .select('id, delay_days')
@@ -331,7 +325,6 @@ export async function POST(request: Request) {
           const nextSendAt = new Date();
           nextSendAt.setDate(nextSendAt.getDate() + nextStep.delay_days);
 
-          // Update enrollment with next step
           await supabase
             .from('campaign_enrollments')
             .update({

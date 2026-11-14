@@ -79,7 +79,6 @@ export default function NewContactPage() {
       <SiteHeader title={t.contacts.new.title} />
       <div className="page-container">
         <div className="page-content max-w-3xl">
-          {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/contacts')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -91,10 +90,8 @@ export default function NewContactPage() {
             </Button>
           </div>
 
-          {/* Form — single compact grid */}
           <div className="border rounded-lg px-4 py-3 space-y-2.5">
             <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
-              {/* Row 1: Email, Prénom, Nom */}
               <div className="space-y-1">
                 <Label className="text-xs">{t.contacts.new.labels.email}</Label>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.contacts.new.placeholders.email} className="h-7 text-xs" />
@@ -108,7 +105,6 @@ export default function NewContactPage() {
                 <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder={t.contacts.new.placeholders.lastName} className="h-7 text-xs" />
               </div>
 
-              {/* Row 2: Entreprise, Site web, Poste */}
               <div className="space-y-1">
                 <Label className="text-xs">{t.contacts.new.labels.company}</Label>
                 <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder={t.contacts.new.placeholders.company} className="h-7 text-xs" />
@@ -122,7 +118,6 @@ export default function NewContactPage() {
                 <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder={t.contacts.new.placeholders.position} className="h-7 text-xs" />
               </div>
 
-              {/* Row 3: Téléphone, LinkedIn, Ville */}
               <div className="space-y-1">
                 <Label className="text-xs">{t.contacts.new.labels.phone}</Label>
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t.contacts.new.placeholders.phone} className="h-7 text-xs" />
@@ -136,7 +131,6 @@ export default function NewContactPage() {
                 <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t.contacts.new.placeholders.city} className="h-7 text-xs" />
               </div>
 
-              {/* Row 4: Formation + Notes (spanning 2 cols) */}
               <div className="space-y-1">
                 <Label className="text-xs">{t.contacts.new.labels.education}</Label>
                 <Input value={education} onChange={(e) => setEducation(e.target.value)} placeholder={t.contacts.new.placeholders.education} className="h-7 text-xs" />

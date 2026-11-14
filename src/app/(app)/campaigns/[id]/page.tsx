@@ -153,7 +153,6 @@ export default function CampaignDetailPage() {
             : data.message || 'Aucun email à envoyer';
           toast.error(errorMsg);
 
-          // Log all errors to console for debugging
           if (data.errors) {
             console.error('[send-now] Errors:', data.errors);
           }
@@ -203,7 +202,6 @@ export default function CampaignDetailPage() {
             </div>
           ) : campaign ? (
             <>
-              {/* Header */}
               <div className="flex items-center justify-between">
                 <Button variant="ghost" size="sm" onClick={() => router.push('/campaigns')}>
                   <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />

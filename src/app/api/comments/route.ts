@@ -74,7 +74,6 @@ export async function POST(request: Request) {
 
     if (error) throw error;
 
-    // Add timeline entry
     await supabase.from('contact_timeline').insert({
       contact_id,
       event_type: 'comment',

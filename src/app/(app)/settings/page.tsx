@@ -151,7 +151,6 @@ export default function SettingsPage() {
     const gcError = params.get('google_calendar_error');
     const mailError = params.get('mail_account_error');
     const provider = params.get('provider');
-    // Clean URL
     params.delete('google_calendar');
     params.delete('google_calendar_error');
     params.delete('mail_account');

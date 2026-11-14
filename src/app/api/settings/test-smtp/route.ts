@@ -5,7 +5,6 @@ import { testSmtpConnection, sendEmail } from '@/lib/email-sender';
 
 export async function POST(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -21,7 +20,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { smtpHost, smtpPort, smtpUser, smtpPassword } = body;
 
-    // Validate required fields
     if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
       return NextResponse.json(
         { error: 'SMTP configuration is incomplete' },

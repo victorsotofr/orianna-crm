@@ -5,7 +5,6 @@ import { upsertLegacyImapMailAccount } from '@/lib/mail-accounts';
 
 export async function POST(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -41,7 +40,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Prepare upsert data
     const upsertData: Record<string, string | number | boolean | null> = {
       user_id: user.id,
       user_email: user.email || null,
@@ -72,7 +70,6 @@ export async function POST(request: Request) {
       upsertData.imap_password_encrypted = encryptedImapPassword;
     }
 
-    // Upsert user settings
     const { error: upsertError } = await supabase
       .from('user_settings')
       .upsert(upsertData, {
@@ -105,7 +102,6 @@ export async function POST(request: Request) {
 // GET endpoint to fetch current settings
 export async function GET() {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {

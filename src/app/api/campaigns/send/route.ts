@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email-sender';
 import { getDefaultSendMailAccount } from '@/lib/mail-accounts';
@@ -42,7 +41,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid stage' }, { status: 400 });
     }
 
-    // Fetch template
     const { data: template, error: templateError } = await supabase
       .from('templates')
       .select('*')
@@ -53,7 +51,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    // Fetch contacts
     const { data: contacts, error: contactsError } = await supabase
       .from('contacts')
       .select('*')
@@ -64,7 +61,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Contacts not found' }, { status: 404 });
     }
 
-    // Get user settings for SMTP
     const { data: userSettings } = await supabase
       .from('user_settings')
       .select('*')
@@ -101,7 +97,6 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Build template variables from all contact fields
         const variables: Record<string, string> = {
           first_name: contact.first_name || '',
           last_name: contact.last_name || '',
@@ -125,7 +120,6 @@ export async function POST(request: Request) {
           ai_personalized_line: contact.ai_personalized_line || '',
         };
 
-        // Render subject and body
         const renderedSubject = renderTemplate(template.subject || '', variables);
         const renderedHtml = renderTemplate(template.html_content || '', variables);
 
@@ -253,7 +247,6 @@ export async function POST(request: Request) {
           })
           .eq('id', contact.id);
 
-        // Log timeline event
         await supabase.from('contact_timeline').insert({
           contact_id: contact.id,
           event_type: 'email_sent',
@@ -284,7 +277,6 @@ export async function POST(request: Request) {
     });
   } catch (error: unknown) {
     console.error('Campaign send error:', error instanceof Error ? error.message : error);
-    // Sentry.captureException(error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

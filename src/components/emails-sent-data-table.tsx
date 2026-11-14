@@ -176,7 +176,6 @@ function getColumns(t: Translations, dateFnsLocale: import('date-fns').Locale): 
           return <span className="text-muted-foreground text-sm">—</span>
         }
 
-        // Extract name from email (part before @)
         const name = email.split('@')[0].replace(/[._-]/g, ' ')
 
         return (
@@ -290,7 +289,6 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
     },
   })
 
-  // Apply status filter
   React.useEffect(() => {
     if (statusFilter === "all") {
       table.getColumn("status")?.setFilterValue(undefined)
@@ -301,7 +299,6 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-2">
           <Input
@@ -361,7 +358,6 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
         </div>
       </div>
 
-      {/* Table */}
       <div className="overflow-hidden rounded-lg border">
         <Table>
           <TableHeader className="bg-muted sticky top-0 z-10">
@@ -407,7 +403,6 @@ export function EmailsSentDataTable({ data }: EmailsSentDataTableProps) {
         </Table>
       </div>
 
-      {/* Pagination */}
       <div className="flex items-center justify-between px-2">
         <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
           {t.common.totalRows(table.getFilteredRowModel().rows.length)}

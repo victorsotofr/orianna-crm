@@ -45,7 +45,6 @@ export default function ContactDetailPage() {
   const [enriching, setEnriching] = useState(false);
   const [recoveringEmail, setRecoveringEmail] = useState(false);
 
-  // Editable fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -329,7 +328,6 @@ export default function ContactDetailPage() {
       <SiteHeader title={`${contact.first_name || ''} ${contact.last_name || ''}`} />
       <div className="page-container">
         <div className="page-content">
-          {/* Top bar */}
           <div className="flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={() => router.push('/contacts')}>
@@ -397,11 +395,8 @@ export default function ContactDetailPage() {
             </Button>
           </div>
 
-          {/* Main content: 2 columns */}
           <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-auto">
-            {/* Left: Contact form (compact) */}
             <div className="lg:col-span-2 space-y-3">
-              {/* Row 1: Name + Email */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.firstName}</Label>
@@ -420,7 +415,6 @@ export default function ContactDetailPage() {
                 </div>
               </div>
 
-              {/* Row 2: Company + Job + Phone */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.company}</Label>
@@ -436,7 +430,6 @@ export default function ContactDetailPage() {
                 </div>
               </div>
 
-              {/* Row 3: Location + Education + Status */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.city}</Label>
@@ -467,7 +460,6 @@ export default function ContactDetailPage() {
                 </div>
               </div>
 
-              {/* Row 4: Owner */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.owner}</Label>
@@ -487,7 +479,6 @@ export default function ContactDetailPage() {
                 </div>
               </div>
 
-              {/* Row 5: Contact dates */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.firstContact}</Label>
@@ -503,7 +494,6 @@ export default function ContactDetailPage() {
                 </div>
               </div>
 
-              {/* Row 6: Follow-up dates (read-only) */}
               {contact.follow_up_1 && (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
@@ -517,14 +507,12 @@ export default function ContactDetailPage() {
                 </div>
               )}
 
-              {/* Row 7: Notes */}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{t.contacts.detail.labels.notes}</Label>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Notes..." className="text-sm" />
               </div>
             </div>
 
-            {/* Right: AI Score + Timeline */}
             <div className="space-y-3 overflow-auto">
               <AIScoreCard
                 contactId={contactId}

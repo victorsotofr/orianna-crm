@@ -74,7 +74,6 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
 
   const hasRunningJobs = jobs.some(j => j.status === 'running');
 
-  // Persist to localStorage on every change
   useEffect(() => {
     saveJobs(jobs);
   }, [jobs]);
@@ -144,7 +143,6 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
         if (job.status !== 'running') return job;
 
         if (job.type === 'enrich' && job.enrichmentId) {
-          // Resume polling for enrichment jobs
           startEnrichmentPolling(job.id, job.enrichmentId);
           return job;
         }
@@ -158,7 +156,6 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
         return { ...job, status: 'completed' as const };
       });
 
-      // Schedule auto-dismiss for jobs we just marked completed/failed
       updated.forEach(job => {
         const wasPrev = prev.find(p => p.id === job.id);
         if (wasPrev?.status === 'running' && job.status !== 'running' && job.type !== 'enrich') {
@@ -176,7 +173,6 @@ export function BackgroundJobProvider({ children }: { children: React.ReactNode 
     });
 
     return () => {
-      // Cleanup poll intervals and timers
       pollIntervalsRef.current.forEach(interval => clearInterval(interval));
       pollIntervalsRef.current.clear();
       autoDismissTimersRef.current.forEach(timer => clearTimeout(timer));

@@ -74,7 +74,6 @@ export function WorkspaceProvider({
       return;
     }
 
-    // Get all workspaces user belongs to
     const { data: memberships } = await supabase
       .from('workspace_members')
       .select('workspace_id')
@@ -100,13 +99,11 @@ export function WorkspaceProvider({
 
     setWorkspaces(ws);
 
-    // Determine active workspace
     const storedId = getStoredWorkspaceId();
     const active = ws.find((w: Workspace) => w.id === storedId) || ws[0];
     setWorkspace(active);
     setStoredWorkspaceId(active.id);
 
-    // Load members for active workspace
     const { data: memberData } = await supabase
       .from('workspace_members')
       .select('id, user_id, email, display_name, role')
@@ -129,7 +126,6 @@ export function WorkspaceProvider({
       setWorkspace(ws);
       setStoredWorkspaceId(ws.id);
 
-      // Reload members for new workspace
       supabase
         .from('workspace_members')
         .select('id, user_id, email, display_name, role')

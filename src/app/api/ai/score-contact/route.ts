@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { scoreContact } from '@/lib/ai-scoring';
@@ -81,7 +80,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch Linkup API key from user settings
     if (auth.userId !== 'service') {
       const { data: userSettings } = await serviceSupabase
         .from('user_settings')
@@ -110,7 +108,6 @@ export async function POST(request: NextRequest) {
       const id = ids[i];
 
       try {
-        // Fetch contact
         const { data: contact, error: fetchError } = await supabase
           .from('contacts')
           .select('*')
@@ -124,10 +121,8 @@ export async function POST(request: NextRequest) {
 
         const contactWorkspaceId = contact.workspace_id;
 
-        // Score via AI (with Linkup if available)
         const result = await scoreContact(contact, linkupApiKey, customPrompts, businessContext);
 
-        // Update contact in DB
         await serviceSupabase
           .from('contacts')
           .update({
@@ -138,7 +133,6 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', id);
 
-        // Insert timeline event
         await serviceSupabase.from('contact_timeline').insert({
           contact_id: id,
           event_type: 'ai_scored',
@@ -174,7 +168,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ scores });
   } catch (error: any) {
     console.error('AI scoring error:', error instanceof Error ? error.message : error);
-    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Scoring failed' }, { status: 500 });
   }
 }

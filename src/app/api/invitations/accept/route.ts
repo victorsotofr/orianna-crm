@@ -18,7 +18,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Token is required' }, { status: 400 });
     }
 
-    // Fetch invitation
     const { data: invitation, error: invError } = await supabase
       .from('workspace_invitations')
       .select('*, workspaces(name)')
@@ -30,7 +29,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitation not found or already used' }, { status: 404 });
     }
 
-    // Check expiration
     if (new Date(invitation.expires_at) < new Date()) {
       await supabase
         .from('workspace_invitations')
@@ -39,12 +37,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitation has expired' }, { status: 410 });
     }
 
-    // Check email matches
     if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
       return NextResponse.json({ error: 'This invitation is for a different email address' }, { status: 403 });
     }
 
-    // Check if already a member
     const { data: existing } = await supabase
       .from('workspace_members')
       .select('id')
@@ -61,7 +57,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, workspace_id: invitation.workspace_id });
     }
 
-    // Create workspace member
     const { error: memberError } = await supabase
       .from('workspace_members')
       .insert({
@@ -74,7 +69,6 @@ export async function POST(request: Request) {
 
     if (memberError) throw memberError;
 
-    // Mark invitation as accepted
     await supabase
       .from('workspace_invitations')
       .update({ status: 'accepted' })

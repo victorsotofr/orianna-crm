@@ -63,7 +63,6 @@ export function RichTextEditor({ value, onChange, placeholder, className, onEdit
     }
   }, [value, editor])
 
-  // Notify parent when editor is ready
   useEffect(() => {
     if (editor && onEditorReady) {
       onEditorReady(editor)
@@ -84,7 +83,6 @@ export function RichTextEditor({ value, onChange, placeholder, className, onEdit
 
   return (
     <div className={`border rounded-md overflow-hidden ${isExpanded ? "flex flex-col" : ""} ${className || ""}`}>
-      {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-1.5 py-1 border-b bg-muted/30 shrink-0">
         <ToolbarButton
           icon={<Bold className="h-3.5 w-3.5" />}
@@ -136,7 +134,6 @@ export function RichTextEditor({ value, onChange, placeholder, className, onEdit
         />
       </div>
 
-      {/* Editor area */}
       <EditorContent
         editor={editor}
         className={`${isExpanded ? "flex-1" : "min-h-[180px] max-h-[300px]"} overflow-y-auto px-3 py-2 text-sm prose prose-sm max-w-none dark:prose-invert focus-within:outline-none [&_.tiptap]:outline-none [&_.tiptap]:min-h-full [&_.tiptap_p.is-editor-empty:first-child::before]:text-muted-foreground/50 [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:h-0 [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none`}

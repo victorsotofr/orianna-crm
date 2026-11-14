@@ -334,7 +334,6 @@ async function markEmailBounced(
     mailboxMessageId: string;
   }
 ) {
-  // Mark contact as bounced
   await supabase
     .from('contacts')
     .update({
@@ -344,7 +343,6 @@ async function markEmailBounced(
     })
     .eq('id', contactId);
 
-  // Mark the original sent email as bounced (if we can identify it)
   if (emailSentId) {
     await supabase
       .from('emails_sent')
@@ -361,7 +359,6 @@ async function markEmailBounced(
       .eq('status', 'active');
   }
 
-  // Create timeline event
   await supabase.from('contact_timeline').insert({
     contact_id: contactId,
     workspace_id: workspaceId,
@@ -572,7 +569,6 @@ export async function syncMailboxForUser(
           bounceSubjects.some(s => subjectLower.includes(s));
 
         if (looksLikeBounce) {
-          // Get user's primary workspace as fallback
           const { data: membership } = await supabase
             .from('workspace_members')
             .select('workspace_id')
@@ -642,7 +638,6 @@ export async function syncMailboxForUser(
       // Re-check auto-reply with body content
       const isAutoReply = matched.isAutoReply || detectAutoReply(matched.subject, {}, plainText);
 
-      // Check for bounce/NDR messages
       const bounceResult = detectBounce(matched.subject, matched.senderEmail, plainText, {});
 
       const persisted = await persistInboundMailboxMessage({

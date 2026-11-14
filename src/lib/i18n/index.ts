@@ -43,7 +43,6 @@ export function LanguageProvider({
     }
   }, []);
 
-  // Set lang attribute on mount
   useEffect(() => {
     document.documentElement.lang = language;
   }, [language]);

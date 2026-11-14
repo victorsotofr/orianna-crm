@@ -77,7 +77,6 @@ export default function NewSequencePage() {
         return;
       }
 
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (user) setCurrentUserId(user.id);
 
@@ -117,7 +116,6 @@ export default function NewSequencePage() {
   }, [fetchData]);
 
   const filteredContacts = contacts.filter(c => {
-    // Status filter
     if (statusFilter !== 'all') {
       if (statusFilter === 'hot_leads') {
         const hasHighScore = c.status && ['qualified', 'opportunity'].includes(c.status);
@@ -127,7 +125,6 @@ export default function NewSequencePage() {
       }
     }
 
-    // Owner filter
     if (ownerFilter !== 'all') {
       if (ownerFilter === 'me') {
         if (c.assigned_to !== currentUserId) return false;
@@ -138,7 +135,6 @@ export default function NewSequencePage() {
       }
     }
 
-    // Search query
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
@@ -205,7 +201,6 @@ export default function NewSequencePage() {
   };
 
   const handleSave = async () => {
-    // Validation
     if (!name.trim()) {
       toast.error(t.sequences.toasts.nameRequired);
       return;
@@ -259,7 +254,6 @@ export default function NewSequencePage() {
       <SiteHeader title={t.sequences.newSequence} />
       <div className="page-container">
         <div className="page-content">
-          {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/campaigns')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />

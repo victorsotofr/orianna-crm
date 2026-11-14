@@ -4,7 +4,6 @@ import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -33,14 +32,12 @@ export async function GET(request: Request) {
       .select('*', { count: 'exact' })
       .eq('workspace_id', ctx.workspaceId);
 
-    // Apply search filter
     if (query) {
       queryBuilder = queryBuilder.or(
         `email.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%,company_name.ilike.%${query}%,location.ilike.%${query}%`
       );
     }
 
-    // Apply pagination
     queryBuilder = queryBuilder
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);

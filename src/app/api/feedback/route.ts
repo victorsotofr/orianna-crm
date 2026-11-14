@@ -30,7 +30,6 @@ export async function POST(request: Request) {
     // Collect all image URLs (support both old single and new multiple)
     const allImages: string[] = imageUrls || (imageUrl ? [imageUrl] : []);
 
-    // Build issue body
     const lines = [
       `**Type:** ${type === 'bug' ? 'Bug' : 'Amelioration'}`,
       '',

@@ -81,7 +81,6 @@ export function EditableCell({ contactId, field, value, type, teamMembers, email
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 600);
     } catch {
-      // Revert
       setLocalValue(value || '');
       toast.error(t.common.saveError);
     } finally {
@@ -100,7 +99,6 @@ export function EditableCell({ contactId, field, value, type, teamMembers, email
 
   const feedbackClass = saving ? 'opacity-50 animate-pulse' : saveSuccess ? 'bg-green-100 dark:bg-green-900/30 transition-colors duration-300' : 'transition-colors duration-300';
 
-  // Read-only date display
   if (type === 'readonly-date') {
     return (
       <span className="text-xs text-muted-foreground whitespace-nowrap px-1.5 py-1">
@@ -109,7 +107,6 @@ export function EditableCell({ contactId, field, value, type, teamMembers, email
     );
   }
 
-  // Date cell
   if (type === 'date') {
     if (editing) {
       return (
@@ -134,7 +131,6 @@ export function EditableCell({ contactId, field, value, type, teamMembers, email
     );
   }
 
-  // Status select
   if (type === 'status') {
     if (editing) {
       return (
@@ -166,7 +162,6 @@ export function EditableCell({ contactId, field, value, type, teamMembers, email
     );
   }
 
-  // Owner select
   if (type === 'owner') {
     const members = teamMembers || [];
     const member = members.find(m => m.user_id === value);
@@ -209,7 +204,6 @@ export function EditableCell({ contactId, field, value, type, teamMembers, email
     );
   }
 
-  // Text cell
   if (editing) {
     return (
       <Input

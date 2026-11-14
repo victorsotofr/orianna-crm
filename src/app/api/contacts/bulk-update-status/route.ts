@@ -34,7 +34,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'status is required' }, { status: 400 });
   }
 
-  // Validate status value
   const validStatuses = ['new', 'contacted', 'engaged', 'qualified', 'meeting_scheduled', 'opportunity', 'customer', 'lost', 'do_not_contact'];
   if (!validStatuses.includes(status)) {
     return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });

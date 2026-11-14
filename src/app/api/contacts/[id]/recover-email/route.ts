@@ -31,7 +31,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
-    // Get contact
     const { data: contact } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, email, company_name, company_domain, linkedin_url, job_title, email_bounced, email_recovery_count, workspace_id')

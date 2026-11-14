@@ -81,7 +81,6 @@ export function BackgroundJobsPanel() {
 
   return (
     <div className="fixed bottom-20 right-4 z-40 w-80 bg-background border shadow-lg rounded-lg overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
         <span className="text-xs font-medium">{t.backgroundJobs.title}</span>
         <div className="flex items-center gap-1">
@@ -102,7 +101,6 @@ export function BackgroundJobsPanel() {
         </div>
       </div>
 
-      {/* Warning banner */}
       {hasRunningJobs && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900">
           <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
@@ -110,7 +108,6 @@ export function BackgroundJobsPanel() {
         </div>
       )}
 
-      {/* Jobs list */}
       <div className="max-h-60 overflow-y-auto">
         {visibleJobs.map(job => (
           <div key={job.id} className="flex items-start gap-2 px-3 py-2 border-b last:border-b-0">

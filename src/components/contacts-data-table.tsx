@@ -76,7 +76,6 @@ import {
 } from "@/components/ui/table"
 import { Contact } from "@/types/database"
 
-// Drag handle component
 function DragHandle({ id }: { id: string }) {
   const { attributes, listeners } = useSortable({
     id,
@@ -95,7 +94,6 @@ function DragHandle({ id }: { id: string }) {
   )
 }
 
-// Create columns definition
 const columns: ColumnDef<Contact>[] = [
   {
     id: "drag",
@@ -188,7 +186,6 @@ const columns: ColumnDef<Contact>[] = [
   },
 ]
 
-// Draggable row component
 function DraggableRow({ row }: { row: Row<Contact> }) {
   const { transform, transition, setNodeRef, isDragging } = useSortable({
     id: row.original.id,
@@ -245,7 +242,6 @@ export function ContactsDataTable({
     useSensor(KeyboardSensor, {})
   )
 
-  // Update data when initialData changes
   React.useEffect(() => {
     setData(initialData)
   }, [initialData])
@@ -305,11 +301,9 @@ export function ContactsDataTable({
     const selectedRows = table.getSelectedRowModel().rows
     const selectedIds = selectedRows.map((row) => row.original.id)
     
-    // Compare sorted arrays
     const sortedNewIds = [...selectedIds].sort().join(',')
     const sortedCurrentIds = [...selectedContactIds].sort().join(',')
     
-    // Only notify if actually changed
     if (sortedNewIds !== sortedCurrentIds) {
       onSelectionChange(selectedIds)
     }
@@ -328,7 +322,6 @@ export function ContactsDataTable({
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-1 items-center gap-2">
           <Input
@@ -377,7 +370,6 @@ export function ContactsDataTable({
         </DropdownMenu>
       </div>
 
-      {/* Table */}
       <div className="overflow-hidden rounded-lg border">
         <DndContext
           collisionDetection={closestCenter}
@@ -430,7 +422,6 @@ export function ContactsDataTable({
         </DndContext>
       </div>
 
-      {/* Pagination */}
       <div className="flex items-center justify-between px-2">
         <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
           {table.getSelectedRowModel().rows.length} sur{" "}

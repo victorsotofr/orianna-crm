@@ -8,7 +8,6 @@ export interface TemplateVariables {
  * inject a `<br>` to give them a line of space.
  */
 export function preserveEmptyParagraphs(html: string): string {
-  // Match <p> tags that are empty or contain only whitespace
   return html.replace(/<p>(\s*)<\/p>/gi, '<p><br></p>');
 }
 
@@ -20,13 +19,11 @@ export function renderTemplate(templateContent: string, variables: TemplateVaria
   try {
     let result = templateContent;
 
-    // Replace all {{variable}} with the actual values
     for (const [key, value] of Object.entries(variables)) {
       const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
       result = result.replace(regex, value || '');
     }
 
-    // Preserve empty paragraphs so blank lines render with visible height
     result = preserveEmptyParagraphs(result);
 
     return result;

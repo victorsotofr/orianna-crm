@@ -147,7 +147,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
 
-    // Fetch conversation messages
     const { data: messages } = await supabase
       .from('mailbox_messages')
       .select('direction, from_email, subject, text_body, message_at')
@@ -165,7 +164,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .order('sent_at', { ascending: false })
       .limit(10);
 
-    // Fetch recent timeline events
     const { data: timeline } = await supabase
       .from('contact_timeline')
       .select('event_type, title, description, created_at')
@@ -174,7 +172,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .order('created_at', { ascending: false })
       .limit(15);
 
-    // Build CRM context
     const crmParts: string[] = [];
     crmParts.push(`Nom: ${contactName}`);
     if (contact.email) crmParts.push(`Email: ${contact.email}`);
@@ -188,7 +185,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (contact.ai_personalized_line) crmParts.push(`Accroche personnalisée: ${contact.ai_personalized_line}`);
     if (contact.notes) crmParts.push(`Notes: ${contact.notes}`);
 
-    // Build email engagement summary
     const engagementParts: string[] = [];
     if (emailStats && emailStats.length > 0) {
       const opened = emailStats.filter(e => e.opened_at).length;
@@ -200,7 +196,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // Build conversation history
     const convParts: string[] = [];
     if (messages && messages.length > 0) {
       for (const msg of messages.slice(-10)) {
@@ -210,7 +205,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // Build timeline summary
     const timelineParts: string[] = [];
     if (timeline && timeline.length > 0) {
       for (const event of timeline.slice(0, 10)) {
@@ -218,7 +212,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // Fetch workspace business context
     const serviceSupabase = getServiceSupabase();
     const { data: workspace } = await serviceSupabase
       .from('workspaces')
@@ -308,7 +301,6 @@ RÈGLES :
       prompt,
     });
 
-    // Parse the JSON response
     let brief;
     try {
       const text = result.text.trim();

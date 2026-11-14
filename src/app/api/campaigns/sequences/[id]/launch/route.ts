@@ -33,7 +33,6 @@ export async function POST(
       return NextResponse.json({ error: 'No contacts selected' }, { status: 400 });
     }
 
-    // Fetch sequence with steps
     const { data: sequence, error: sequenceError } = await supabase
       .from('campaign_sequences')
       .select(`
@@ -126,7 +125,6 @@ export async function POST(
       throw enrollError;
     }
 
-    // Log timeline events for each enrolled contact
     const timelineEvents = eligibleContacts.map(contact => ({
       contact_id: contact.id,
       event_type: 'sequence_enrolled',

@@ -46,7 +46,6 @@ export async function POST(
       return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
     }
 
-    // Build query to find enrollments
     let query = supabase
       .from('campaign_enrollments')
       .select('id, contact_id, current_step_id, next_send_at, status')
@@ -75,7 +74,6 @@ export async function POST(
     let updatedEnrollments: any[] = [];
 
     if (action === 'pause') {
-      // Pause: change status to 'paused'
       const enrollmentIds = enrollments.map(e => e.id);
       const { data: updated, error: updateError } = await supabase
         .from('campaign_enrollments')
@@ -94,7 +92,6 @@ export async function POST(
 
       // Update each enrollment individually to recalculate next_send_at
       for (const enrollment of enrollments) {
-        // Find the current step to get delay_days
         const currentStep = sequence.steps?.find((s: any) => s.id === enrollment.current_step_id);
         if (!currentStep) continue;
 
@@ -121,7 +118,6 @@ export async function POST(
       }
     }
 
-    // Log timeline events
     const timelineEvents = updatedEnrollments.map(enrollment => ({
       contact_id: enrollment.contact_id,
       event_type: action === 'pause' ? 'sequence_paused' : 'sequence_resumed',

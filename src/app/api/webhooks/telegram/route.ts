@@ -83,7 +83,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Route commands
     if (text.startsWith('/start ')) {
       await handleStart(chatId, text.slice(7).trim());
     } else if (text === '/start' || text === '/help') {
@@ -1050,7 +1049,6 @@ async function handleAsk(chatId: number, question: string) {
       .order('created_at', { ascending: false }).limit(100),
   ]);
 
-  // Get company frequency
   const companyFreq: Record<string, number> = {};
   topCompanies.data?.forEach((c: { company_name: string }) => {
     if (c.company_name) companyFreq[c.company_name] = (companyFreq[c.company_name] || 0) + 1;
@@ -1114,7 +1112,6 @@ async function handleBrief(chatId: number, nameQuery: string) {
   const db = supabase();
   const name = contactName(contact);
 
-  // Gather engagement data
   const [emailsSent, threads] = await Promise.all([
     db.from('emails_sent').select('subject, sent_at, status, opened_at, replied_at')
       .eq('contact_id', contact.id).order('sent_at', { ascending: false }).limit(10),
@@ -1189,7 +1186,6 @@ async function handleScore(chatId: number, nameQuery: string) {
       geographicFocus: bizCtx.ai_geographic_focus || '',
     } : undefined);
 
-    // Save score to DB
     await supabase().from('contacts').update({
       ai_score: result.score,
       ai_score_label: result.label,
@@ -1571,7 +1567,6 @@ async function executeSendEmail(chatId: number, userId: string, pending: Record<
     const result = await sendEmail(config, emailData);
 
     if (result.success) {
-      // Record in emails_sent
       const wsId = await getWorkspaceForUser(userId);
       if (wsId) {
         await supabase().from('emails_sent').insert({

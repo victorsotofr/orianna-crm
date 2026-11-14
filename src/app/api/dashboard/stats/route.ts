@@ -4,7 +4,6 @@ import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(request: Request) {
   try {
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -21,15 +20,12 @@ export async function GET(request: Request) {
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
-    // GLOBAL STATS: Show data across all users (shared workspace)
     
-    // Get total contacts count (all users)
     const { count: totalContacts } = await supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', ctx.workspaceId);
 
-    // Get emails sent today (all users)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const { count: emailsSentToday } = await supabase
@@ -38,27 +34,23 @@ export async function GET(request: Request) {
       .eq('workspace_id', ctx.workspaceId)
       .gte('sent_at', today.toISOString());
 
-    // Get total emails sent (all users)
     const { count: totalEmailsSent } = await supabase
       .from('emails_sent')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', ctx.workspaceId);
 
-    // Get opened emails count
     const { count: totalOpened } = await supabase
       .from('emails_sent')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', ctx.workspaceId)
       .not('opened_at', 'is', null);
 
-    // Get replied emails count
     const { count: totalReplied } = await supabase
       .from('emails_sent')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', ctx.workspaceId)
       .not('replied_at', 'is', null);
 
-    // Get recent sends (last 100 from all users for better pagination)
     const { data: recentSends, error: sendsError } = await supabase
       .from('emails_sent')
       .select(`
@@ -87,8 +79,6 @@ export async function GET(request: Request) {
       throw sendsError;
     }
 
-    // Calculate average sending rate (emails/day) across all users
-    // Get the date of first email globally
     const { data: firstEmail } = await supabase
       .from('emails_sent')
       .select('sent_at')

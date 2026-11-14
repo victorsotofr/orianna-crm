@@ -7,10 +7,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await params for Next.js 15
     const { id } = await params;
 
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -23,7 +21,6 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Resolve workspace context
     const wsId = request.headers.get('x-workspace-id');
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
@@ -31,7 +28,6 @@ export async function PUT(
     const body = await request.json();
     const { name, subject, html_content } = body;
 
-    // Validation
     if (!name || !subject || !html_content) {
       return NextResponse.json(
         { error: 'Tous les champs sont requis' },
@@ -61,7 +57,6 @@ export async function PUT(
       );
     }
 
-    // Update the template
     const { data: template, error } = await supabase
       .from('templates')
       .update({
@@ -100,10 +95,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await params for Next.js 15
     const { id } = await params;
 
-    // Get authenticated Supabase client
     const { supabase, error: clientError } = await createServerClient();
 
     if (clientError || !supabase) {
@@ -116,7 +109,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Resolve workspace context
     const wsId = request.headers.get('x-workspace-id');
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
@@ -146,7 +138,6 @@ export async function DELETE(
       throw unlinkError;
     }
 
-    // Hard delete the template
     const { error } = await supabase
       .from('templates')
       .delete()

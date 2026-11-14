@@ -42,7 +42,6 @@ export default function AuthLayout({
         router.push('/login');
       } else {
         setUser(session.user);
-        // Fetch language preference
         const { data: settings } = await supabase
           .from('user_settings')
           .select('language')

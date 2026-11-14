@@ -100,7 +100,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .order('sent_at', { ascending: false })
       .limit(10);
 
-    // Fetch recent timeline events
     const { data: timeline } = await supabase
       .from('contact_timeline')
       .select('event_type, title, description, created_at')
@@ -109,7 +108,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .order('created_at', { ascending: false })
       .limit(15);
 
-    // Build CRM context
     const crmParts: string[] = [];
     crmParts.push(`Nom: ${contactName}`);
     if (contact.email) crmParts.push(`Email: ${contact.email}`);
@@ -228,7 +226,6 @@ RÈGLES :
       };
     }
 
-    // Save to timeline
     const briefSummary = brief.talking_points?.length > 0 ? brief.talking_points.join(' | ').slice(0, 500) : '';
     await supabase.from('contact_timeline').insert({
       contact_id: contactId,

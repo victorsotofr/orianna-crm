@@ -27,7 +27,6 @@ export async function GET(
       return NextResponse.json({ error: 'No workspace' }, { status: 403 });
     }
 
-    // Fetch user's FullEnrich API key
     const serviceSupabase = getServiceSupabase();
     const { data: userSettings } = await serviceSupabase
       .from('user_settings')
@@ -44,7 +43,6 @@ export async function GET(
 
     let updatedCount = 0;
 
-    // Process each contact result
     for (const item of result.datas || []) {
       const custom = item.custom || (item as any).contact?.custom;
       const contactId = custom?.contact_id;
@@ -93,7 +91,6 @@ export async function GET(
         .update(update)
         .eq('id', contactId);
 
-      // Timeline entry
       const desc = [
         email ? `Email: ${email} (${emailStatus || 'unknown'})` : null,
         phone ? `Phone: ${phone}` : null,

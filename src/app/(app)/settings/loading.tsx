@@ -8,7 +8,6 @@ export default function SettingsLoading() {
       <div className="page-container">
         <div className="flex flex-1 min-h-0">
 
-          {/* Left nav skeleton */}
           <nav className="w-[160px] shrink-0 border-r py-4 px-4 lg:px-6 space-y-4">
             <div>
               <Skeleton className="h-3 w-16 mb-2" />
@@ -23,7 +22,6 @@ export default function SettingsLoading() {
             </div>
           </nav>
 
-          {/* Content skeleton */}
           <div className="flex-1 py-4 px-6 lg:px-10">
             <div className="grid grid-cols-[200px_1fr] gap-10 max-w-3xl">
               <div>

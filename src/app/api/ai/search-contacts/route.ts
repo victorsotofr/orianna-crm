@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
@@ -52,7 +51,6 @@ export async function POST(request: NextRequest) {
     const depth: 'standard' | 'deep' = requestedDepth === 'deep' ? 'deep' : 'standard';
     const outputType: 'sourcedAnswer' | 'searchResults' = requestedOutputType === 'searchResults' ? 'searchResults' : 'sourcedAnswer';
 
-    // Fetch user's Linkup API key
     const serviceSupabase = getServiceSupabase();
     const { data: userSettings } = await serviceSupabase
       .from('user_settings')
@@ -133,7 +131,6 @@ ${rawResults}`,
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Search failed';
     console.error('Search contacts error:', error);
-    // Sentry.captureException(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

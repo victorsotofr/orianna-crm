@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// import * as Sentry from '@sentry/nextjs';
 import { getServiceSupabase } from '@/lib/supabase';
 
 
@@ -7,7 +6,6 @@ export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();
 
-    // Extract contact result from webhook payload
     const email = payload.email || null;
     const phone = payload.phone || null;
     const emailStatus = payload.email_status || null;
@@ -22,7 +20,6 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceSupabase();
 
-    // Fetch existing contact
     const { data: contact, error: fetchError } = await supabase
       .from('contacts')
       .select('id, email, phone, email_verified_status')
@@ -34,7 +31,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    // Build update object
     const update: Record<string, unknown> = {
       email_verified_status: emailStatus,
       enriched_at: new Date().toISOString(),
@@ -120,7 +116,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error('FullEnrich webhook error:', error);
-    // Sentry.captureException(error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

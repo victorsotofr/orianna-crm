@@ -226,7 +226,6 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
               </div>
             </SearchStep>
 
-            {/* connector */}
             <div className="ml-3 w-px h-3 bg-border shrink-0" />
 
             {/* Step 2 — Depth */}
@@ -287,7 +286,6 @@ function AiSearchDialog({ open, onOpenChange, onImported }: { open: boolean; onO
               </div>
             </SearchStep>
 
-            {/* connector */}
             <div className="ml-3 w-px h-3 bg-border shrink-0" />
 
             {/* Step 3 — Enhanced prompt */}
@@ -513,7 +511,6 @@ export default function ContactsPage() {
 
         if (response.ok) {
           deletedCount += batch.length;
-          // Show progress for large deletes
           if (idsArray.length > BATCH_SIZE) {
             toast.loading(`Suppression en cours... ${deletedCount}/${idsArray.length}`, { id: 'bulk-delete-progress' });
           }

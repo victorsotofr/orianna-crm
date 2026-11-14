@@ -954,7 +954,6 @@ function MeetingPrepContent({ data, t, onRegenerate, regenerating }: { data: Mee
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="rounded-lg border bg-muted/30 p-3">
         <p className="text-sm font-semibold">{contact.name}</p>
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

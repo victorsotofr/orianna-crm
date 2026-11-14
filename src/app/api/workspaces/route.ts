@@ -18,14 +18,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Name is required (min 2 characters)' }, { status: 400 });
     }
 
-    // Generate slug from name
     const slug = name.trim().toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .substring(0, 50);
 
-    // Check slug uniqueness
     const { data: existing } = await supabase
       .from('workspaces')
       .select('id')
@@ -34,7 +32,6 @@ export async function POST(request: Request) {
 
     const finalSlug = existing ? `${slug}-${Date.now().toString(36)}` : slug;
 
-    // Create workspace
     const { data: workspace, error: wsError } = await supabase
       .from('workspaces')
       .insert({
@@ -47,7 +44,6 @@ export async function POST(request: Request) {
 
     if (wsError) throw wsError;
 
-    // Add creator as admin member
     const { error: memberError } = await supabase
       .from('workspace_members')
       .insert({

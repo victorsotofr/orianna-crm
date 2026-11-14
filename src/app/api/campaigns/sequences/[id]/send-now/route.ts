@@ -253,7 +253,6 @@ export async function POST(
         continue;
       }
 
-      // Find current step
       const currentStep = sortedSteps.find((s) => s.id === enrollment.current_step_id);
       if (!currentStep) {
         console.log(`[send-now] Skipping enrollment ${enrollment.id}: step not found`);
@@ -286,7 +285,6 @@ export async function POST(
         continue;
       }
 
-      // Get template
       const { data: template } = await supabase
         .from('templates')
         .select('id, name, subject, html_content')
@@ -302,7 +300,6 @@ export async function POST(
       // Use current user's default mailbox for sending.
       const userSettings = currentUserSettings;
 
-      // Render template
       const rendered = renderTemplate(template.html_content, {
         first_name: contact.first_name || '',
         last_name: contact.last_name || '',
@@ -417,7 +414,6 @@ export async function POST(
           await supabase.from('emails_sent').update({ status: 'sent', message_id: result.messageId, sent_at: new Date().toISOString() }).eq('id', emailRecord.id);
         }
 
-        // Update contact date field based on step order
         const dateField = currentStep.step_order === 0 ? 'first_contact'
           : currentStep.step_order === 1 ? 'second_contact'
           : currentStep.step_order === 2 ? 'third_contact'
@@ -438,7 +434,6 @@ export async function POST(
         const nextStep = sortedSteps[currentStepIndex + 1];
 
         if (nextStep) {
-          // Move to next step
           const nextSendAt = new Date();
           nextSendAt.setDate(nextSendAt.getDate() + nextStep.delay_days);
 
@@ -450,7 +445,6 @@ export async function POST(
             })
             .eq('id', enrollment.id);
         } else {
-          // Sequence completed
           await supabase
             .from('campaign_enrollments')
             .update({

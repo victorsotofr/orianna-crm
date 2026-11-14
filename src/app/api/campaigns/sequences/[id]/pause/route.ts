@@ -36,14 +36,12 @@ export async function POST(
       return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
     }
 
-    // Update sequence status to paused
     await supabase
       .from('campaign_sequences')
       .update({ status: 'paused', updated_at: new Date().toISOString() })
       .eq('id', id)
       .eq('workspace_id', ctx.workspaceId);
 
-    // Pause all active enrollments
     const { data: enrollments, error: enrollError } = await supabase
       .from('campaign_enrollments')
       .select('id, contact_id')
@@ -62,7 +60,6 @@ export async function POST(
         .update({ status: 'paused' })
         .in('id', enrollmentIds);
 
-      // Log timeline events
       const timelineEvents = enrollments.map(enrollment => ({
         contact_id: enrollment.contact_id,
         event_type: 'sequence_paused',

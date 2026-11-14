@@ -20,7 +20,6 @@ export async function GET(request: Request) {
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
-    // Fetch sequences with their steps
     const { data: sequences, error } = await supabase
       .from('campaign_sequences')
       .select(`
@@ -94,7 +93,6 @@ export async function POST(request: Request) {
       contactIds, // Optional: auto-enroll contacts
     } = body;
 
-    // Validation
     if (!name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
@@ -127,7 +125,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create sequence
     const { data: sequence, error: sequenceError } = await supabase
       .from('campaign_sequences')
       .insert({
@@ -144,7 +141,6 @@ export async function POST(request: Request) {
       throw sequenceError;
     }
 
-    // Create steps
     const stepsToInsert = steps.map((step: any) => ({
       sequence_id: sequence.id,
       template_id: step.template_id,
@@ -172,7 +168,6 @@ export async function POST(request: Request) {
       const sortedSteps = insertedSteps.sort((a, b) => a.step_order - b.step_order);
       const firstStep = sortedSteps[0];
 
-      // Fetch contacts and filter
       const { data: allContacts } = await supabase
         .from('contacts')
         .select('*')
@@ -199,7 +194,6 @@ export async function POST(request: Request) {
 
           await supabase.from('campaign_enrollments').insert(enrollments);
 
-          // Log timeline events
           const timelineEvents = eligibleContacts.map(contact => ({
             contact_id: contact.id,
             event_type: 'sequence_enrolled',

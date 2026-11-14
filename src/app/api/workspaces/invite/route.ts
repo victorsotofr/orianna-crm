@@ -25,7 +25,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    // Check if already a member
     const { data: existingMember } = await supabase
       .from('workspace_members')
       .select('id')
@@ -37,7 +36,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Already a member' }, { status: 409 });
     }
 
-    // Check for pending invitation
     const { data: existingInvite } = await supabase
       .from('workspace_invitations')
       .select('id')
@@ -50,7 +48,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitation already pending' }, { status: 409 });
     }
 
-    // Create invitation
     const { data: invitation, error } = await supabase
       .from('workspace_invitations')
       .insert({

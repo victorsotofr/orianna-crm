@@ -80,7 +80,6 @@ export default function NewTemplatePage() {
       <SiteHeader title={t.templates.newPage.title} />
       <div className="page-container">
         <div className="page-content">
-          {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/templates')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -92,7 +91,6 @@ export default function NewTemplatePage() {
             </Button>
           </div>
 
-          {/* Metadata bar */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs border rounded-lg px-4 py-2.5 bg-muted/30">
             <div className="flex items-center gap-1.5">
               <Label className="text-muted-foreground shrink-0">{t.templates.newPage.labels.name}</Label>
@@ -132,7 +130,6 @@ export default function NewTemplatePage() {
 
           {/* Email chrome */}
           <div className="border rounded-lg overflow-hidden flex-1 min-h-0 flex flex-col">
-            {/* Email header */}
             <div className="bg-muted/50 border-b px-5 py-3 space-y-1 shrink-0">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="font-medium">{t.templates.newPage.labels.from}</span>
@@ -152,7 +149,6 @@ export default function NewTemplatePage() {
                 />
               </div>
             </div>
-            {/* Email body */}
             <div className="flex-1 min-h-0 bg-white dark:bg-card flex flex-col">
               <RichTextEditor
                 value={htmlContent}

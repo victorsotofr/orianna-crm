@@ -55,7 +55,6 @@ export async function POST(request: Request) {
     };
     const sendAccountCache = new Map<string, MailAccount | null>();
 
-    // Process each pending email
     for (const pending of pendingEmails) {
       try {
         console.log(`[cron] Processing enrollment ${pending.enrollment_id} for ${pending.contact_email}`);
@@ -97,7 +96,6 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Render template
         const rendered = renderTemplate(pending.template_html_content, {
           first_name: pending.contact_first_name || '',
           last_name: pending.contact_last_name || '',
@@ -224,7 +222,6 @@ export async function POST(request: Request) {
         const nextStep = sortedSteps[currentStepIndex + 1];
 
         if (nextStep) {
-          // Move to next step
           const nextSendAt = new Date();
           nextSendAt.setDate(nextSendAt.getDate() + nextStep.delay_days);
 
@@ -238,7 +235,6 @@ export async function POST(request: Request) {
 
           console.log(`[cron] Moved to step ${nextStep.step_order}, next send: ${nextSendAt.toISOString()}`);
         } else {
-          // Sequence completed
           await supabase
             .from('campaign_enrollments')
             .update({

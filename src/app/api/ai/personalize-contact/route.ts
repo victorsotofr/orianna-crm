@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getServiceSupabase } from '@/lib/supabase';
 import { personalizeContact } from '@/lib/ai-personalization';
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch Linkup API key from user settings
     if (auth.userId !== 'service') {
       const { data: userSettings } = await serviceSupabase
         .from('user_settings')
@@ -155,7 +153,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ results });
   } catch (error: any) {
     console.error('AI personalization error:', error instanceof Error ? error.message : error);
-    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Personalization failed' }, { status: 500 });
   }
 }

@@ -24,7 +24,6 @@ export async function GET(
     const ctx = await getWorkspaceContext(supabase, user.id, wsId);
     if (!ctx) return NextResponse.json({ error: 'No workspace' }, { status: 403 });
 
-    // Fetch sequence with steps
     const { data: sequenceData, error } = await supabase
       .from('campaign_sequences')
       .select(`
@@ -44,10 +43,8 @@ export async function GET(
       return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
     }
 
-    // Sort steps by step_order
     const sortedSteps = sequenceData.steps?.sort((a: any, b: any) => a.step_order - b.step_order) || [];
 
-    // Fetch all templates used in the sequence
     const templateIds = sortedSteps.map((step: any) => step.template_id);
     const templatesMap: Record<string, any> = {};
 
@@ -110,7 +107,6 @@ export async function GET(
       };
     }
 
-    // Fetch contact progress (enrollments)
     const { data: enrollments, error: enrollmentsError } = await supabase
       .from('campaign_enrollments')
       .select(`
@@ -137,11 +133,9 @@ export async function GET(
 
     console.log(`[Sequence ${id}] Raw enrollments data:`, JSON.stringify(enrollments, null, 2));
 
-    // Map enrollments to contact progress format
     const contactProgress = (enrollments || [])
       .filter((enrollment: any) => enrollment.contact) // Filter out enrollments with deleted contacts
       .map((enrollment: any) => {
-        // Find current step number
         const currentStepIndex = sortedSteps.findIndex((step: any) => step.id === enrollment.current_step_id);
         const currentStep = currentStepIndex >= 0 ? currentStepIndex : 0;
 
@@ -156,13 +150,11 @@ export async function GET(
         };
       });
 
-    // Count total contacts enrolled
     const contactCount = enrollments?.length || 0;
 
     console.log(`[Sequence ${id}] Found ${contactCount} enrollments for workspace ${ctx.workspaceId}`);
     console.log('[Sequence] Contact progress:', contactProgress.length);
 
-    // Transform to match expected format
     const campaign = {
       id: sequenceData.id,
       workspace_id: sequenceData.workspace_id,
@@ -255,7 +247,6 @@ export async function PATCH(
 
     updates.updated_at = new Date().toISOString();
 
-    // Update sequence
     const { data: sequence, error: updateError } = await supabase
       .from('campaign_sequences')
       .update(updates)
@@ -277,7 +268,6 @@ export async function PATCH(
       throw updateError;
     }
 
-    // Sort steps by step_order
     const sequenceWithSortedSteps = {
       ...sequence,
       steps: sequence.steps?.sort((a: any, b: any) => a.step_order - b.step_order) || [],

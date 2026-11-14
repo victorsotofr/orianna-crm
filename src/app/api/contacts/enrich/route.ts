@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// import * as Sentry from '@sentry/nextjs';
 import { createServerClient } from '@/lib/supabase-server';
 import { getWorkspaceContext } from '@/lib/workspace';
 import { getServiceSupabase } from '@/lib/supabase';
@@ -34,7 +33,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Maximum 100 contacts per request' }, { status: 400 });
     }
 
-    // Fetch user's FullEnrich API key
     const serviceSupabase = getServiceSupabase();
     const { data: userSettings } = await serviceSupabase
       .from('user_settings')
@@ -65,7 +63,6 @@ export async function POST(request: NextRequest) {
       // Continue anyway — the enrichment call itself will fail if no credits
     }
 
-    // Fetch contacts
     const { data: contacts, error: contactsError } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, company_domain, company_name, linkedin_url, workspace_id')
@@ -89,14 +86,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build webhook URL
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) {
       return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL not configured' }, { status: 500 });
     }
     const webhookUrl = `${appUrl}/api/webhooks/fullenrich`;
 
-    // Start enrichment
     const enrichmentId = await startBulkEnrichment(
       userSettings.fullenrich_api_key_encrypted,
       enrichable.map((c) => ({
@@ -118,7 +113,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Enrich error:', error);
-    // Sentry.captureException(error);
     return NextResponse.json({ error: error.message || 'Enrichment failed' }, { status: 500 });
   }
 }

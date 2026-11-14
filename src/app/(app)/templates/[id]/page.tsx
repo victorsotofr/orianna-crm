@@ -56,7 +56,6 @@ export default function TemplateDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const editorRef = useRef<Editor | null>(null);
 
-  // Edit state
   const [editName, setEditName] = useState('');
   const [editSubject, setEditSubject] = useState('');
   const [editHtmlContent, setEditHtmlContent] = useState('');
@@ -183,7 +182,6 @@ export default function TemplateDetailPage() {
       <SiteHeader title={template.name} />
       <div className="page-container">
         <div className="page-content">
-          {/* Top bar */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={() => router.push('/templates')}>
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -213,7 +211,6 @@ export default function TemplateDetailPage() {
             </div>
           </div>
 
-          {/* Mode toggle */}
           <div className="flex items-center gap-1 border rounded-lg p-0.5 w-fit">
             <Button
               variant={!editing ? 'default' : 'ghost'}
@@ -235,7 +232,6 @@ export default function TemplateDetailPage() {
             </Button>
           </div>
 
-          {/* Metadata bar */}
           {editing ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs border rounded-lg px-4 py-2.5 bg-muted/30">
               <div className="flex items-center gap-1.5">
@@ -317,7 +313,6 @@ export default function TemplateDetailPage() {
 
           {/* Content area — same email chrome for both modes */}
           <div className="border rounded-lg overflow-hidden flex-1 min-h-0 flex flex-col">
-            {/* Email header */}
             <div className="bg-muted/50 border-b px-5 py-3 space-y-1 shrink-0">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="font-medium">{t.templates.newPage.labels.from}</span>
@@ -341,7 +336,6 @@ export default function TemplateDetailPage() {
                 )}
               </div>
             </div>
-            {/* Email body */}
             {editing ? (
               <div className="flex-1 min-h-0 bg-white dark:bg-card flex flex-col">
                 <RichTextEditor

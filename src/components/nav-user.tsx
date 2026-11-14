@@ -48,7 +48,6 @@ export function NavUser({
     router.refresh()
   }
 
-  // Extract initials from name or email
   const getInitials = () => {
     if (user.name) {
       return user.name

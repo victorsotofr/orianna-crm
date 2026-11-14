@@ -197,12 +197,10 @@ function autoMapRows(rows: string[][]): ParsedContact[] {
       email: (row[emailCol] || '').trim(),
     };
 
-    // Map status if detected
     if (statusCol >= 0) {
       contact.status = normalizeStatus((row[statusCol] || '').trim()) || undefined;
     }
 
-    // Map linkedin if detected
     if (linkedinCol >= 0) {
       contact.linkedin_url = (row[linkedinCol] || '').trim() || undefined;
     }
@@ -256,11 +254,9 @@ export default function ImportPage() {
   const [checking, setChecking] = useState(false);
   const [step, setStep] = useState<'upload' | 'preview' | 'duplicates' | 'done'>('upload');
 
-  // Database duplicate state
   const [dbDuplicates, setDbDuplicates] = useState<DuplicateInfo[]>([]);
   const [newCount, setNewCount] = useState(0);
 
-  // Post-import action state
   const [importedIds, setImportedIds] = useState<string[]>([]);
   const [scoringProgress, setScoringProgress] = useState(0);
   const [scoringTotal, setScoringTotal] = useState(0);

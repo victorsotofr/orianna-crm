@@ -39,7 +39,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (updateError) throw updateError;
 
-    // Insert timeline entry
     await supabase.from('contact_timeline').insert({
       contact_id: id,
       event_type: 'reply_action',

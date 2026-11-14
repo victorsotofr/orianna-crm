@@ -66,8 +66,8 @@ Service-level routes (webhooks, edge functions) use `x-service-key` header check
 | File | Purpose |
 |------|---------|
 | `src/lib/ai-defaults.ts` | Default prompts for personalization, scoring, Linkup queries, prospecting |
-| `src/lib/ai-personalization.ts` | Two-pass AI personalization (Linkup research → Codex generation) |
-| `src/lib/ai-scoring.ts` | AI lead scoring engine (Linkup research → Codex 4-axis scoring) |
+| `src/lib/ai-personalization.ts` | Two-pass AI personalization (Linkup research → LLM generation) |
+| `src/lib/ai-scoring.ts` | AI lead scoring engine (Linkup research → LLM 4-axis scoring) |
 | `src/lib/linkup.ts` | Linkup API: `searchCompany()`, `searchContact()`, `searchProspecting()` |
 | `src/lib/email-sender.ts` | Nodemailer SMTP sending (uses `server-only`, encrypted passwords) |
 | `src/lib/encryption.ts` | AES encrypt/decrypt for API keys and SMTP passwords |
